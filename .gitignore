@@ -11,6 +11,7 @@ venv/
 # Excel lock files & temporary backups
 ~$*.xlsx
 *.backup.xlsx
+*.scheduled.xlsx
 
 # IDE & OS
 .vscode/

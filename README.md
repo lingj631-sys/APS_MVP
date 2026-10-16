@@ -24,15 +24,18 @@ APS_MVP/
 ├── APS Database- Simulation draft.xlsx  # 主数据与排产输入/输出表格
 ├── requirements.txt                     # Python 依赖项 (openpyxl, ortools)
 ├── Specification/                       # 业务功能规格与调研文档
+│   ├── aps_rules_registry.md            # 30条排产规则台账与10大待确认事项 (D-01..D-10)
 │   ├── aps_functional_spec.md           # 功能规格草案 (v0.2)
 │   ├── aps_ipo_overview.md              # Input - Process - Output 概览与架构
 │   └── aps_checkList.md                 # 物流专家访谈提纲
 └── src/                                 # 排产系统源代码
+    ├── rules.py                         # 30条业务规则代码镜像注册表 (REGISTRY)
     ├── data_loader.py                   # 读取 Excel 参数、BOM、需求，并做库存净需求展开
-    ├── shift_manager.py                 # Option B 三班制日历与班次产能口径
-    ├── scheduler.py                     # Google OR-Tools CP-SAT 班次槽位排程模型
+    ├── shift_manager.py                 # LineCalendar解耦日历与三阶排班模式 (做四休三/做五休二/连产)
+    ├── prechecker.py                    # 排产前粗能力宏观可行性预检与《交期调整建议表》
+    ├── scheduler.py                     # Google OR-Tools CP-SAT 班次槽位优化模型 (换型/并发/连续生产)
     ├── exporter.py                      # 自动格式化回写 Production plan-Done 工作表
-    ├── validator.py                     # 排产结果独立验算（产能/利用率/MPQ/齐套/库存/交付）
+    ├── validator.py                     # 排产结果 9 项硬指标独立验算与 30 条规则全生命周期遵循矩阵
     └── main.py                          # 主执行脚本与 KPI 评估报告
 ```
 
@@ -47,13 +50,14 @@ pip install -r requirements.txt
 ```bash
 python src/main.py
 ```
-求解预算 90 秒，按业务优先级分三段：
-1. 用"仅满足产能/齐套/交期"的模型秒级求出一个可行初始解作为 hint；
-2. **凑满班次**：95% 缺口计价进目标函数，一旦搜索到"每个开工班次都 ≥95%"的解立刻停止（该段只负责找到，不负责打磨），仍凑不出时才降级为交付损失最小化；
-3. **集中换型**：从第 2 段的解热启动，把 95% 改为硬约束并对连续生产块计价，因此这一段同时做两件事——补回第 2 段可能留下的缺口、把型号收拢成整块；若该区域无解则退回到"沿用当前缺口上限"继续集中换型，换型永远不能以利用率换。
-每段只取"当时剩余时间"的一个份额（同一批预算切成多次冷启动会更差）。
-运行结束后控制台输出 KPI 与校验报告，结果更新至 `APS Database- Simulation draft.xlsx` 的 **`Production plan-Done`** 表格；若该文件正被 Excel 打开而无法写入，则改写为同目录的 `APS Database- Simulation draft.scheduled.xlsx`。
+流程执行步骤：
+1. **前置粗能力宏观预检 (`prechecker.py`)**：核算产线总工时负荷与交期瓶颈，发生绝对超载时抛出 `CAPACITY_OVERLOAD_EXCEPTION` 并生成《交期调整建议表》；
+2. **三阶排班日历推荐 (`shift_manager.py`)**：按负荷比自动推荐并绑定日历模式（$\le 4/7$ 做四休三、$\le 5/7$ 做五休二、$> 5/7$ 连续生产）；
+3. **CP-SAT 多阶段优化求解 (`scheduler.py`)**：
+   - 求解预算 90 秒，按业务优先级分三段（秒级可行解 Hint ➔ 95% 利用率班次凑满 ➔ 换型集中与单班并行型号 $\le 3$ 打磨）；
+4. **报表与 Excel 回写 (`exporter.py`)**：
+   - 自动回写至 `APS Database- Simulation draft.xlsx` 的 **`Production plan-Done`** 表格（分班产量、工时汇总与利用率预警）；
+5. **9 项独立硬指标校验与 30 条规则遵循矩阵 (`validator.py`)**：
+   - 独立验算 9 项指标（100% 达成 9/9 PASS），并在控制台自动输出 30 条规则遵循全景状态矩阵。
 
-> 口径说明：半成品改为按件排产后，`轴套6` 每班的投入可以在 95%~100% 区间内精确凑齐，且本数据集下 16 个半成品任务已经排成 16 个连续块（一型号一块，零换型损失）；`PGLINKAGE` 仍受整批 MPQ 约束，单班只能以 3,110~3,887 秒一批的粒度填充 1,440 秒的达标窗口，本数据集下该窗口可以命中，校验保持 8/8，9 个成品任务排成 10~11 块。
-> "每个型号都排成一个不间断的连续块"与"每班 ≥95%"在 `CT=29` 这类型号上是算术上互斥的：单批 3,412 秒时 8 批 = 94.8%、9 批超出 8 小时，块内部的班次没有任何凑数余地，所以引擎只在 95% 允许的范围内最大化集中。若要把结构硬性排成一型号一块，需要放开 WE34 中"当班产能小于 MPQ 时在下一个班连续生产"的跨班续产口径，或调小相关 MPQ。
-> 窗口无法命中时 95% 降级为软约束，引擎把缺口折算进目标函数，并在校验报告中逐班列出未达标班次；`准时交付` 在全部运行中保持 100%。
+> 口径说明：半成品采用按件排产（单班起投 $\ge$ MPQ），在 95%~100% 区间内精确凑齐；成品按 MPQ 整数倍排产；换型集中打磨将单班并行型号数严格压制在 $\le 3$ 满足 R-FG-10；`准时交付` 在全部运行中保持 100.0%（9/9）。

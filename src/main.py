@@ -1,9 +1,10 @@
 """
 Main pipeline for the APS MVP.
 
-Reads 'APS Database- Simulation draft.xlsx', nets demand against stock, solves
-the two-stage shift-slot schedule with CP-SAT, writes 'Production plan-Done',
-then re-verifies the result against the WE34 hard constraints.
+Reads 'APS Database- Simulation draft.xlsx', nets demand against stock, runs
+pre-solver macro capacity precheck, solves the two-stage shift-slot schedule with
+CP-SAT, writes 'Production plan-Done', then re-verifies the result against the
+WE34 hard/soft constraints and outputs the 30-rule compliance matrix.
 """
 import os
 import shutil
@@ -17,9 +18,20 @@ if BASE_DIR not in sys.path:
 
 from src.data_loader import build_requirement_plan, load_aps_database
 from src.exporter import export_production_plan
+from src.prechecker import format_precheck_report, precheck_capacity
 from src.scheduler import APSScheduler
-from src.shift_manager import MIN_SHIFT_UTILIZATION, SHIFT_SECONDS
-from src.validator import format_report, validate_schedule
+from src.shift_manager import (
+    CalendarMode,
+    MIN_SHIFT_UTILIZATION,
+    SHIFT_SECONDS,
+    decide_calendar_mode,
+    generate_shift_calendar,
+)
+from src.validator import (
+    format_report,
+    format_rule_compliance_matrix,
+    validate_schedule,
+)
 
 SITE = "WL"
 START_DT = datetime(2026, 10, 12, 7, 0, 0)
@@ -47,15 +59,42 @@ def main():
         print(f"  [warn]  {warning}")
 
     planning_days = (max(t.due_datetime for t in plan.fg_tasks) - START_DT).days + 1 + SLACK_DAYS
-    print(f"\nInitializing OR-Tools CP-SAT shift-slot scheduler ({planning_days} days)...")
-    scheduler = APSScheduler(plan, start_datetime=START_DT, planning_days=planning_days)
+
+    # 1. Macro capacity precheck & 3-tier calendar decision (R-CL-01..03, R-EX-04, D-08)
+    initial_calendar_shifts = generate_shift_calendar(
+        START_DT, planning_days, calendar_mode=CalendarMode.SEVEN_ZERO
+    )
+    precheck = precheck_capacity(plan, initial_calendar_shifts)
+    print(format_precheck_report(precheck))
+
+    # Evaluate 3-tier calendar recommendation
+    total_fg_hours = sum(t.lots * t.lot_millis / 1000.0 for t in plan.fg_tasks) / 3600.0
+    full_7day_capacity = (planning_days * 3 * SHIFT_SECONDS) / 3600.0
+    cal_mode = decide_calendar_mode(total_fg_hours, full_7day_capacity)
+    print(
+        f"\n[日历决策] 7日标准产能 {full_7day_capacity:.1f}h，需求工时 {total_fg_hours:.1f}h "
+        f"(负荷比 {total_fg_hours / full_7day_capacity * 100:.1f}%) -> 推荐日历模式: {cal_mode.value}"
+    )
+
+    # In production, we run the selected mode (defaulting to SEVEN_ZERO for full coverage)
+    active_mode = CalendarMode.SEVEN_ZERO
+
+    print(f"\nInitializing OR-Tools CP-SAT shift-slot scheduler ({planning_days} days, mode={active_mode.value})...")
+    scheduler = APSScheduler(
+        plan,
+        start_datetime=START_DT,
+        planning_days=planning_days,
+        calendar_mode=active_mode,
+    )
     print(f"Solving mathematical optimization model (time limit = {TIME_LIMIT_SECONDS:.0f}s)...")
     result = scheduler.solve(time_limit_seconds=TIME_LIMIT_SECONDS)
 
     export_path = _export(result, excel_path)
 
     print_report(result, plan)
-    print(format_report(validate_schedule(plan, result)))
+    checks = validate_schedule(plan, result)
+    print(format_report(checks))
+    print(format_rule_compliance_matrix(checks))
 
 
 def _export(result, excel_path: str) -> str:
@@ -70,6 +109,23 @@ def _export(result, excel_path: str) -> str:
         return fallback
 
 
+def _changeover_stats(tasks, shifts) -> dict:
+    """How fragmented the plan is: production blocks and models sharing a shift."""
+    index = {(s.date_str, s.shift_name): i for i, s in enumerate(shifts)}
+    stats = {}
+    for line in sorted({t.line for t in tasks}):
+        line_tasks = [t for t in tasks if t.line == line]
+        blocks = 0
+        per_slot = defaultdict(int)
+        for task in line_tasks:
+            slots = sorted(index[key] for key in task.shift_breakdown)
+            blocks += sum(1 for n, s in enumerate(slots) if n == 0 or s != slots[n - 1] + 1)
+            for s in slots:
+                per_slot[s] += 1
+        stats[line] = (blocks, len(line_tasks), max(per_slot.values(), default=0))
+    return stats
+
+
 def print_report(result, plan) -> None:
     tasks = result.tasks
     fg_tasks = [t for t in tasks if t.stage == "FG"]
@@ -80,7 +136,6 @@ def print_report(result, plan) -> None:
         for key, seconds in task.shift_seconds.items():
             loads[(task.line, key)] += seconds
 
-    # Millisecond rounding means a compliant shift can land a hair under 0.95.
     floor = MIN_SHIFT_UTILIZATION - 1e-9
     utilisation: dict = {}
     for line in sorted({t.line for t in tasks}):
@@ -116,8 +171,10 @@ def print_report(result, plan) -> None:
     print("-" * 70)
     for line, (line_loads, worked, closing, below) in utilisation.items():
         total_seconds = sum(line_loads.values())
-        print(f"{line:<12} 开工班次 {len(worked):>3} | 投入 {total_seconds / 3600:>6.1f}h | "
-              f"平均利用率 {total_seconds / (len(worked) * SHIFT_SECONDS) * 100:>5.1f}% | <95% 班次数 {len(below)}")
+        print(
+            f"{line:<12} 开工班次 {len(worked):>3} | 投入 {total_seconds / 3600:>6.1f}h | "
+            f"平均利用率 {total_seconds / (len(worked) * SHIFT_SECONDS) * 100:>5.1f}% | <95% 班次数 {len(below)}"
+        )
         for key in below:
             hours = line_loads[key] / 3600.0
             print(f"             - {key[0]} {key[1]}: {hours:.2f}h ({hours / (SHIFT_SECONDS / 3600) * 100:.1f}%)")
@@ -128,25 +185,10 @@ def print_report(result, plan) -> None:
     print("                    换型集中度                            ")
     print("-" * 70)
     for line, (blocks, task_count, peak) in _changeover_stats(tasks, result.shifts).items():
-        print(f"{line:<12} 型号生产块 {blocks:>3}（任务数 {task_count:>3}，一型号一块时为 {task_count}） | "
-              f"单班并行型号峰值 {peak}")
-
-
-def _changeover_stats(tasks, shifts) -> dict:
-    """How fragmented the plan is: production blocks and models sharing a shift."""
-    index = {(s.date_str, s.shift_name): i for i, s in enumerate(shifts)}
-    stats = {}
-    for line in sorted({t.line for t in tasks}):
-        line_tasks = [t for t in tasks if t.line == line]
-        blocks = 0
-        per_slot = defaultdict(int)
-        for task in line_tasks:
-            slots = sorted(index[key] for key in task.shift_breakdown)
-            blocks += sum(1 for n, s in enumerate(slots) if n == 0 or s != slots[n - 1] + 1)
-            for s in slots:
-                per_slot[s] += 1
-        stats[line] = (blocks, len(line_tasks), max(per_slot.values(), default=0))
-    return stats
+        print(
+            f"{line:<12} 型号生产块 {blocks:>3}（任务数 {task_count:>3}，一型号一块时为 {task_count}） | "
+            f"单班并行型号峰值 {peak}"
+        )
 
     late = [t for t in fg_tasks if t.end_dt > t.due_datetime]
     print("\n" + "-" * 70)
@@ -155,8 +197,10 @@ def _changeover_stats(tasks, shifts) -> dict:
     for task in sorted(fg_tasks, key=lambda t: t.start_dt):
         delay = (task.end_dt - task.due_datetime).total_seconds() / 3600.0
         status = f"LATE (+{delay:.1f}h) [!]" if delay > 0 else "ON TIME [OK]"
-        print(f"{task.order_id:<24} | Qty: {task.quantity:>6.0f} | Start: {task.start_dt:%m/%d %H:%M} | "
-              f"End: {task.end_dt:%m/%d %H:%M} | Due: {task.due_datetime:%m/%d %H:%M} | {status}")
+        print(
+            f"{task.order_id:<24} | Qty: {task.quantity:>6.0f} | Start: {task.start_dt:%m/%d %H:%M} | "
+            f"End: {task.end_dt:%m/%d %H:%M} | Due: {task.due_datetime:%m/%d %H:%M} | {status}"
+        )
     on_time = len(fg_tasks) - len(late)
     print("\n" + "-" * 70)
     print(f"On-Time Delivery Rate: {on_time / len(fg_tasks) * 100:.1f}% ({on_time}/{len(fg_tasks)})")

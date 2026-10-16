@@ -33,6 +33,7 @@ from ortools.sat.python import cp_model
 
 from src.data_loader import TIME_SCALE, ProductionTask, RequirementPlan
 from src.shift_manager import (
+    CalendarMode,
     MIN_SHIFT_SECONDS,
     SHIFT_SECONDS,
     ShiftBucket,
@@ -50,6 +51,7 @@ SF_COMPLETION_WEIGHT = 1
 # time here: more than finishing a model a few shifts earlier, which is what gathers
 # the model into one block instead of trickling it across the week.
 CHANGEOVER_WEIGHT = 300_000
+CONCURRENCY_WEIGHT = 50_000
 LATENESS_SLACK_SHIFTS = 6
 
 ShiftKey = Tuple[str, str]
@@ -106,10 +108,14 @@ class APSScheduler:
         plan: RequirementPlan,
         start_datetime: datetime = datetime(2026, 10, 12, 7, 0, 0),
         planning_days: int = 14,
+        calendar_mode: CalendarMode = CalendarMode.SEVEN_ZERO,
     ):
         self.plan = plan
         self.start_dt = start_datetime
-        self.shifts = generate_shift_calendar(start_datetime, planning_days)
+        self.calendar_mode = calendar_mode
+        self.shifts = generate_shift_calendar(
+            start_datetime, planning_days, calendar_mode=calendar_mode
+        )
         self.num_shifts = len(self.shifts)
         self.tasks = plan.tasks
         self.task_by_id = {t.task_id: t for t in self.tasks}
@@ -394,6 +400,30 @@ class APSScheduler:
             FG_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.fg_tasks),
             SF_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.sf_tasks),
         ]
+
+        # R-FG-10: Penalize parallel models exceeding 3 per shift
+        concurrency_penalties = []
+        for line in self.lines:
+            line_tasks = [t for t in self.tasks if t.line == line]
+            part_numbers = sorted({t.part_no for t in line_tasks})
+            for s in range(self.num_shifts):
+                part_actives = []
+                for p_no in part_numbers:
+                    matching = [t for t in line_tasks if t.part_no == p_no and (t.task_id, s) in active]
+                    if not matching:
+                        continue
+                    p_act = model.NewBoolVar(f"p_act.{line}.{p_no}.{s}")
+                    for m in matching:
+                        model.Add(p_act >= active[m.task_id, s])
+                    part_actives.append(p_act)
+                if len(part_actives) > 3:
+                    excess = model.NewIntVar(0, len(part_actives), f"excess.{line}.{s}")
+                    model.Add(excess >= sum(part_actives) - 3)
+                    concurrency_penalties.append(excess)
+
+        if concurrency_penalties:
+            terms.append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
+
         if price_changeovers:
             terms.append(CHANGEOVER_WEIGHT * sum(runs))
         elif violations:

@@ -1,22 +1,27 @@
 """
-Independent re-verification of a solved schedule.
+Independent re-verification of a solved schedule against business rules.
 
-The validator recomputes every WE34 hard constraint straight from the
+The validator recomputes WE34 hard and soft constraints straight from the
 requirement plan and the exported shift breakdown, so a modelling mistake in
 the solver cannot hide behind a solver-reported success.
 """
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 from src.data_loader import RequirementPlan
+from src.rules import REGISTRY, RuleStatus
 from src.scheduler import ScheduledTask, ScheduleResult
 from src.shift_manager import MIN_SHIFT_UTILIZATION, SHIFT_SECONDS
+
+MAX_PARALLEL_MODELS_PER_SHIFT = 3
 
 
 @dataclass
 class Check:
     name: str
     passed: bool
+    rule_ids: List[str] = field(default_factory=list)
     violations: List[str] = field(default_factory=list)
 
 
@@ -31,6 +36,7 @@ def validate_schedule(plan: RequirementPlan, result: ScheduleResult) -> List[Che
         _check_material_balance(plan, result.tasks, index_of),
         _check_stock_balance(plan),
         _check_delivery(plan, result.tasks),
+        _check_concurrency(result.tasks, index_of),
     ]
 
 
@@ -48,7 +54,7 @@ def _check_capacity(tasks, index_of) -> Check:
         for (line, idx), seconds in sorted(_loads(tasks, index_of).items())
         if seconds > SHIFT_SECONDS + 1e-6
     ]
-    return Check("班次产能不超 8 小时", not violations, violations)
+    return Check("班次产能不超 8 小时", not violations, ["物理硬约束"], violations)
 
 
 def _check_utilization(tasks, index_of) -> Check:
@@ -73,7 +79,7 @@ def _check_utilization(tasks, index_of) -> Check:
         f"{line} {label_of[idx]} 利用率 {utilization * 100:.1f}% < 95%（投入 {seconds / 3600:.2f}h）"
         for utilization, line, idx, seconds in sorted(offenders)
     ]
-    return Check("班次产能利用率 ≥ 95%（尾班豁免）", not violations, violations)
+    return Check("班次产能利用率 ≥ 95%（尾班豁免）", not violations, ["R-SF-01", "R-FG-03"], violations)
 
 
 def _check_conservation(plan, tasks) -> Check:
@@ -93,11 +99,10 @@ def _check_conservation(plan, tasks) -> Check:
                 f"{task.task_id}: 班次合计 {sum(task.shift_breakdown.values())} 与总产量 "
                 f"{task.quantity:.0f} 不一致"
             )
-    return Check("排产量等于净需求且班次产出守恒", not violations, violations)
+    return Check("排产量等于净需求且班次产出守恒", not violations, ["R-SF-03", "R-FG-04"], violations)
 
 
 def _check_fg_mpq(plan, tasks) -> Check:
-    """Whole MPQ batches, in total and in every individual shift."""
     violations = []
     for task in (t for t in tasks if t.stage == "FG"):
         if int(round(task.quantity)) % task.mpq:
@@ -105,11 +110,10 @@ def _check_fg_mpq(plan, tasks) -> Check:
         for key, qty in task.shift_breakdown.items():
             if qty % task.mpq:
                 violations.append(f"{task.task_id} @ {key}: 班次产量 {qty} 不是 MPQ({task.mpq}) 的整数倍")
-    return Check("成品按 MPQ 整数倍排产", not violations, violations)
+    return Check("成品按 MPQ 整数倍排产", not violations, ["R-FG-02"], violations)
 
 
 def _check_sf_minimum(plan, tasks) -> Check:
-    """Semi-finished skips the MPQ rounding but every start runs a full MPQ."""
     violations = []
     for task in (t for t in tasks if t.stage == "SF"):
         if not float(task.quantity).is_integer():
@@ -125,11 +129,10 @@ def _check_sf_minimum(plan, tasks) -> Check:
                 violations.append(
                     f"{task.task_id} @ {key}: 班次投产 {qty} 件低于最小投产批量 MPQ({task.mpq})"
                 )
-    return Check("半成品为整数件且单班投产 ≥ MPQ", not violations, violations)
+    return Check("半成品为整数件且单班投产 ≥ MPQ", not violations, ["R-SF-07"], violations)
 
 
 def _check_material_balance(plan, tasks, index_of) -> Check:
-    """Cumulative bushings available must cover cumulative assembly consumption."""
     by_id = {t.task_id: t for t in tasks}
     violations = []
     for fg_task in plan.fg_tasks:
@@ -154,7 +157,7 @@ def _check_material_balance(plan, tasks, index_of) -> Check:
                         f" 可用 {available:.0f} < 已装配耗用 {required:.0f}"
                     )
                     break
-    return Check("上下工序按班次累计齐套", not violations, violations)
+    return Check("上下工序按班次累计齐套", not violations, ["R-SF-02"], violations)
 
 
 def _check_stock_balance(plan) -> Check:
@@ -171,7 +174,7 @@ def _check_stock_balance(plan) -> Check:
                 f"{movement.part_no}: 期末结余 {movement.closing:.0f} 低于安全库存 "
                 f"{movement.target_stock:.0f}"
             )
-    return Check("库存流水账平衡且不低于安全库存", not violations, violations)
+    return Check("库存流水账平衡且不低于安全库存", not violations, ["R-SF-06", "R-FG-07"], violations)
 
 
 def _check_delivery(plan, tasks) -> Check:
@@ -192,6 +195,31 @@ def _check_delivery(plan, tasks) -> Check:
     return Check(
         f"准时交付（{on_time}/{total}，准时率 {on_time / total * 100:.1f}%）" if total else "准时交付",
         not violations,
+        ["R-FG-01"],
+        violations,
+    )
+
+
+def _check_concurrency(tasks, index_of) -> Check:
+    """R-FG-10: Max 3 parallel models per shift per line."""
+    label_of = {idx: f"{date_str} {shift_name}" for (date_str, shift_name), idx in index_of.items()}
+    per_line_slot = defaultdict(set)
+    for task in tasks:
+        for key, qty in task.shift_breakdown.items():
+            if qty > 0:
+                per_line_slot[(task.line, index_of[key])].add(task.part_no)
+
+    violations = []
+    for (line, slot), models in sorted(per_line_slot.items()):
+        if len(models) > MAX_PARALLEL_MODELS_PER_SHIFT:
+            violations.append(
+                f"{line} {label_of[slot]}: 并行型号数 {len(models)} > 上限 {MAX_PARALLEL_MODELS_PER_SHIFT} "
+                f"({', '.join(sorted(models))})"
+            )
+    return Check(
+        f"单班并行型号数 ≤ {MAX_PARALLEL_MODELS_PER_SHIFT} (R-FG-10)",
+        not violations,
+        ["R-FG-10"],
         violations,
     )
 
@@ -200,7 +228,8 @@ def format_report(checks: List[Check]) -> str:
     lines = ["-" * 70, "                     排产结果校验报告                     ", "-" * 70]
     for check in checks:
         mark = "PASS [OK]" if check.passed else "FAIL [!!]"
-        lines.append(f"{mark:<11} {check.name}")
+        rules_str = f"[{', '.join(check.rule_ids)}]" if check.rule_ids else ""
+        lines.append(f"{mark:<11} {check.name:<38} {rules_str}")
         for detail in check.violations[:12]:
             lines.append(f"            - {detail}")
         if len(check.violations) > 12:
@@ -211,4 +240,36 @@ def format_report(checks: List[Check]) -> str:
         f"校验结论: {len(checks) - len(failed)}/{len(checks)} 项通过"
         + (f"；未通过 -> {', '.join(failed)}" if failed else "")
     )
+    return "\n".join(lines)
+
+
+def format_rule_compliance_matrix(checks: List[Check]) -> str:
+    """Format all 30 rules into a compliance status table."""
+    check_status: Dict[str, bool] = {}
+    for c in checks:
+        for r_id in c.rule_ids:
+            check_status[r_id] = check_status.get(r_id, True) and c.passed
+
+    lines = [
+        "=" * 85,
+        "                          30条排产规则遵循状态一览表                          ",
+        "=" * 85,
+        f"{'规则ID':<9} | {'阶段':<4} | {'性质':<12} | {'状态':<10} | {'规则名称':<28} | {'备注/落点'}",
+        "-" * 85,
+    ]
+    for r_id, rule in sorted(REGISTRY.items(), key=lambda item: item[1].row_index):
+        # Determine effective status
+        if r_id in check_status:
+            effective = "PASS [OK]" if check_status[r_id] else "FAIL [!]"
+        else:
+            effective = rule.status.value
+
+        note = rule.validation_check or rule.landing_layer
+        if rule.decision_id:
+            note += f" ({rule.decision_id})"
+        lines.append(
+            f"{rule.rule_id:<9} | {rule.stage:<4} | {rule.category.value[:8]:<12} | "
+            f"{effective:<10} | {rule.name[:26]:<28} | {note}"
+        )
+    lines.append("=" * 85)
     return "\n".join(lines)

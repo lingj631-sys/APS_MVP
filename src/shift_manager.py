@@ -78,8 +78,9 @@ def generate_shift_calendar(
     calendar_mode: CalendarMode = CalendarMode.SEVEN_ZERO,
     custom_working_days: Optional[Set[int]] = None,
     filter_non_working: bool = True,
+    day_shift_overrides: Optional[Dict[str, Any]] = None,
 ) -> List[ShiftBucket]:
-    """Build calendar shifts according to the specified calendar pattern.
+    """Build calendar shifts according to the specified calendar pattern or custom overrides.
 
     If `filter_non_working` is True, shifts on off-days are excluded from the
     solver slots, turning off-day avoidance into a structural guarantee.
@@ -93,9 +94,19 @@ def generate_shift_calendar(
     for day_idx in range(num_days):
         day = start_date + timedelta(days=day_idx)
         date_str = f"{day.month}/{day.day}"
-        is_working = day.weekday() in working_days
 
-        if not is_working and filter_non_working:
+        # Check custom day overrides if provided
+        day_override = (
+            (day_shift_overrides.get(date_str) or day_shift_overrides.get(day.strftime("%Y-%m-%d")))
+            if day_shift_overrides else None
+        )
+
+        if day_override is not None:
+            is_day_working = bool(day_override.get("is_workday", True))
+        else:
+            is_day_working = day.weekday() in working_days
+
+        if not is_day_working and filter_non_working:
             continue
 
         boundaries = [
@@ -104,6 +115,14 @@ def generate_shift_calendar(
             datetime(day.year, day.month, day.day, 23, 0),
         ]
         for i, shift_name in enumerate(SHIFT_NAMES):
+            if day_override and "shifts" in day_override:
+                is_shift_working = is_day_working and bool(day_override["shifts"].get(shift_name, True))
+            else:
+                is_shift_working = is_day_working
+
+            if not is_shift_working and filter_non_working:
+                continue
+
             shifts.append(
                 ShiftBucket(
                     index=slot_idx,
@@ -112,7 +131,7 @@ def generate_shift_calendar(
                     start_dt=boundaries[i],
                     end_dt=boundaries[i] + timedelta(hours=SHIFT_HOURS),
                     weekday=day.weekday(),
-                    is_work_shift=is_working,
+                    is_work_shift=is_shift_working,
                 )
             )
             slot_idx += 1
@@ -122,8 +141,13 @@ def generate_shift_calendar(
 def adjust_due_datetime_for_holidays(
     due_dt: datetime,
     working_weekdays: Set[int],
+    shifts: Optional[List[ShiftBucket]] = None,
 ) -> datetime:
     """R-BK-01: Shift holiday due date back to the end of the last working shift (15:00)."""
+    if shifts:
+        valid_shifts = [s for s in shifts if s.is_work_shift and s.end_dt <= due_dt]
+        if valid_shifts:
+            return valid_shifts[-1].end_dt
     curr = due_dt
     while curr.weekday() not in working_weekdays:
         curr -= timedelta(days=1)

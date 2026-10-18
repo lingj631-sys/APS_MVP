@@ -109,12 +109,30 @@ class APSScheduler:
         start_datetime: datetime = datetime(2026, 10, 12, 7, 0, 0),
         planning_days: int = 14,
         calendar_mode: CalendarMode = CalendarMode.SEVEN_ZERO,
+        enforce_utilization_95: bool = True,
+        enforce_on_time_delivery: bool = True,
+        enforce_concurrency_limit: bool = True,
+        enforce_mpq_batch: bool = True,
+        enforce_material_balance: bool = True,
+        price_changeovers: bool = True,
+        day_shift_overrides: Optional[Dict[str, Any]] = None,
     ):
         self.plan = plan
         self.start_dt = start_datetime
         self.calendar_mode = calendar_mode
+        self.enforce_utilization_95 = enforce_utilization_95
+        self.enforce_on_time_delivery = enforce_on_time_delivery
+        self.enforce_concurrency_limit = enforce_concurrency_limit
+        self.enforce_mpq_batch = enforce_mpq_batch
+        self.enforce_material_balance = enforce_material_balance
+        self.price_changeovers = price_changeovers
+        self.day_shift_overrides = day_shift_overrides
+
         self.shifts = generate_shift_calendar(
-            start_datetime, planning_days, calendar_mode=calendar_mode
+            start_datetime,
+            planning_days,
+            calendar_mode=calendar_mode,
+            day_shift_overrides=day_shift_overrides,
         )
         self.num_shifts = len(self.shifts)
         self.tasks = plan.tasks
@@ -133,22 +151,21 @@ class APSScheduler:
 
         # The tiers below only soften the constraint the business ranks lower, so the
         # first one that yields a plan wins and keeps whatever time is left for
-        # compacting it (see `_compact`, which also takes 95% back on as a hard
-        # constraint if the filling tier left it short). Each tier takes a share of the
-        # time *still left* when it starts, so a tier that never runs cannot strand
-        # budget behind it.
-        #
-        # Filling the shifts is a narrow-band bin packing. One long solve beats the
-        # same seconds split into cold restarts: each restart would have to
-        # rediscover a good packing from the hint instead of polishing one it
-        # already has, and the portfolio inside a single solve already supplies the
-        # diversity the restarts were meant to add. Solving 95% hard *cold* fails the
-        # same way, which is why that region is only entered warm, from a plan the
-        # filling tier has already brought to the door.
-        tiers = (
-            ("软约束 95% 利用率 + 硬约束准时交付", "soft", True, 0.55),
-            ("软约束 95% 利用率 + 交付损失最小化", "soft", False, 1.0),
-        )
+        # compacting it.
+        if not self.enforce_utilization_95:
+            tiers = (
+                ("关闭 95% 利用率约束 (" + ("硬约束交付" if self.enforce_on_time_delivery else "交付损失最小化") + ")", "off", self.enforce_on_time_delivery, 1.0),
+            )
+        elif self.enforce_on_time_delivery:
+            tiers = (
+                ("软约束 95% 利用率 + 硬约束准时交付", "soft", True, 0.55),
+                ("软约束 95% 利用率 + 交付损失最小化", "soft", False, 1.0),
+            )
+        else:
+            tiers = (
+                ("软约束 95% 利用率 + 交付损失最小化", "soft", False, 1.0),
+            )
+
         for index, (label, mode, hard_due, share) in enumerate(tiers):
             if index:
                 print(f"  [warn]  上一口径无解，降级为: {label}")
@@ -157,7 +174,7 @@ class APSScheduler:
             if result is not None:
                 print(f"  [solver] 排产口径: {label}")
                 left = time_limit_seconds - (time.perf_counter() - start)
-                if mode == "soft" and left > 5.0:
+                if mode == "soft" and left > 5.0 and self.enforce_utilization_95:
                     result = self._compact(result, hard_due, left)
                 return result
 
@@ -346,7 +363,7 @@ class APSScheduler:
         # counted in the models where they are priced: the hard tier and the
         # compaction pass, where the filling is already secured and cannot be bought
         # back down. Priced against soft gaps, a changeover simply buys gaps.
-        price_changeovers = utilization_mode == "hard" or gap_cap is not None
+        price_changeovers = self.price_changeovers and (utilization_mode == "hard" or gap_cap is not None)
         runs: List[object] = []
 
         for task in self.tasks:
@@ -359,7 +376,7 @@ class APSScheduler:
             # MPQ for semi-finished pieces, one MPQ batch for finished goods. Without
             # this the filling objective drips a model over dozens of shifts as 1-2
             # pieces at a time, which no line can actually set up for.
-            min_lots = min(per_shift, task.mpq // task.lot_size)
+            min_lots = min(per_shift, task.mpq // task.lot_size) if self.enforce_mpq_batch else 1
             for s in range(lo, hi + 1):
                 lots = model.NewIntVar(0, per_shift, f"x.{task.task_id}.{s}")
                 used = model.NewBoolVar(f"a.{task.task_id}.{s}")
@@ -383,7 +400,8 @@ class APSScheduler:
                 model.Add(end >= s).OnlyEnforceIf(active[task.task_id, s])
             end_of[task.task_id] = end
 
-        self._add_material_balance(model, x)
+        if self.enforce_material_balance:
+            self._add_material_balance(model, x)
         shortfall, violations = self._add_line_capacity(model, x, utilization_mode, gap_cap)
 
         lateness = []
@@ -421,7 +439,7 @@ class APSScheduler:
                     model.Add(excess >= sum(part_actives) - 3)
                     concurrency_penalties.append(excess)
 
-        if concurrency_penalties:
+        if self.enforce_concurrency_limit and concurrency_penalties:
             terms.append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
 
         if price_changeovers:

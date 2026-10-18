@@ -24,9 +24,10 @@ APS_MVP/
 ├── APS Database- Simulation draft.xlsx  # 主数据与排产输入/输出表格
 ├── requirements.txt                     # Python 依赖项 (openpyxl, ortools)
 ├── Specification/                       # 业务功能规格与调研文档
+│   ├── aps_project_progress.md          # 项目研发进度与里程碑台账 (M1..M7 与今日详细变更)
 │   ├── aps_rules_registry.md            # 30条排产规则台账与10大待确认事项 (D-01..D-10)
-│   ├── aps_functional_spec.md           # 功能规格草案 (v0.2)
-│   ├── aps_ipo_overview.md              # Input - Process - Output 概览与架构
+│   ├── aps_functional_spec.md           # 功能规格设计说明书 (v0.4 多工厂多产线架构演进版)
+│   ├── aps_ipo_overview.md              # Input - Process - Output 概览与五级组织多租户架构
 │   └── aps_checkList.md                 # 物流专家访谈提纲
 └── src/                                 # 排产系统源代码
     ├── rules.py                         # 30条业务规则代码镜像注册表 (REGISTRY)
@@ -46,7 +47,23 @@ APS_MVP/
 pip install -r requirements.txt
 ```
 
-### 一键执行排产
+### 一键启动可视化 Web 演示系统 (本地 UI)
+```bash
+python run_web.py
+```
+启动后在浏览器打开：**`http://127.0.0.1:8000`** 或 **`http://localhost:8000`**
+
+Web 界面主要特性：
+- **① 生产平衡与负荷总览 (参考 `Production Plan Validation.xlsx`)**：
+  - 顶部产线负荷概览：按班次展示 `Loading Hours`、`TRP`、`Loading Rate`（利用率 $\ge 95\%$ 达标高亮显示）；
+  - 底部物料动态平衡表 (PSI)：按物料展开 4 行（`Customer demand`、`Production plan`、`Stock Balance`、`Coverage days`），支持产成品 (FG) 与半成品 (SFIN) 分页或同屏展示；
+- **② 排产工单甘特明细**：查看各阶段工单的起止时间、计划数量、交期达成状态及跨班排布；
+- **③ 规则与约束配置**：支持勾选/取消勾选任意规则（默认全选），动态联动 CP-SAT 求解约束方程与后置审计；
+- **④ 输入数据管理**：在网页表格中直接修改订单需求数量、交期、期初库存，支持“保存修改”与“重置为 Excel 原始数据”；
+- **⑤ 30 条规则合规审计矩阵**：全景查看 30 条规则在当前排产方案下的遵循状态（PASS / FAIL / N.A. / TODO）；
+- **执行运算与导出**：一键触发求解（带动态计时与状态反馈），支持点击【导出结果 Excel】下载生成好的排产工作簿。
+
+### 一键执行控制台排产 (CLI)
 ```bash
 python src/main.py
 ```

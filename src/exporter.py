@@ -13,6 +13,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from src.balance_builder import ValidationMatrix, LineLoadRow, MaterialBalanceRow
 from src.scheduler import ScheduledTask
 from src.shift_manager import MIN_SHIFT_UTILIZATION, SHIFT_SECONDS, ShiftBucket
 
@@ -40,6 +41,361 @@ FILL_VIOLATION = PatternFill("solid", start_color="F6C6C6")
 THIN = Side(style="thin", color="D3D3D3")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 COLUMN_WIDTHS = {"A": 13, "B": 30, "C": 14, "D": 10, "E": 6, "F": 6, "G": 17, "H": 24, "I": 9}
+
+BORDER_THIN = Border(
+    left=Side(style="thin", color="CBD5E1"),
+    right=Side(style="thin", color="CBD5E1"),
+    top=Side(style="thin", color="CBD5E1"),
+    bottom=Side(style="thin", color="CBD5E1"),
+)
+BORDER_MEDIUM_BOTTOM = Border(
+    left=Side(style="thin", color="CBD5E1"),
+    right=Side(style="thin", color="CBD5E1"),
+    top=Side(style="thin", color="CBD5E1"),
+    bottom=Side(style="medium", color="94A3B8"),
+)
+
+
+def export_validation_matrix_excel(
+    matrix: ValidationMatrix,
+    output_excel_path: str,
+    site: str = "WL",
+) -> None:
+    """Export the unified single-sheet Production Plan & Material Balance (PSI) table.
+
+    Exactly matches the on-screen '合并同屏展示 (ALL 37)' view:
+    1. Only ONE sheet: '生产排程与物料平衡总表 (PSI)'.
+    2. Header with date groups and shift columns.
+    3. Section 1: Line Loads Overview (Loading Hours, TRP, Loading Rate).
+    4. Section 2: Material Balance Matrix (Customer demand, Production plan, Stock Balance, Coverage days)
+       for all Finished Goods (FG) and Semi-Finished Goods (SF).
+    5. Froze panes at E3 for seamless horizontal and vertical scrolling.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "生产排程与物料平衡总表 (PSI)"
+    try:
+        ws.views.sheetView[0].showGridLines = True
+    except Exception:
+        pass
+
+    shift_cols = matrix.shift_columns
+    total_cols = 4 + len(shift_cols)
+
+    # 1. Row 1 & 2: Header Styling & Content
+    fill_hdr = PatternFill("solid", start_color="F1F5F9")
+    font_hdr = Font(name="Segoe UI", size=10, bold=True, color="1E293B")
+    font_sub_hdr = Font(name="Segoe UI", size=9, bold=True, color="475569")
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[2].height = 20
+
+    # Base headers (Columns 1-4)
+    base_headers_r1 = ["Site / 料号", "产线 / 品名描述", "监控指标 / 业务项", "定额 / 基准参数"]
+    base_headers_r2 = ["站点 / Part No", "Line / Description", "Metric / Action", "Standard / Ref"]
+    for c_idx in range(1, 5):
+        ws.cell(1, c_idx).value = base_headers_r1[c_idx - 1]
+        ws.cell(2, c_idx).value = base_headers_r2[c_idx - 1]
+
+    # Shift headers (Columns 5..total_cols)
+    # Group consecutive columns with the exact same date in Row 1
+    c_start = 5
+    while c_start <= total_cols:
+        d_val = shift_cols[c_start - 5]["date"]
+        c_end = c_start
+        while (c_end + 1 <= total_cols) and (shift_cols[c_end - 5 + 1]["date"] == d_val):
+            c_end += 1
+        if c_end > c_start:
+            ws.merge_cells(start_row=1, start_column=c_start, end_row=1, end_column=c_end)
+        ws.cell(1, c_start).value = d_val
+        c_start = c_end + 1
+
+    for idx, col_meta in enumerate(shift_cols, start=5):
+        ws.cell(2, idx).value = col_meta["shift"]
+
+    for r in (1, 2):
+        for c in range(1, total_cols + 1):
+            cell = ws.cell(r, c)
+            cell.font = font_hdr if r == 1 else font_sub_hdr
+            cell.fill = fill_hdr
+            cell.border = BORDER_THIN
+            cell.alignment = align_center
+
+    # 2. Section 1 Banner: Line Load Overview
+    curr_row = 3
+    ws.row_dimensions[curr_row].height = 24
+    ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=total_cols)
+    banner_ll = ws.cell(curr_row, 1)
+    banner_ll.value = "【上表】产线负荷概览 (Line Load Overview - 纯工时 / TRP / 班次利用率)    定额: 单班8h · 门槛: ≥95% (尾班可豁免)"
+    banner_ll.font = Font(name="Segoe UI", size=10, bold=True, color="312E81")
+    banner_ll.fill = PatternFill("solid", start_color="EEF2FF")
+    banner_ll.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    for c in range(1, total_cols + 1):
+        ws.cell(curr_row, c).fill = PatternFill("solid", start_color="EEF2FF")
+        ws.cell(curr_row, c).border = BORDER_THIN
+
+    # Line Loads Rows
+    for row_data in matrix.line_loads:
+        curr_row += 1
+        ws.row_dimensions[curr_row].height = 19
+        ws.cell(curr_row, 1).value = row_data.site
+        ws.cell(curr_row, 1).font = Font(name="Segoe UI", size=9, color="475569")
+        ws.cell(curr_row, 1).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 1).border = BORDER_THIN
+
+        ws.cell(curr_row, 2).value = row_data.line
+        ws.cell(curr_row, 2).font = Font(name="Segoe UI", size=9, bold=True, color="1E293B")
+        ws.cell(curr_row, 2).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 2).border = BORDER_THIN
+
+        ws.cell(curr_row, 3).value = row_data.metric
+        ws.cell(curr_row, 3).font = Font(
+            name="Segoe UI",
+            size=9,
+            bold=(row_data.metric == "Loading Rate"),
+            color="3730A3" if row_data.metric == "Loading Rate" else "334155",
+        )
+        ws.cell(curr_row, 3).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 3).border = BORDER_THIN
+
+        # Col 4 Standard / Ref
+        if row_data.metric == "Loading Rate":
+            ref_txt = "门槛 ≥95%"
+        elif row_data.metric == "TRP":
+            ref_txt = f"标准: {0.71 if row_data.line == 'PGLINKAGE' else 0.85}"
+        else:
+            ref_txt = "单班定额: 8.0h"
+        ws.cell(curr_row, 4).value = ref_txt
+        ws.cell(curr_row, 4).font = Font(
+            name="Segoe UI",
+            size=9,
+            bold=(row_data.metric == "Loading Rate"),
+            color="065F46" if row_data.metric == "Loading Rate" else "64748B",
+        )
+        ws.cell(curr_row, 4).alignment = Alignment(horizontal="right", vertical="center")
+        ws.cell(curr_row, 4).border = BORDER_THIN
+
+        # Shift values
+        for idx, col_meta in enumerate(shift_cols, start=5):
+            val = row_data.shift_values.get(col_meta["key"], 0)
+            c = ws.cell(curr_row, idx)
+            c.alignment = align_center
+            c.border = BORDER_THIN
+            if row_data.metric == "Loading Rate":
+                if isinstance(val, (int, float)) and val > 0:
+                    c.value = f"{val:.1f}%"
+                    if val >= 95.0:
+                        c.fill = PatternFill("solid", start_color="D1FAE5")
+                        c.font = Font(name="Segoe UI", size=9, bold=True, color="065F46")
+                    else:
+                        c.fill = PatternFill("solid", start_color="FEE2E2")
+                        c.font = Font(name="Segoe UI", size=9, bold=True, color="991B1B")
+                else:
+                    c.value = "-"
+                    c.font = Font(name="Segoe UI", size=9, color="94A3B8")
+            elif row_data.metric == "Loading Hours":
+                if isinstance(val, (int, float)) and val > 0:
+                    c.value = round(val, 2)
+                    c.font = Font(name="Segoe UI", size=9, color="1E293B")
+                else:
+                    c.value = "-"
+                    c.font = Font(name="Segoe UI", size=9, color="94A3B8")
+            else:  # TRP
+                c.value = val
+                c.font = Font(name="Segoe UI", size=9, color="64748B")
+
+        if row_data.metric == "Loading Rate":
+            for col_idx in range(1, total_cols + 1):
+                ws.cell(curr_row, col_idx).border = BORDER_MEDIUM_BOTTOM
+
+    # 3. Section 2 Banner: Material Balance Matrix
+    curr_row += 1
+    ws.row_dimensions[curr_row].height = 24
+    ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=total_cols)
+    banner_mat = ws.cell(curr_row, 1)
+    banner_mat.value = (
+        f"【下表】物料动态平衡表 (PSI Balance Matrix - 需求 / 排产 / 结存 / 覆盖天数)    "
+        f"共 {len(matrix.fg_balance) + len(matrix.sf_balance)} 种物料 · 产成品 (FG) + 半成品 (SFIN) 合并同屏展示"
+    )
+    banner_mat.font = Font(name="Segoe UI", size=10, bold=True, color="065F46")
+    banner_mat.fill = PatternFill("solid", start_color="D1FAE5")
+    banner_mat.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    for c in range(1, total_cols + 1):
+        ws.cell(curr_row, c).fill = PatternFill("solid", start_color="D1FAE5")
+        ws.cell(curr_row, c).border = BORDER_THIN
+
+    # Sub-header row for Material Balance
+    curr_row += 1
+    ws.row_dimensions[curr_row].height = 19
+    sub_headers = ["料号 (PN)", "品名与主参数", "指标项 (Des)", "基准参数 (Reference)"]
+    for col_idx, h in enumerate(sub_headers, start=1):
+        c = ws.cell(curr_row, col_idx)
+        c.value = h
+        c.font = Font(name="Segoe UI", size=9, bold=True, color="475569")
+        c.fill = PatternFill("solid", start_color="F8FAFC")
+        c.border = BORDER_THIN
+        c.alignment = Alignment(horizontal="right" if col_idx == 4 else "left", vertical="center")
+
+    for idx, col_meta in enumerate(shift_cols, start=5):
+        c = ws.cell(curr_row, idx)
+        c.value = f"{col_meta['date']} {col_meta['shift']}"
+        c.font = Font(name="Segoe UI", size=8, bold=True, color="64748B")
+        c.fill = PatternFill("solid", start_color="F8FAFC")
+        c.border = BORDER_THIN
+        c.alignment = align_center
+
+    # Loop all materials (FG + SF = 37 parts)
+    all_materials = list(matrix.fg_balance) + list(matrix.sf_balance)
+    for mat in all_materials:
+        # 1. Customer demand
+        curr_row += 1
+        ws.row_dimensions[curr_row].height = 19
+        ws.cell(curr_row, 1).value = mat.part_no
+        ws.cell(curr_row, 1).font = Font(name="Segoe UI", size=9, bold=True, color="0F172A")
+        ws.cell(curr_row, 1).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 1).border = BORDER_THIN
+
+        ws.cell(curr_row, 2).value = mat.description
+        ws.cell(curr_row, 2).font = Font(name="Segoe UI", size=9, color="1E293B")
+        ws.cell(curr_row, 2).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 2).border = BORDER_THIN
+
+        ws.cell(curr_row, 3).value = "Customer demand"
+        ws.cell(curr_row, 3).font = Font(name="Segoe UI", size=9, color="475569")
+        ws.cell(curr_row, 3).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 3).border = BORDER_THIN
+
+        ws.cell(curr_row, 4).value = f"总需求: {int(mat.total_demand)} 件"
+        ws.cell(curr_row, 4).font = Font(name="Segoe UI", size=9, color="475569")
+        ws.cell(curr_row, 4).alignment = Alignment(horizontal="right", vertical="center")
+        ws.cell(curr_row, 4).border = BORDER_THIN
+
+        for idx, col_meta in enumerate(shift_cols, start=5):
+            d_val = mat.demand_by_shift.get(col_meta["key"], 0)
+            c = ws.cell(curr_row, idx)
+            c.alignment = align_center
+            c.border = BORDER_THIN
+            if d_val > 0:
+                c.value = int(d_val)
+                c.fill = PatternFill("solid", start_color="FEF3C7")
+                c.font = Font(name="Segoe UI", size=9, bold=True, color="92400E")
+            else:
+                c.value = "-"
+                c.font = Font(name="Segoe UI", size=9, color="CBD5E1")
+
+        # 2. Production plan
+        curr_row += 1
+        ws.row_dimensions[curr_row].height = 19
+        ws.cell(curr_row, 1).value = f"{mat.line} · {mat.site}"
+        ws.cell(curr_row, 1).font = Font(name="Segoe UI", size=8, color="64748B")
+        ws.cell(curr_row, 1).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 1).border = BORDER_THIN
+
+        ws.cell(curr_row, 2).value = f"MPQ: {int(mat.mpq)} · TRP: {mat.trp}"
+        ws.cell(curr_row, 2).font = Font(name="Segoe UI", size=8, color="64748B")
+        ws.cell(curr_row, 2).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 2).border = BORDER_THIN
+
+        ws.cell(curr_row, 3).value = "Production plan"
+        ws.cell(curr_row, 3).font = Font(name="Segoe UI", size=9, bold=True, color="1D4ED8")
+        ws.cell(curr_row, 3).fill = PatternFill("solid", start_color="EFF6FF")
+        ws.cell(curr_row, 3).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 3).border = BORDER_THIN
+
+        ws.cell(curr_row, 4).value = f"节拍 CT: {mat.ct_seconds} 秒"
+        ws.cell(curr_row, 4).font = Font(name="Segoe UI", size=9, color="1D4ED8")
+        ws.cell(curr_row, 4).alignment = Alignment(horizontal="right", vertical="center")
+        ws.cell(curr_row, 4).border = BORDER_THIN
+
+        for idx, col_meta in enumerate(shift_cols, start=5):
+            p_val = mat.plan_by_shift.get(col_meta["key"], 0)
+            c = ws.cell(curr_row, idx)
+            c.alignment = align_center
+            c.border = BORDER_THIN
+            if p_val > 0:
+                c.value = int(p_val)
+                c.fill = PatternFill("solid", start_color="DBEAFE")
+                c.font = Font(name="Segoe UI", size=9, bold=True, color="1E40AF")
+            else:
+                c.value = "-"
+                c.font = Font(name="Segoe UI", size=9, color="CBD5E1")
+
+        # 3. Stock Balance
+        curr_row += 1
+        ws.row_dimensions[curr_row].height = 19
+        ws.cell(curr_row, 1).value = ""
+        ws.cell(curr_row, 1).border = BORDER_THIN
+        ws.cell(curr_row, 2).value = ""
+        ws.cell(curr_row, 2).border = BORDER_THIN
+        ws.cell(curr_row, 3).value = "Stock Balance"
+        ws.cell(curr_row, 3).font = Font(name="Segoe UI", size=9, color="1E293B")
+        ws.cell(curr_row, 3).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 3).border = BORDER_THIN
+
+        ws.cell(curr_row, 4).value = f"期初: {int(mat.initial_stock)} 件"
+        ws.cell(curr_row, 4).font = Font(name="Segoe UI", size=9, color="047857")
+        ws.cell(curr_row, 4).alignment = Alignment(horizontal="right", vertical="center")
+        ws.cell(curr_row, 4).border = BORDER_THIN
+
+        for idx, col_meta in enumerate(shift_cols, start=5):
+            s_val = mat.stock_by_shift.get(col_meta["key"], 0)
+            c = ws.cell(curr_row, idx)
+            c.value = int(s_val)
+            c.alignment = align_center
+            c.border = BORDER_THIN
+            if s_val < 0:
+                c.fill = PatternFill("solid", start_color="FEE2E2")
+                c.font = Font(name="Segoe UI", size=9, bold=True, color="B91C1C")
+            else:
+                c.font = Font(name="Segoe UI", size=9, color="1E293B")
+
+        # 4. Coverage days
+        curr_row += 1
+        ws.row_dimensions[curr_row].height = 19
+        ws.cell(curr_row, 1).value = ""
+        ws.cell(curr_row, 2).value = ""
+        ws.cell(curr_row, 3).value = "Coverage days"
+        ws.cell(curr_row, 3).font = Font(name="Segoe UI", size=9, color="64748B")
+        ws.cell(curr_row, 3).alignment = Alignment(horizontal="left", vertical="center")
+
+        ws.cell(curr_row, 4).value = f"日均: {mat.avg_daily_demand:.1f} 件/天"
+        ws.cell(curr_row, 4).font = Font(name="Segoe UI", size=9, color="64748B")
+        ws.cell(curr_row, 4).alignment = Alignment(horizontal="right", vertical="center")
+
+        for idx, col_meta in enumerate(shift_cols, start=5):
+            c_val = mat.coverage_by_shift.get(col_meta["key"], 999.0)
+            c = ws.cell(curr_row, idx)
+            c.alignment = align_center
+            if c_val >= 999 or c_val == 999.0:
+                c.value = 999
+                c.font = Font(name="Segoe UI", size=9, color="94A3B8")
+            else:
+                c.value = round(c_val, 1)
+                if c_val < 2.0:
+                    c.fill = PatternFill("solid", start_color="FEF2F2")
+                    c.font = Font(name="Segoe UI", size=9, bold=True, color="DC2626")
+                else:
+                    c.font = Font(name="Segoe UI", size=9, color="475569")
+
+        # Separator bottom border on the 4th row
+        for col_idx in range(1, total_cols + 1):
+            ws.cell(curr_row, col_idx).border = BORDER_MEDIUM_BOTTOM
+
+    # Freeze panes at E3: keeps Row 1-2 headers and Col 1-4 columns frozen
+    ws.freeze_panes = "E3"
+
+    # Set column widths
+    ws.column_dimensions["A"].width = 16
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 18
+    ws.column_dimensions["D"].width = 22
+    for col_idx in range(5, total_cols + 1):
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = 9.5
+
+    wb.save(output_excel_path)
+    print(f"Successfully exported single-sheet validation matrix to {output_excel_path}")
 
 
 def export_production_plan(

@@ -12,6 +12,7 @@ venv/
 ~$*.xlsx
 *.backup.xlsx
 *.scheduled.xlsx
+*.pre_new_tables.xlsx
 
 # IDE & OS
 .vscode/

@@ -25,9 +25,10 @@ delivery both hard, then delivery hard with utilisation penalised, then delivery
 itself penalised. The validator reports whichever violations survive.
 """
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
@@ -90,6 +91,10 @@ class ScheduledTask:
     due_datetime: Optional[datetime] = None
     shift_breakdown: Dict[ShiftKey, int] = field(default_factory=dict)
     shift_seconds: Dict[ShiftKey, float] = field(default_factory=dict)
+    mold_id: Optional[str] = None
+    material_arrival_shift: int = 0
+    customer_tier: str = "A"
+    line_pm_slots: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -116,6 +121,18 @@ class APSScheduler:
         enforce_material_balance: bool = True,
         price_changeovers: bool = True,
         day_shift_overrides: Optional[Dict[str, Any]] = None,
+        enforce_sequential_pulling: bool = True,
+        enforce_freeze_window: bool = True,
+        freeze_shifts: int = 0,
+        enforce_tooling_exclusivity: bool = True,
+        enforce_material_arrival: bool = True,
+        enforce_pm_maintenance: bool = True,
+        pm_shifts: Optional[Dict[str, List[int]]] = None,
+        enforce_customer_priority: bool = True,
+        enforce_weekend_penalty: bool = True,
+        enforce_exact_demand: bool = True,
+        allow_105_utilization_fg: bool = False,
+        allow_105_utilization_sf: bool = False,
     ):
         self.plan = plan
         self.start_dt = start_datetime
@@ -127,6 +144,18 @@ class APSScheduler:
         self.enforce_material_balance = enforce_material_balance
         self.price_changeovers = price_changeovers
         self.day_shift_overrides = day_shift_overrides
+        self.enforce_sequential_pulling = enforce_sequential_pulling
+        self.enforce_freeze_window = enforce_freeze_window
+        self.freeze_shifts = freeze_shifts
+        self.enforce_tooling_exclusivity = enforce_tooling_exclusivity
+        self.enforce_material_arrival = enforce_material_arrival
+        self.enforce_pm_maintenance = enforce_pm_maintenance
+        self.pm_shifts = pm_shifts or {}
+        self.enforce_customer_priority = enforce_customer_priority
+        self.enforce_weekend_penalty = enforce_weekend_penalty
+        self.enforce_exact_demand = enforce_exact_demand
+        self.allow_105_utilization_fg = allow_105_utilization_fg
+        self.allow_105_utilization_sf = allow_105_utilization_sf
 
         self.shifts = generate_shift_calendar(
             start_datetime,
@@ -139,6 +168,11 @@ class APSScheduler:
         self.task_by_id = {t.task_id: t for t in self.tasks}
         self.lines = sorted({t.line for t in self.tasks})
         self.windows = self._build_windows()
+
+    def _get_line_max_shift_ms(self, line: str) -> int:
+        is_fg = any(t.stage == "FG" for t in self.tasks if t.line == line)
+        allow_105 = self.allow_105_utilization_fg if is_fg else self.allow_105_utilization_sf
+        return int(round(SHIFT_MS * 1.05)) if allow_105 else SHIFT_MS
 
     def solve(self, time_limit_seconds: float = 90.0) -> ScheduleResult:
         # WE34 ranks the constraints: on-time delivery first, 95% shift utilisation
@@ -371,7 +405,8 @@ class APSScheduler:
             # One lot sets the floor of what a shift can hold; no task can
             # contribute more lots than that. Capping the domain here is
             # what lets CP-SAT propagate capacity instead of discovering it late.
-            per_shift = max(1, min(task.lots, SHIFT_MS // task.lot_millis))
+            max_line_ms = self._get_line_max_shift_ms(task.line)
+            per_shift = max(1, min(task.lots, max_line_ms // task.lot_millis))
             # ...and a shift that opens a task has to run its minimum batch: a whole
             # MPQ for semi-finished pieces, one MPQ batch for finished goods. Without
             # this the filling objective drips a model over dozens of shifts as 1-2
@@ -402,7 +437,55 @@ class APSScheduler:
 
         if self.enforce_material_balance:
             self._add_material_balance(model, x)
-        shortfall, violations = self._add_line_capacity(model, x, utilization_mode, gap_cap)
+        shortfall, violations, overloads = self._add_line_capacity(model, x, utilization_mode, gap_cap)
+
+        # R-SF-02 & R-FG-05: 顺位紧邻前拉硬约束（同产线同型号按交期先后严格顺位排产，禁止跳序挑单）
+        if self.enforce_sequential_pulling:
+            by_line_part = defaultdict(list)
+            for t in self.tasks:
+                by_line_part[(t.line, t.part_no)].append(t)
+            for group in by_line_part.values():
+                if len(group) > 1:
+                    sorted_group = sorted(group, key=lambda t: t.due_datetime or datetime.max)
+                    for i in range(len(sorted_group) - 1):
+                        ta, tb = sorted_group[i], sorted_group[i + 1]
+                        if ta.due_datetime and tb.due_datetime and ta.due_datetime < tb.due_datetime:
+                            model.Add(end_of[ta.task_id] <= end_of[tb.task_id])
+
+        # R-TL-01: 工装模具物理独占硬约束（同班次跨产线互斥，禁止并发占用同一模具）
+        if self.enforce_tooling_exclusivity:
+            mold_groups = defaultdict(list)
+            for t in self.tasks:
+                mold_id = getattr(t, 'mold_id', None)
+                if mold_id:
+                    mold_groups[mold_id].append(t)
+            for mold_id, group in mold_groups.items():
+                lines_in_grp = {t.line for t in group}
+                if len(lines_in_grp) > 1:
+                    for s in range(self.num_shifts):
+                        active_vars = [active[t.task_id, s] for t in group if (t.task_id, s) in active]
+                        if len(active_vars) > 1:
+                            model.Add(sum(active_vars) <= 1)
+
+        # R-MT-01: 关键物料预计到货齐套开工硬约束（到料前禁止开工）
+        if self.enforce_material_arrival:
+            for t in self.tasks:
+                arr_shift = getattr(t, 'material_arrival_shift', 0)
+                if arr_shift > 0:
+                    lo, hi = self.windows[t.task_id]
+                    for s in range(lo, min(arr_shift, hi + 1)):
+                        if (t.task_id, s) in x:
+                            model.Add(x[t.task_id, s] == 0)
+
+        # R-PM-01: 设备计划性预防维护（PM）避让硬约束（PM时段产能清零，任务避让）
+        if self.enforce_pm_maintenance and self.pm_shifts:
+            for line, pm_slots in self.pm_shifts.items():
+                line_tasks = [t for t in self.tasks if t.line == line]
+                for s in pm_slots:
+                    if 0 <= s < self.num_shifts:
+                        for t in line_tasks:
+                            if (t.task_id, s) in x:
+                                model.Add(x[t.task_id, s] == 0)
 
         lateness = []
         for task in self.plan.fg_tasks:
@@ -412,14 +495,20 @@ class APSScheduler:
                 continue
             late = model.NewIntVar(0, self.num_shifts, f"late.{task.task_id}")
             model.Add(late >= end_of[task.task_id] - due)
-            lateness.append(late)
+            # R-CR-01: 客户战略评级加权保供（核心客户优先交付）
+            if self.enforce_customer_priority:
+                cust_tier = getattr(task, 'customer_tier', 'A')
+                mult = 10 if cust_tier == 'STRATEGIC' or 'WA' in task.part_no else (3 if cust_tier == 'A' else 1)
+                lateness.append(late * mult)
+            else:
+                lateness.append(late)
 
         terms = [
             FG_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.fg_tasks),
             SF_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.sf_tasks),
         ]
 
-        # R-FG-10: Penalize parallel models exceeding 3 per shift
+        # R-FG-13: Penalize parallel models exceeding 3 per shift
         concurrency_penalties = []
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
@@ -442,13 +531,34 @@ class APSScheduler:
         if self.enforce_concurrency_limit and concurrency_penalties:
             terms.append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
 
+        # R-SF-07 & R-FG-09: 周末停机偏好软约束惩罚
+        weekend_penalties = []
+        if self.enforce_weekend_penalty:
+            for s_idx, shift in enumerate(self.shifts):
+                try:
+                    dt = datetime.strptime(shift.date_str, "%Y-%m-%d")
+                    if dt.weekday() in (5, 6):  # Saturday (5) or Sunday (6)
+                        for line in self.lines:
+                            line_tasks = [t for t in self.tasks if t.line == line]
+                            line_active = [active[t.task_id, s_idx] for t in line_tasks if (t.task_id, s_idx) in active]
+                            if line_active:
+                                w_run = model.NewBoolVar(f"w_run.{line}.{s_idx}")
+                                for a_var in line_active:
+                                    model.Add(w_run >= a_var)
+                                weekend_penalties.append(w_run)
+                except Exception:
+                    pass
+        if weekend_penalties:
+            terms.append(15_000 * sum(weekend_penalties))
+
         if price_changeovers:
             terms.append(CHANGEOVER_WEIGHT * sum(runs))
         elif violations:
-            # The report counts the slots that miss 95%, so that count is what the
-            # filling tier minimises; the milliseconds behind it only break ties.
             terms.append(self._violation_weight() * sum(violations))
             terms.append(SHORTFALL_WEIGHT * sum(shortfall))
+        if overloads:
+            # 弹性上浮负荷（100%~105%）加软惩罚，引导求解器优先保持在 100% 以内，谨慎动用上浮产能
+            terms.append(200 * sum(overloads))
         if lateness:
             terms.append(self._lateness_weight() * sum(lateness))
         model.Minimize(sum(terms))
@@ -519,13 +629,15 @@ class APSScheduler:
         """
         shortfall = []
         violations = []
+        overloads = []
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
+            max_line_ms = self._get_line_max_shift_ms(line)
             load = []
             running = []
             for s in range(self.num_shifts):
                 terms = [x[t.task_id, s] * t.lot_millis for t in line_tasks if (t.task_id, s) in x]
-                var = model.NewIntVar(0, SHIFT_MS, f"load.{line}.{s}")
+                var = model.NewIntVar(0, max_line_ms, f"load.{line}.{s}")
                 model.Add(var == (sum(terms) if terms else 0))
                 run = model.NewBoolVar(f"run.{line}.{s}")
                 model.Add(var >= 1).OnlyEnforceIf(run)
@@ -533,12 +645,15 @@ class APSScheduler:
                 load.append(var)
                 running.append(run)
 
+                if max_line_ms > SHIFT_MS:
+                    over = model.NewIntVar(0, max_line_ms - SHIFT_MS, f"over.{line}.{s}")
+                    model.Add(over >= var - SHIFT_MS)
+                    overloads.append(over)
+
             work = sum(t.lots * t.lot_millis for t in line_tasks)
-            # A slot holds at most 8h of work, so this floor on the number of
-            # worked shifts is implied by the capacity constraint above. Spelling
-            # it out stops the solver from spreading work over extra thin shifts
-            # while it hunts for a filling.
-            model.Add(sum(running) >= -(-work // SHIFT_MS))
+            # A slot holds at most max_line_ms of work, so this floor on the number of
+            # worked shifts is implied by the capacity constraint above.
+            model.Add(sum(running) >= -(-work // max_line_ms))
 
             if utilization_mode == "off":
                 continue
@@ -570,7 +685,7 @@ class APSScheduler:
         if gap_cap is not None:
             model.Add(sum(shortfall) <= gap_cap[0])
             model.Add(sum(violations) <= gap_cap[2])
-        return shortfall, violations
+        return shortfall, violations, overloads
 
     def _extract(self, solver, x) -> List[ScheduledTask]:
         clock = self._clock_times(solver, x)
@@ -610,6 +725,10 @@ class APSScheduler:
                 due_datetime=task.due_datetime,
                 shift_breakdown=breakdown,
                 shift_seconds=seconds,
+                mold_id=getattr(task, 'mold_id', None),
+                material_arrival_shift=getattr(task, 'material_arrival_shift', 0),
+                customer_tier=getattr(task, 'customer_tier', 'A'),
+                line_pm_slots=getattr(task, 'line_pm_slots', []),
             ))
         return scheduled
 

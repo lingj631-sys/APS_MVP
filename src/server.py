@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tempfile
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -38,7 +39,7 @@ from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.prechecker import precheck_capacity
 from src.rules import REGISTRY, RuleCategory, RuleStatus
 from src.scheduler import APSScheduler, ScheduleResult
-from src.shift_manager import CalendarMode
+from src.shift_manager import CalendarMode, evaluate_calendar_recommendation
 from src.validator import validate_schedule
 
 EXCEL_PATH = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
@@ -163,6 +164,19 @@ def generate_calendar_view(
             else:
                 orders_out_of_scope += 1
 
+    scoped_plan = None
+    if snap and snap.orders:
+        scoped_snap = copy.deepcopy(snap)
+        scoped_snap.orders = [o for o in scoped_snap.orders if o.due_datetime <= horizon_end]
+        scoped_plan = build_requirement_plan(scoped_snap)
+
+    ai_rec = evaluate_calendar_recommendation(
+        plan=scoped_plan,
+        start_date=start_day,
+        horizon_days=horizon_days,
+        current_calendar_mode=mode_str,
+    )
+
     return {
         "baseline_date": baseline_day.strftime("%Y-%m-%d"),
         "baseline_display": f"{baseline_day.strftime('%m/%d')} (D+0 冻结基准)",
@@ -180,6 +194,7 @@ def generate_calendar_view(
         "orders_in_scope_count": orders_in_scope,
         "orders_out_of_scope_count": orders_out_of_scope,
         "total_orders_count": orders_in_scope + orders_out_of_scope,
+        "ai_recommendation": ai_rec,
     }
 
 
@@ -206,9 +221,45 @@ class UpdateStockItem(BaseModel):
     quantity: float
 
 
+class UpdateToolingMoldItem(BaseModel):
+    mold_id: str
+    status: Optional[str] = None
+    available_qty: Optional[int] = None
+    current_strokes: Optional[int] = None
+    changeover_time_min: Optional[float] = None
+
+
+class UpdatePMItem(BaseModel):
+    pm_plan_no: str
+    status: Optional[str] = None
+    handling_strategy: Optional[str] = None
+    start_shift: Optional[str] = None
+    end_shift: Optional[str] = None
+
+
+class UpdateMaterialArrivalItem(BaseModel):
+    po_number: str
+    eta_date: Optional[str] = None
+    eta_shift: Optional[str] = None
+    quantity: Optional[float] = None
+    status: Optional[str] = None
+
+
+class UpdateCustomerTierItem(BaseModel):
+    customer_code: str
+    tier: Optional[str] = None
+    priority_weight: Optional[int] = None
+    delivery_window: Optional[str] = None
+    subcontract_allowed: Optional[str] = None
+
+
 class UpdateInputsPayload(BaseModel):
     orders: Optional[List[UpdateDemandItem]] = None
     initial_stock: Optional[List[UpdateStockItem]] = None
+    tooling_molds: Optional[List[UpdateToolingMoldItem]] = None
+    pm_schedules: Optional[List[UpdatePMItem]] = None
+    material_arrivals: Optional[List[UpdateMaterialArrivalItem]] = None
+    customer_tiers: Optional[List[UpdateCustomerTierItem]] = None
 
 
 class CalendarUpdatePayload(BaseModel):
@@ -226,6 +277,9 @@ class SolvePayload(BaseModel):
     horizon_days: Optional[int] = 10
     start_date: Optional[str] = "2026-10-12"
     day_shift_overrides: Optional[Dict[str, Any]] = None
+    allow_105_utilization_fg: bool = False
+    allow_105_utilization_sf: bool = False
+    rule_options: Optional[Dict[str, Any]] = None
 
 
 # ---------------- API Endpoints ----------------
@@ -365,6 +419,79 @@ def get_inputs():
         ],
     }
 
+    # Master Data: Tooling Molds
+    tooling_molds_list = [
+        {
+            "site": tm.site,
+            "mold_id": tm.mold_id,
+            "mold_name": tm.mold_name,
+            "applicable_lines": tm.applicable_lines,
+            "applicable_parts": tm.applicable_parts,
+            "available_qty": tm.available_qty,
+            "changeover_time_min": tm.changeover_time_min,
+            "max_life_strokes": tm.max_life_strokes,
+            "current_strokes": tm.current_strokes,
+            "maintenance_cycle_strokes": tm.maintenance_cycle_strokes,
+            "status": tm.status,
+        }
+        for tm in snap.tooling_molds
+    ]
+
+    # Master Data: PM Schedules
+    pm_schedules_list = [
+        {
+            "site": pm.site,
+            "pm_plan_no": pm.pm_plan_no,
+            "line": pm.line,
+            "equipment_name": pm.equipment_name,
+            "pm_type": pm.pm_type,
+            "start_date": pm.start_date,
+            "start_shift": pm.start_shift,
+            "end_date": pm.end_date,
+            "end_shift": pm.end_shift,
+            "downtime_hours": pm.downtime_hours,
+            "capacity_rate": pm.capacity_rate,
+            "handling_strategy": pm.handling_strategy,
+            "responsible_team": pm.responsible_team,
+            "status": pm.status,
+        }
+        for pm in snap.pm_schedules
+    ]
+
+    # Master Data: Material Arrivals
+    material_arrivals_list = [
+        {
+            "site": ma.site,
+            "po_number": ma.po_number,
+            "supplier": ma.supplier,
+            "part_no": ma.part_no,
+            "description": ma.description,
+            "eta_date": ma.eta_date,
+            "eta_shift": ma.eta_shift,
+            "quantity": ma.quantity,
+            "qc_release_hours": ma.qc_release_hours,
+            "associated_part": ma.associated_part,
+            "status": ma.status,
+        }
+        for ma in snap.material_arrivals
+    ]
+
+    # Master Data: Customer Tiers
+    customer_tiers_list = [
+        {
+            "site": ct.site,
+            "customer_code": ct.customer_code,
+            "customer_name": ct.customer_name,
+            "tier": ct.tier,
+            "priority_weight": ct.priority_weight,
+            "otd_target_rate": ct.otd_target_rate,
+            "delivery_window": ct.delivery_window,
+            "subcontract_allowed": ct.subcontract_allowed,
+            "associated_products": ct.associated_products,
+        }
+        for ct in snap.customer_tiers
+    ]
+
     return {
         "site": session_state["site"],
         "planning_dates": snap.planning_dates,
@@ -374,6 +501,10 @@ def get_inputs():
         "sf_params": sf_params_list,
         "bom": bom_list,
         "calendar_info": calendar_info,
+        "tooling_molds": tooling_molds_list,
+        "pm_schedules": pm_schedules_list,
+        "material_arrivals": material_arrivals_list,
+        "customer_tiers": customer_tiers_list,
     }
 
 
@@ -381,7 +512,8 @@ def get_inputs():
 def update_inputs(payload: UpdateInputsPayload):
     snap = session_state["snapshot"]
     if snap is None:
-        raise HTTPException(status_code=400, detail="Snapshot not loaded")
+        snap = get_fresh_snapshot(session_state["site"])
+        session_state["snapshot"] = snap
 
     if payload.orders is not None:
         order_map = {o.order_id: o for o in snap.orders}
@@ -416,6 +548,62 @@ def update_inputs(payload: UpdateInputsPayload):
     if payload.initial_stock is not None:
         for item in payload.initial_stock:
             snap.initial_stock[item.part_no] = float(item.quantity)
+
+    if payload.tooling_molds is not None:
+        tm_map = {m.mold_id: m for m in snap.tooling_molds}
+        for item in payload.tooling_molds:
+            if item.mold_id in tm_map:
+                m = tm_map[item.mold_id]
+                if item.status is not None:
+                    m.status = item.status
+                if item.available_qty is not None:
+                    m.available_qty = item.available_qty
+                if item.current_strokes is not None:
+                    m.current_strokes = item.current_strokes
+                if item.changeover_time_min is not None:
+                    m.changeover_time_min = item.changeover_time_min
+
+    if payload.pm_schedules is not None:
+        pm_map = {p.pm_plan_no: p for p in snap.pm_schedules}
+        for item in payload.pm_schedules:
+            if item.pm_plan_no in pm_map:
+                p = pm_map[item.pm_plan_no]
+                if item.status is not None:
+                    p.status = item.status
+                if item.handling_strategy is not None:
+                    p.handling_strategy = item.handling_strategy
+                if item.start_shift is not None:
+                    p.start_shift = item.start_shift
+                if item.end_shift is not None:
+                    p.end_shift = item.end_shift
+
+    if payload.material_arrivals is not None:
+        ma_map = {a.po_number: a for a in snap.material_arrivals}
+        for item in payload.material_arrivals:
+            if item.po_number in ma_map:
+                a = ma_map[item.po_number]
+                if item.eta_date is not None:
+                    a.eta_date = item.eta_date
+                if item.eta_shift is not None:
+                    a.eta_shift = item.eta_shift
+                if item.quantity is not None:
+                    a.quantity = item.quantity
+                if item.status is not None:
+                    a.status = item.status
+
+    if payload.customer_tiers is not None:
+        ct_map = {c.customer_code: c for c in snap.customer_tiers}
+        for item in payload.customer_tiers:
+            if item.customer_code in ct_map:
+                c = ct_map[item.customer_code]
+                if item.tier is not None:
+                    c.tier = item.tier
+                if item.priority_weight is not None:
+                    c.priority_weight = item.priority_weight
+                if item.delivery_window is not None:
+                    c.delivery_window = item.delivery_window
+                if item.subcontract_allowed is not None:
+                    c.subcontract_allowed = item.subcontract_allowed
 
     # Rebuild plan
     session_state["plan"] = build_requirement_plan(snap)
@@ -483,19 +671,63 @@ def update_calendar(payload: CalendarUpdatePayload):
     return {"status": "success", "message": "工厂日历配置已更新", "calendar": view}
 
 
+@app.get("/api/calendar/recommendation")
+def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SEVEN_ZERO"):
+    snap = session_state["snapshot"]
+    if snap is None:
+        snap = get_fresh_snapshot(session_state["site"])
+        session_state["snapshot"] = snap
+
+    cfg = session_state.get("calendar_config", {})
+    start_date_str = cfg.get("start_date", "2026-10-12")
+    try:
+        y, m, d = [int(p) for p in start_date_str.split("-")]
+        start_day = datetime(y, m, d, 7, 0, 0)
+    except Exception:
+        start_day = datetime(2026, 10, 12, 7, 0, 0)
+
+    horizon_end = start_day + timedelta(days=horizon_days)
+    scoped_snap = copy.deepcopy(snap)
+    scoped_snap.orders = [o for o in scoped_snap.orders if o.due_datetime <= horizon_end]
+    scoped_plan = build_requirement_plan(scoped_snap)
+
+    return evaluate_calendar_recommendation(
+        plan=scoped_plan,
+        start_date=start_day,
+        horizon_days=horizon_days,
+        current_calendar_mode=calendar_mode,
+    )
+
+
 @app.get("/api/rules")
 def get_rules():
     rules_list = []
     engine_switches = {
         "R-SF-01": "enforce_utilization_95",
-        "R-FG-03": "enforce_utilization_95",
+        "R-SF-02": "enforce_sequential_pulling",
+        "R-SF-03": "enforce_material_balance",
+        "R-SF-04": "enforce_freeze_window",
+        "R-SF-05": "enforce_exact_demand",
+        "R-SF-07": "enforce_weekend_penalty",
+        "R-SF-09": "enforce_mpq_batch",
         "R-FG-01": "enforce_on_time_delivery",
-        "R-FG-10": "enforce_concurrency_limit",
         "R-FG-02": "enforce_mpq_batch",
-        "R-SF-07": "enforce_mpq_batch",
-        "R-SF-02": "enforce_material_balance",
-        "R-FG-04": "enforce_exact_demand",
-        "R-SF-03": "enforce_exact_demand",
+        "R-FG-03": "enforce_utilization_95",
+        "R-FG-04": "enforce_freeze_window",
+        "R-FG-05": "enforce_sequential_pulling",
+        "R-FG-06": "enforce_continuous_merge",
+        "R-FG-07": "enforce_exact_demand",
+        "R-FG-09": "enforce_weekend_penalty",
+        "R-FG-13": "enforce_concurrency_limit",
+        "R-CL-01": "calendar_mode",
+        "R-CL-02": "calendar_mode",
+        "R-CL-03": "calendar_mode",
+        "R-BK-01": "enforce_backward_scheduling",
+        "R-EX-04": "enforce_delay_suggestions",
+        "R-TL-01": "enforce_tooling_exclusivity",
+        "R-MT-01": "enforce_material_arrival",
+        "R-PM-01": "enforce_pm_maintenance",
+        "R-CR-01": "enforce_customer_priority",
     }
 
     for r_id, r in sorted(REGISTRY.items(), key=lambda x: x[1].row_index):
@@ -505,15 +737,18 @@ def get_rules():
             "stage": r.stage,
             "name": r.name,
             "category": r.category.value,
+            "nature": r.nature.value,
             "weight": r.weight,
             "status": r.status.value,
             "landing_layer": r.landing_layer,
             "validation_check": r.validation_check,
             "decision_id": r.decision_id,
             "description": r.description,
+            "ai_logic": r.ai_logic,
             "is_engine_switch": r_id in engine_switches,
             "switch_key": engine_switches.get(r_id),
             "checked": True,  # Default all checked
+            "load_limit_mode": "100",  # Default 95% ~ 100%
         })
     return {"site": session_state["site"], "rules": rules_list}
 
@@ -554,15 +789,39 @@ def run_solver(payload: SolvePayload):
     # Map checked rule IDs to scheduler options
     enabled = set(payload.enabled_rules or [r_id for r_id in REGISTRY])
     enforce_utilization_95 = ("R-FG-03" in enabled or "R-SF-01" in enabled)
+
+    # 105% utilization threshold option for R-FG-03 and R-SF-01
+    allow_105_fg = payload.allow_105_utilization_fg
+    allow_105_sf = payload.allow_105_utilization_sf
+    if payload.rule_options:
+        if payload.rule_options.get("R-FG-03", {}).get("load_limit_mode") == "105":
+            allow_105_fg = True
+        if payload.rule_options.get("R-SF-01", {}).get("load_limit_mode") == "105":
+            allow_105_sf = True
     enforce_on_time_delivery = ("R-FG-01" in enabled)
-    enforce_concurrency_limit = ("R-FG-10" in enabled)
-    enforce_mpq_batch = ("R-FG-02" in enabled or "R-SF-07" in enabled)
-    enforce_material_balance = ("R-SF-02" in enabled)
+    enforce_concurrency_limit = ("R-FG-13" in enabled)
+    enforce_mpq_batch = ("R-FG-02" in enabled or "R-SF-09" in enabled)
+    enforce_material_balance = ("R-SF-03" in enabled)
+    enforce_sequential_pulling = ("R-SF-02" in enabled or "R-FG-05" in enabled)
+    enforce_freeze_window = ("R-SF-04" in enabled or "R-FG-04" in enabled)
+    enforce_tooling_exclusivity = ("R-TL-01" in enabled)
+    enforce_material_arrival = ("R-MT-01" in enabled)
+    enforce_pm_maintenance = ("R-PM-01" in enabled)
+    enforce_customer_priority = ("R-CR-01" in enabled)
+    enforce_weekend_penalty = ("R-SF-07" in enabled or "R-FG-09" in enabled)
+    enforce_exact_demand = ("R-SF-05" in enabled or "R-FG-07" in enabled)
 
     try:
         cal_mode = CalendarMode(cal_mode_str)
     except Exception:
         cal_mode = CalendarMode.SEVEN_ZERO
+
+    pm_shifts_map = defaultdict(list)
+    for t in plan.tasks:
+        if t.line_pm_slots:
+            for s in t.line_pm_slots:
+                if s not in pm_shifts_map[t.line]:
+                    pm_shifts_map[t.line].append(s)
 
     scheduler = APSScheduler(
         plan=plan,
@@ -575,7 +834,18 @@ def run_solver(payload: SolvePayload):
         enforce_concurrency_limit=enforce_concurrency_limit,
         enforce_mpq_batch=enforce_mpq_batch,
         enforce_material_balance=enforce_material_balance,
-        price_changeovers=True,
+        price_changeovers=("R-FG-06" in enabled or "R-FG-13" in enabled),
+        enforce_sequential_pulling=enforce_sequential_pulling,
+        enforce_freeze_window=enforce_freeze_window,
+        enforce_tooling_exclusivity=enforce_tooling_exclusivity,
+        enforce_material_arrival=enforce_material_arrival,
+        enforce_pm_maintenance=enforce_pm_maintenance,
+        pm_shifts=pm_shifts_map,
+        enforce_customer_priority=enforce_customer_priority,
+        enforce_weekend_penalty=enforce_weekend_penalty,
+        enforce_exact_demand=enforce_exact_demand,
+        allow_105_utilization_fg=allow_105_fg,
+        allow_105_utilization_sf=allow_105_sf,
     )
 
     # Solve with capacity overload diagnosis
@@ -622,7 +892,7 @@ def run_solver(payload: SolvePayload):
     session_state["matrix"] = matrix
 
     # Run Independent Validation
-    checks = validate_schedule(plan, result)
+    checks = validate_schedule(plan, result, allow_105_fg=allow_105_fg, allow_105_sf=allow_105_sf)
     session_state["checks"] = checks
 
     # Calculate KPIs
@@ -747,12 +1017,15 @@ def run_solver(payload: SolvePayload):
 
         compliance_rows.append({
             "rule_id": rule.rule_id,
+            "row_index": rule.row_index,
             "stage": rule.stage,
             "category": rule.category.value,
+            "nature": rule.nature.value,
             "name": rule.name,
             "status": eff_status,
             "weight": rule.weight,
             "note": rule.validation_check or rule.landing_layer,
+            "ai_logic": rule.ai_logic,
             "is_checked": is_checked,
         })
 

@@ -126,84 +126,33 @@
               <h1 class="text-base font-bold text-slate-900 tracking-tight">APS 智能高级排产系统</h1>
               <span class="text-[11px] bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">MVP 演示版</span>
             </div>
-            <p class="text-[11px] text-slate-500">总装-冲压两阶段生产协同与零部件库存动态平衡看板</p>
+            <p class="text-[11px] text-indigo-600 font-medium tracking-tight">精益平准 · 智排未来：面向两阶段协同的高级排产与动态平衡决策中枢</p>
           </div>
         </div>
 
-        <!-- Factory Selector & Calendar Horizon Mode -->
-        <div class="flex items-center space-x-2.5">
+        <!-- Clean Right Controls: Site Selector + Active Strategy Pill + Export + Solve -->
+        <div class="flex items-center space-x-3">
+          <!-- Factory Site Selector (Scoped Configuration) -->
           <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 text-xs">
             <span class="text-slate-500 px-2 font-medium">工厂站点:</span>
-            <select v-model="selectedSite" @change="onSiteChange" class="bg-white border-0 text-slate-800 font-semibold rounded py-1 px-2 shadow-sm focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer">
+            <select v-model="selectedSite" @change="onSiteChange" class="bg-white border-0 text-slate-800 font-semibold rounded py-1 px-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer">
               <option value="WL">WL 工厂 (WE34 车间 - 雨刮/轴套)</option>
-              <option value="SY38" disabled>SY38 工厂 (沈阳产线)</option>
+              <option value="SY38">SY38 工厂 (沈阳产线)</option>
             </select>
           </div>
 
-          <!-- Quick Horizon Selector -->
-          <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 text-xs">
-            <span class="text-slate-500 px-1.5 font-medium flex items-center space-x-1">
-              <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-              <span>计划周期:</span>
-            </span>
-            <div class="flex items-center space-x-1 bg-white p-0.5 rounded shadow-sm">
-              <button @click="selectHorizon(5)" :class="horizonDays === 5 ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'" class="px-2 py-0.5 rounded text-[11px] transition">5天</button>
-              <button @click="selectHorizon(10)" :class="horizonDays === 10 ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'" class="px-2 py-0.5 rounded text-[11px] transition">10天 (标准)</button>
-              <button @click="selectHorizon(15)" :class="horizonDays === 15 ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'" class="px-2 py-0.5 rounded text-[11px] transition">15天</button>
-            </div>
-            <span class="text-[10px] text-indigo-700 font-bold px-1.5">D+1 (10/12) 起始</span>
-          </div>
-
-          <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 text-xs">
-            <span class="text-slate-500 px-2 font-medium">工作制模式:</span>
-            <select v-model="calendarMode" @change="applyCalendarTemplate(calendarMode)" class="bg-white border-0 text-slate-800 font-semibold rounded py-1 px-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer">
-              <option value="SEVEN_ZERO">连续生产 (7天×3班)</option>
-              <option value="FIVE_TWO">做五休二 (5天×3班)</option>
-              <option value="FOUR_THREE">做四休三 (4天×3班)</option>
-            </select>
-          </div>
-
-          <!-- AI Smart Shift Recommendation Pill -->
-          <div v-if="calendarConfig && calendarConfig.ai_recommendation" class="flex items-center">
-            <!-- Case A: Matched with AI Best Recommendation -->
-            <button v-if="calendarConfig.ai_recommendation.is_current_mode_matched"
-                    @click="showAiRecModal = true"
-                    title="点击查看 AI 智能排班评估与推演详情"
-                    class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-semibold shadow-xs transition cursor-pointer">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>💡 AI推荐: {{ calendarConfig.ai_recommendation.recommended_short_name }}</span>
-              <span class="bg-emerald-200/60 text-emerald-900 text-[10px] px-1 py-0.5 rounded font-bold">达标匹配 ✓</span>
-              <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            </button>
-
-            <!-- Case B: Diverged - AI suggests better mode -->
-            <div v-else class="inline-flex items-center space-x-1 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-lg p-0.5 shadow-xs text-xs">
-              <button @click="showAiRecModal = true"
-                      title="点击查看 AI 推荐决策依据"
-                      class="flex items-center space-x-1.5 px-2 py-0.5 text-amber-900 font-medium hover:text-amber-950 cursor-pointer">
-                <span class="relative flex h-2 w-2">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                </span>
-                <span class="text-[11px]">💡 AI建议: <b class="text-amber-950 font-bold">{{ calendarConfig.ai_recommendation.recommended_short_name }}</b> (瓶颈{{ Math.round(calendarConfig.ai_recommendation.bottleneck_ratio*100) }}%)</span>
-              </button>
-              <button @click="adoptAiRecommendation(false)"
-                      class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10.5px] font-bold shadow-xs transition cursor-pointer">
-                一键采纳
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="flex items-center space-x-2.5">
-          <button @click="resetInputs" :disabled="solving" class="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm transition">
-            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-            <span>重载 Excel</span>
+          <!-- Quick Strategy Status Badge (Opens System Settings) -->
+          <button @click="currentTab = 'settings'" class="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 rounded-lg border border-slate-200 text-xs font-medium transition cursor-pointer" title="点击进入当前工厂生产策略与系统设置">
+            <span class="w-2 h-2 rounded-full" :class="siteSettings.lookahead_enabled ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-400'"></span>
+            <span class="font-bold text-slate-700">{{ horizonDays }}天</span>
+            <span class="text-slate-300">|</span>
+            <span>{{ calendarModeDisplay }}</span>
+            <span class="text-slate-300">|</span>
+            <span :class="siteSettings.lookahead_enabled ? 'text-emerald-700 font-bold' : 'text-slate-500'">前瞻: {{ siteSettings.lookahead_enabled ? '开启(30天)' : '关闭' }}</span>
+            <svg class="w-3.5 h-3.5 text-slate-400 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
           </button>
 
+          <!-- Export Excel Button -->
           <button @click="exportExcel" :disabled="!hasSolved" :class="hasSolved ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-400 cursor-not-allowed'" class="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium rounded-lg transition">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -211,7 +160,8 @@
             <span>导出结果 Excel</span>
           </button>
 
-          <button @click="runSolve" :disabled="solving" class="inline-flex items-center space-x-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-200 transition focus:ring-2 focus:ring-indigo-400">
+          <!-- Run Solve Button (Primary) -->
+          <button @click="runSolve" :disabled="solving" class="inline-flex items-center space-x-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-200 transition focus:ring-2 focus:ring-indigo-400 cursor-pointer">
             <svg v-if="solving" class="animate-spin -ml-1 mr-1 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -340,7 +290,13 @@
 
         <button @click="currentTab = 'compliance'" :class="currentTab === 'compliance' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-          <span>⑤ 39条规则合规审计矩阵</span>
+          <span>⑤ 规则合规审计矩阵 ({{ rules.length }}条)</span>
+        </button>
+
+        <button @click="currentTab = 'settings'" :class="currentTab === 'settings' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          <span>⑥ ⚙️ 生产策略与系统设置</span>
+          <span v-if="siteSettings.lookahead_enabled" class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">30天前瞻</span>
         </button>
       </div>
     </header>
@@ -351,6 +307,17 @@
       <!-- ================= TAB 1: PRODUCTION PLAN & VALIDATION MATRIX ================= -->
       <div v-show="currentTab === 'balance'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         
+        <!-- Lookahead Notification Banner (If active & solved) -->
+        <div v-if="lookaheadSummary && lookaheadSummary.is_enabled" class="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-inner">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+            <span>🎯 <b>30天需求前瞻已激活</b>：已智能前拉合批 <b>{{ lookaheadSummary.pulled_orders_count }}</b> 个远期订单（合并生产 <b>{{ lookaheadSummary.pulled_quantity_total }}</b> 件），预估减少产线换型 <b>{{ lookaheadSummary.changeovers_saved_estimate }}</b> 次，为月末储备平准库存！</span>
+          </div>
+          <button @click="currentTab = 'settings'" class="text-[11px] underline text-emerald-100 hover:text-white cursor-pointer">
+            调整前瞻策略 &rarr;
+          </button>
+        </div>
+
         <!-- Top Toolbar & Filter Bar -->
         <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center space-x-3">
@@ -1167,11 +1134,11 @@
             <div>
               <div class="flex items-center space-x-2">
                 <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">排产原则与约束条件配置 (Site: {{ selectedSite }})</h2>
-                <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">39 项全要素约束体系</span>
+                <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">{{ rules.length }} 项全要素约束体系</span>
                 <span class="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded border border-emerald-200">已启用 {{ enabledRulesCount }}/{{ rules.length }}</span>
               </div>
               <p class="text-xs text-slate-500 mt-1">
-                您可以自由勾选或调整排产规则。系统已将 39 条规则重构为 9 大业务类型与 5 级可行性约束。勾选后，智能排产引擎将自动纳入生产平衡求解与方案合规校验。
+                您可以自由勾选或调整排产规则。系统已将 {{ selectedSite }} 工厂专属的 {{ rules.length }} 条规则与可行性约束全面纳入。勾选后，智能排产引擎将自动纳入生产平衡求解与方案合规校验。
               </p>
             </div>
 
@@ -2555,7 +2522,7 @@
           <div class="max-w-md space-y-1">
             <h3 class="text-base font-bold text-slate-800">尚未生成排产结果 · 待执行合规审计</h3>
             <p class="text-xs text-slate-500 leading-relaxed">
-              业务规则矩阵（39 项全要素约束规则体系）已加载完毕。在执行智能排产后，系统将自动对比排程方案并出具全要素审计通过清单。
+              业务规则矩阵（{{ rules.length }} 项全要素约束规则体系）已加载完毕。在执行智能排产后，系统将自动对比排程方案并出具全要素审计通过清单。
             </p>
           </div>
           <button @click="runSolve" :disabled="solving" class="inline-flex items-center space-x-1.5 px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition cursor-pointer">
@@ -2596,7 +2563,7 @@
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">39条排产规则遵循状态一览表 (39-Rule Compliance Matrix)</h2>
+              <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">{{ complianceMatrix.length || rules.length }}条排产规则遵循状态一览表 (Site: {{ selectedSite }})</h2>
               <p class="text-[11px] text-slate-500 mt-0.5">全要素独立二次合规审计 · 覆盖可行性硬约束、目标项软约束及架构业务策略</p>
             </div>
             
@@ -2604,7 +2571,7 @@
             <div class="flex items-center space-x-2 text-xs">
               <span class="text-slate-500 text-[11px]">按类别:</span>
               <select v-model="complianceCategoryFilter" class="bg-white border border-slate-300 rounded px-2 py-1 text-xs">
-                <option value="全部">全部约束类型 (9大类)</option>
+                <option value="全部">全部约束类型 ({{ ruleCategories.length - 1 }}大类)</option>
                 <option v-for="cat in ruleCategories.slice(1)" :key="cat.name" :value="cat.name">{{ cat.name }} ({{ cat.count }})</option>
               </select>
 
@@ -2655,6 +2622,243 @@
           </div>
         </div>
         </template>
+      </div>
+
+      <!-- ================= TAB 6: SITE PRODUCTION STRATEGY & SYSTEM SETTINGS ================= -->
+      <div v-show="currentTab === 'settings'" class="space-y-5">
+        
+        <!-- Factory Site Banner & Description -->
+        <div class="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-2xl p-5 shadow-lg border border-indigo-800/40 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div class="space-y-1.5">
+            <div class="flex items-center space-x-2.5">
+              <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-xs font-bold tracking-wider uppercase font-mono">SITE: {{ selectedSite }}</span>
+              <h2 class="text-lg font-bold text-white tracking-tight">工厂生产策略与系统排产设置</h2>
+            </div>
+            <p class="text-xs text-indigo-200/80 max-w-2xl leading-relaxed">
+              当前配置依托于 <b>{{ selectedSite }} 工厂</b> 独立生效并持久化。包含核心排产周期、工作制日历与 30 天需求前瞻平准合批策略。切换工厂站点时系统将自动载入该工厂专属策略。
+            </p>
+          </div>
+          <div class="flex items-center space-x-3 shrink-0">
+            <button @click="resetSiteSettingsDefault" class="px-3.5 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition cursor-pointer">
+              恢复工厂默认
+            </button>
+            <button @click="saveSiteSettings" class="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-md shadow-indigo-500/30 transition flex items-center space-x-1.5 cursor-pointer">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+              <span>保存当前工厂设置</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+          <!-- Left Column (Cols 1-7): Strategy Cards -->
+          <div class="lg:col-span-7 space-y-5">
+
+            <!-- CARD 1: 30-Day Demand Lookahead & Campaign Batching Strategy -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">🎯</div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-900">30天需求前瞻与平准合批策略 (Demand Lookahead)</h3>
+                    <p class="text-xs text-slate-500">平准波峰波谷、拉动同型号顺位合批、消除产线碎片小单</p>
+                  </div>
+                </div>
+                <span :class="siteSettings.lookahead_enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'" class="text-xs font-bold px-2.5 py-1 rounded-full border">
+                  {{ siteSettings.lookahead_enabled ? '前瞻已激活' : '标准排产' }}
+                </span>
+              </div>
+
+              <!-- Radio Switch Options -->
+              <div class="space-y-3">
+                <label :class="siteSettings.lookahead_enabled ? 'border-emerald-500 bg-emerald-50/40 ring-1 ring-emerald-400' : 'border-slate-200 hover:border-slate-300 bg-white'" class="flex items-start p-3.5 rounded-xl border transition cursor-pointer">
+                  <input type="radio" :value="true" v-model="siteSettings.lookahead_enabled" class="mt-1 text-emerald-600 focus:ring-emerald-500">
+                  <div class="ml-3 space-y-1">
+                    <div class="text-xs font-bold text-slate-900 flex items-center space-x-2">
+                      <span>开启 30天需求前瞻合批 (Lookahead Campaign Mode)</span>
+                      <span class="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded font-bold">推荐启用</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                      立足当前排产执行窗口（如 10 天），同时透视未来 30 天客户总需求。在满足当前客户交付前提下，若前期产能充裕，<b>主动将后续同型号需求前拉合批生产</b>，为月末高峰囤积库存，大幅降低换线换型次数，抑制无关紧要的小单碎片化！
+                    </p>
+                  </div>
+                </label>
+
+                <label :class="!siteSettings.lookahead_enabled ? 'border-indigo-500 bg-indigo-50/40 ring-1 ring-indigo-400' : 'border-slate-200 hover:border-slate-300 bg-white'" class="flex items-start p-3.5 rounded-xl border transition cursor-pointer">
+                  <input type="radio" :value="false" v-model="siteSettings.lookahead_enabled" class="mt-1 text-indigo-600 focus:ring-indigo-500">
+                  <div class="ml-3 space-y-1">
+                    <div class="text-xs font-bold text-slate-900">关闭前瞻 (标准周期排产 - Strict Horizon)</div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                      严格仅排当前计划周期（如 10 天）内交期的客户订单，不跨周期前拉任何远期需求。适合需求极端不稳定或仓库库存严格受控的场景。
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Lookahead Tunable Parameters (Active when lookahead is true) -->
+              <div v-if="siteSettings.lookahead_enabled" class="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-3 animate-in fade-in duration-200">
+                <div class="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                  <span>前瞻合批运行参数 (依托工厂站点)</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label class="block text-slate-600 mb-1 font-medium">前瞻透视窗口 (Lookahead Days):</label>
+                    <select v-model.number="siteSettings.lookahead_days" class="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
+                      <option :value="15">15 天 (短周期前瞻)</option>
+                      <option :value="30">30 天 (标准月度全景 - 推荐)</option>
+                      <option :value="45">45 天 (季度长视界)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-slate-600 mb-1 font-medium">最大前拉库存天数 (Max Pull-forward):</label>
+                    <select v-model.number="siteSettings.max_pull_forward_days" class="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
+                      <option :value="5">最多提前 5 天</option>
+                      <option :value="7">最多提前 7 天</option>
+                      <option :value="10">最多提前 10 天 (推荐)</option>
+                      <option :value="14">最多提前 14 天</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="text-[11px] text-slate-500 pt-2 border-t border-slate-200 flex items-center justify-between">
+                  <span>合批原则: 仅对当前执行窗口已排型号顺位前拉 (R-SF-02 / R-FG-05)</span>
+                  <span class="text-emerald-700 font-semibold">规避远期孤立散单 ✓</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- CARD 2: Planning Horizon & Time Fence -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div class="flex items-center space-x-2.5 pb-3 border-b border-slate-100">
+                <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">📅</div>
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900">计划周期与排产基准窗口</h3>
+                  <p class="text-xs text-slate-500">定义车间详细排产时间跨度与冻结时间围栏</p>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button @click="selectHorizon(5)" :class="horizonDays === 5 ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700 font-bold ring-1 ring-indigo-500' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'" class="p-3 rounded-xl border text-left transition cursor-pointer">
+                  <div class="text-xs font-bold">5 天排程</div>
+                  <div class="text-[11px] text-slate-500 mt-1">单周/月初快速迭代</div>
+                </button>
+
+                <button @click="selectHorizon(10)" :class="horizonDays === 10 ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700 font-bold ring-1 ring-indigo-500' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'" class="p-3 rounded-xl border text-left transition cursor-pointer">
+                  <div class="text-xs font-bold flex items-center justify-between">
+                    <span>10 天排程</span>
+                    <span class="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.2 rounded font-bold">标准</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 mt-1">双周滚动标准周期</div>
+                </button>
+
+                <button @click="selectHorizon(15)" :class="horizonDays === 15 ? 'border-indigo-600 bg-indigo-50/50 text-indigo-700 font-bold ring-1 ring-indigo-500' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'" class="p-3 rounded-xl border text-left transition cursor-pointer">
+                  <div class="text-xs font-bold">15 天排程</div>
+                  <div class="text-[11px] text-slate-500 mt-1">半月跨期负荷平衡</div>
+                </button>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl text-xs font-mono">
+                <div>
+                  <span class="text-slate-500">排产起始日 (D+1):</span>
+                  <div class="font-bold text-slate-800">{{ startDate }} 07:00</div>
+                </div>
+                <div>
+                  <span class="text-slate-500">冻结基准日 (D+0):</span>
+                  <div class="font-bold text-slate-800">{{ calendarConfig ? calendarConfig.baseline_date : '2026-10-11' }}</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column (Cols 8-12): Calendar & Operation Cards -->
+          <div class="lg:col-span-5 space-y-5">
+
+            <!-- CARD 3: Work Calendar & AI Shift Recommendation -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div class="flex items-center space-x-2.5 pb-3 border-b border-slate-100">
+                <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-sm">🏭</div>
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900">工作制模式与智能排班</h3>
+                  <p class="text-xs text-slate-500">选择工厂工作制模板与日历规则</p>
+                </div>
+              </div>
+
+              <!-- Calendar Mode Select -->
+              <div class="space-y-2">
+                <label class="block text-xs font-medium text-slate-700">工作制模式选择:</label>
+                <select v-model="calendarMode" @change="applyCalendarTemplate(calendarMode)" class="w-full bg-slate-50 border border-slate-300 text-slate-800 font-bold rounded-xl py-2 px-3 text-xs shadow-xs focus:ring-2 focus:ring-indigo-500">
+                  <option value="SEVEN_ZERO">连续生产 (7天×3班 - 240h 极限产能)</option>
+                  <option value="FIVE_TWO">做五休二 (5天×3班 - 120h 法定工时)</option>
+                  <option value="FOUR_THREE">做四休三 (4天×3班 - 96h 节能模式)</option>
+                </select>
+              </div>
+
+              <!-- AI Recommendation Panel -->
+              <div v-if="calendarConfig && calendarConfig.ai_recommendation" class="p-3.5 rounded-xl border text-xs space-y-2" :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'bg-emerald-50/60 border-emerald-200' : 'bg-amber-50/60 border-amber-200'">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold flex items-center space-x-1.5" :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'text-emerald-900' : 'text-amber-950'">
+                    <span>💡 AI 智能排班评估:</span>
+                    <span>{{ calendarConfig.ai_recommendation.recommended_short_name }}</span>
+                  </div>
+                  <button v-if="!calendarConfig.ai_recommendation.is_current_mode_matched" @click="adoptAiRecommendation(false)" class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[11px] font-bold shadow-xs">
+                    采纳建议
+                  </button>
+                  <span v-else class="text-[10px] bg-emerald-200/70 text-emerald-900 px-1.5 py-0.5 rounded font-bold">模式匹配 ✓</span>
+                </div>
+                <p class="text-[11px] text-slate-600 leading-normal">{{ calendarConfig.ai_recommendation.reason }}</p>
+              </div>
+
+              <!-- Quick Calendar Info -->
+              <div class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl text-center text-xs">
+                <div>
+                  <div class="text-[10px] text-slate-500">计划工作日</div>
+                  <div class="font-bold text-slate-800">{{ calendarConfig ? calendarConfig.working_days : 0 }} 天</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-500">休息/检修日</div>
+                  <div class="font-bold text-slate-800">{{ calendarConfig ? calendarConfig.rest_days : 0 }} 天</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-500">有效产能工时</div>
+                  <div class="font-bold text-indigo-700">{{ calendarConfig ? calendarConfig.total_capacity_hours : 0 }} h</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- CARD 4: Data Management & Excel Operations -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div class="flex items-center space-x-2.5 pb-3 border-b border-slate-100">
+                <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm">🔄</div>
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900">数据源与配置维护</h3>
+                  <p class="text-xs text-slate-500">管理后台 Excel 数据同步与配置重置</p>
+                </div>
+              </div>
+
+              <div class="space-y-2.5">
+                <button @click="resetInputs" :disabled="solving" class="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-xs">
+                  <div class="flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span class="font-medium">重载 Excel 原始数据</span>
+                  </div>
+                  <span class="text-[11px] text-slate-400">丢弃临时变更</span>
+                </button>
+
+                <button @click="saveSiteSettings" class="w-full flex items-center justify-between p-3 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 transition cursor-pointer text-xs font-semibold">
+                  <div class="flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                    <span>保存工厂策略至系统</span>
+                  </div>
+                  <span class="text-[11px] bg-white px-2 py-0.5 rounded text-indigo-700 border border-indigo-200">Site: {{ selectedSite }}</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
 
     </main>
@@ -3027,6 +3231,26 @@
         const selectedSite = ref("WL");
         const calendarMode = ref("SEVEN_ZERO");
         const currentTab = ref("balance");
+        const lookaheadSummary = ref(null);
+        const siteSettings = ref({
+          site: "WL",
+          horizon_days: 10,
+          start_date: "2026-10-12",
+          baseline_date: "2026-10-11",
+          calendar_mode: "SEVEN_ZERO",
+          lookahead_enabled: true,
+          lookahead_days: 30,
+          max_pull_forward_days: 10,
+          campaign_merge_enabled: true,
+          day_shift_overrides: {},
+        });
+
+        const calendarModeDisplay = computed(() => {
+          if (calendarMode.value === 'SEVEN_ZERO') return '连续生产 (7×3)';
+          if (calendarMode.value === 'FIVE_TWO') return '做五休二 (5×3)';
+          if (calendarMode.value === 'FOUR_THREE') return '做四休三 (4×3)';
+          return calendarMode.value;
+        });
         const materialView = ref("FG");
         const materialSearch = ref("");
         const selectedRuleCategory = ref("全部");
@@ -3515,9 +3739,10 @@
           }
         };
 
-        const loadRules = async () => {
+        const loadRules = async (site) => {
           try {
-            const res = await fetch('/api/rules');
+            const targetSite = site || selectedSite.value;
+            const res = await fetch(`/api/rules?site=${targetSite}`);
             const data = await res.json();
             (data.rules || []).forEach(r => {
               if (!r.load_limit_mode) {
@@ -3539,6 +3764,57 @@
             r.checked = true;
             r.load_limit_mode = '100';
           });
+        };
+
+        const loadSiteSettings = async (site) => {
+          try {
+            const targetSite = site || selectedSite.value;
+            const res = await fetch(`/api/site-settings?site=${targetSite}`);
+            if (res.ok) {
+              const data = await res.json();
+              siteSettings.value = data;
+              horizonDays.value = data.horizon_days || 10;
+              calendarMode.value = data.calendar_mode || 'SEVEN_ZERO';
+              startDate.value = data.start_date || '2026-10-12';
+              dayShiftOverrides.value = data.day_shift_overrides || {};
+            }
+          } catch (e) {
+            console.error("Failed to load site settings", e);
+          }
+        };
+
+        const saveSiteSettings = async () => {
+          try {
+            siteSettings.value.site = selectedSite.value;
+            siteSettings.value.horizon_days = horizonDays.value;
+            siteSettings.value.calendar_mode = calendarMode.value;
+            siteSettings.value.start_date = startDate.value;
+            siteSettings.value.day_shift_overrides = dayShiftOverrides.value;
+
+            const res = await fetch('/api/site-settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(siteSettings.value)
+            });
+            if (res.ok) {
+              await loadCalendar();
+              showToast(`工厂 [${selectedSite.value}] 生产策略设置已成功保存！`);
+            }
+          } catch (e) {
+            alert("保存工厂策略失败: " + e.message);
+          }
+        };
+
+        const resetSiteSettingsDefault = () => {
+          if (!confirm(`确定恢复工厂 [${selectedSite.value}] 的默认策略设置吗？`)) return;
+          siteSettings.value.lookahead_enabled = (selectedSite.value === 'WL');
+          siteSettings.value.lookahead_days = 30;
+          siteSettings.value.max_pull_forward_days = 10;
+          siteSettings.value.campaign_merge_enabled = true;
+          horizonDays.value = 10;
+          calendarMode.value = (selectedSite.value === 'WL') ? 'SEVEN_ZERO' : 'FIVE_TWO';
+          dayShiftOverrides.value = {};
+          saveSiteSettings();
         };
 
         const loadCalendar = async () => {
@@ -3704,6 +3980,9 @@
                 day_shift_overrides: dayShiftOverrides.value,
                 allow_105_utilization_fg: allow_105_fg,
                 allow_105_utilization_sf: allow_105_sf,
+                lookahead_enabled: siteSettings.value.lookahead_enabled,
+                lookahead_days: siteSettings.value.lookahead_days,
+                max_pull_forward_days: siteSettings.value.max_pull_forward_days,
                 rule_options: {
                   'R-SF-01': { load_limit_mode: r_sf_01 ? r_sf_01.load_limit_mode : '100' },
                   'R-FG-03': { load_limit_mode: r_fg_03 ? r_fg_03.load_limit_mode : '100' }
@@ -3742,10 +4021,15 @@
             complianceMatrix.value = data.compliance_matrix;
             ganttHorizon.value = data.gantt_horizon;
             shiftsInfo.value = data.shifts_info || [];
+            lookaheadSummary.value = data.lookahead_summary || null;
             if (!hasSolved.value) currentTab.value = 'balance';
             hasSolved.value = true;
             await loadCalendar();
-            showToast("排产运算成功！已更新物料平衡与工单排程");
+            if (data.lookahead_summary && data.lookahead_summary.is_enabled && data.lookahead_summary.pulled_orders_count > 0) {
+              showToast(`排产成功！30天前瞻已顺位合批拉动 ${data.lookahead_summary.pulled_orders_count} 个远期订单（${data.lookahead_summary.pulled_quantity_total}件），有效减少产线换型！`);
+            } else {
+              showToast("排产运算成功！已更新物料平衡与工单排程");
+            }
           } catch (e) {
             alert("排产计算出错: " + e.message);
           } finally {
@@ -3825,8 +4109,23 @@
           window.open('/api/export', '_blank');
         };
 
-        const onSiteChange = () => {
-          loadInputs();
+        const onSiteChange = async () => {
+          try {
+            const res = await fetch('/api/sites/switch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ site: selectedSite.value })
+            });
+            await loadSiteSettings(selectedSite.value);
+            await loadInputs();
+            await loadCalendar();
+            await loadRules(selectedSite.value);
+            kpi.value = null;
+            hasSolved.value = false;
+            showToast(`已切换至【${selectedSite.value}】工厂，生产策略配置已同步更新为该工厂专属设置！`);
+          } catch (e) {
+            console.error("Failed to switch site", e);
+          }
         };
 
         const getLoadCellClass = (metric, val) => {
@@ -3870,8 +4169,9 @@
         };
 
         onMounted(async () => {
+          await loadSiteSettings();
           await loadInputs();
-          await loadRules();
+          await loadRules(selectedSite.value);
           await loadCalendar();
           // Initial load remains standby; computation triggered by user clicking '执行智能排产'
         });
@@ -3993,6 +4293,12 @@
           showLineDetailModal,
           showAiRecModal,
           adoptAiRecommendation,
+          siteSettings,
+          lookaheadSummary,
+          calendarModeDisplay,
+          loadSiteSettings,
+          saveSiteSettings,
+          resetSiteSettingsDefault,
         };
       }
     }).mount('#app');

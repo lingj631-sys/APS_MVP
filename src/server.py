@@ -37,7 +37,7 @@ from src.data_loader import (
 )
 from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.prechecker import precheck_capacity
-from src.rules import REGISTRY, RuleCategory, RuleStatus
+from src.rules import REGISTRY, RuleCategory, RuleStatus, get_rules_for_site
 from src.scheduler import APSScheduler, ScheduleResult
 from src.shift_manager import CalendarMode, evaluate_calendar_recommendation
 from src.validator import validate_schedule
@@ -54,6 +54,142 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Default and persistent settings per factory site
+DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
+    "WL": {
+        "site": "WL",
+        "site_name": "WL 工厂 (WE34 车间 - 雨刮/轴套)",
+        "horizon_days": 10,
+        "start_date": "2026-10-12",
+        "baseline_date": "2026-10-11",
+        "calendar_mode": "SEVEN_ZERO",
+        "lookahead_enabled": True,
+        "lookahead_days": 30,
+        "max_pull_forward_days": 10,
+        "campaign_merge_enabled": True,
+        "day_shift_overrides": {},
+    },
+    "SY38": {
+        "site": "SY38",
+        "site_name": "SY38 工厂 (沈阳产线)",
+        "horizon_days": 10,
+        "start_date": "2026-10-12",
+        "baseline_date": "2026-10-11",
+        "calendar_mode": "FIVE_TWO",
+        "lookahead_enabled": False,
+        "lookahead_days": 30,
+        "max_pull_forward_days": 10,
+        "campaign_merge_enabled": False,
+        "day_shift_overrides": {},
+    },
+}
+
+site_settings_store: Dict[str, Dict[str, Any]] = copy.deepcopy(DEFAULT_SITE_SETTINGS)
+
+def apply_demand_lookahead(
+    snapshot: ProductionInputSnapshot,
+    start_dt: datetime,
+    horizon_days: int = 10,
+    lookahead_days: int = 30,
+    max_pull_forward_days: int = 10,
+    max_line_utilization: float = 0.98,
+    shifts: Optional[List[Any]] = None,
+) -> Tuple[ProductionInputSnapshot, Dict[str, Any]]:
+    """
+    30-Day Demand Lookahead & Campaign Batching Engine:
+    1. Scope immediate orders within horizon_days.
+    2. Scope candidate future orders up to min(lookahead_days, horizon_days + max_pull_forward_days).
+    3. Identify active parts in immediate horizon (avoiding introducing new tool setups/changeovers).
+    4. For active parts, evaluate line capacity headroom and pull forward future orders
+       chronologically to build economic batches and pre-build inventory for month-end peak.
+    """
+    horizon_end = start_dt + timedelta(days=horizon_days)
+    lookahead_end = start_dt + timedelta(days=lookahead_days)
+    max_pull_end = min(lookahead_end, horizon_end + timedelta(days=max_pull_forward_days))
+
+    # Calculate line capacity headroom (in hours)
+    line_avail_hours: Dict[str, float] = defaultdict(float)
+    if shifts:
+        for s in shifts:
+            if getattr(s, "is_work_shift", True):
+                for p in snapshot.fg_params.values():
+                    line_avail_hours[p.line] += 8.0
+    else:
+        for p in snapshot.fg_params.values():
+            line_avail_hours[p.line] = float(horizon_days * 24.0)
+
+    # Separate orders
+    immediate_orders = [copy.deepcopy(o) for o in snapshot.orders if o.due_datetime <= horizon_end]
+    future_orders = [copy.deepcopy(o) for o in snapshot.orders if horizon_end < o.due_datetime <= max_pull_end]
+
+    # Calculate load of immediate orders
+    line_used_hours: Dict[str, float] = defaultdict(float)
+    for o in immediate_orders:
+        param = snapshot.fg_params.get(o.part_no)
+        if param and param.ct_seconds > 0 and param.trp > 0:
+            hrs = (o.demand_quantity * param.ct_seconds) / (3600.0 * param.trp)
+            line_used_hours[param.line] += hrs
+
+    active_parts = set(o.part_no for o in immediate_orders)
+    candidates = [o for o in future_orders if o.part_no in active_parts]
+    candidates.sort(key=lambda x: (x.due_datetime, x.part_no))
+
+    pulled_orders = []
+    pulled_details = []
+    merged_by_part: Dict[str, float] = defaultdict(float)
+
+    for o in candidates:
+        param = snapshot.fg_params.get(o.part_no)
+        if not param:
+            continue
+        req_hrs = (o.demand_quantity * param.ct_seconds) / (3600.0 * param.trp) if (param.ct_seconds > 0 and param.trp > 0) else 0.0
+        line = param.line
+        cap_limit = line_avail_hours[line] * max_line_utilization
+
+        if line_used_hours[line] + req_hrs <= cap_limit or (line_used_hours[line] == 0):
+            line_used_hours[line] += req_hrs
+            pulled_o = copy.deepcopy(o)
+            pulled_o.order_id = f"PULL_{o.order_id}"
+            # Adjust due datetime to the end of the horizon window
+            pulled_o.due_datetime = horizon_end - timedelta(hours=1)
+            pulled_o.due_date = (horizon_end - timedelta(days=1)).strftime("%m/%d")
+            pulled_orders.append(pulled_o)
+            merged_by_part[o.part_no] += o.demand_quantity
+            pulled_details.append({
+                "original_order_id": o.order_id,
+                "pulled_order_id": pulled_o.order_id,
+                "part_no": o.part_no,
+                "description": o.description,
+                "quantity": o.demand_quantity,
+                "original_due_date": o.due_date,
+                "target_due_date": pulled_o.due_date,
+                "required_hours": round(req_hrs, 1),
+            })
+
+    scoped_snapshot = copy.deepcopy(snapshot)
+    scoped_snapshot.orders = immediate_orders + pulled_orders
+
+    summary = {
+        "is_enabled": True,
+        "horizon_days": horizon_days,
+        "lookahead_days": lookahead_days,
+        "max_pull_forward_days": max_pull_forward_days,
+        "immediate_orders_count": len(immediate_orders),
+        "pulled_orders_count": len(pulled_orders),
+        "pulled_quantity_total": sum(o.demand_quantity for o in pulled_orders),
+        "active_parts_count": len(active_parts),
+        "pulled_parts_count": len(merged_by_part),
+        "pulled_details": pulled_details,
+        "pulled_by_part": dict(merged_by_part),
+        "line_utilization_after_pull": {
+            l: round(line_used_hours[l] / max(1.0, line_avail_hours[l]) * 100, 1)
+            for l in line_avail_hours
+        },
+        "changeovers_saved_estimate": len(pulled_orders),
+    }
+
+    return scoped_snapshot, summary
 
 # In-memory storage for active session
 session_state = {
@@ -269,9 +405,21 @@ class CalendarUpdatePayload(BaseModel):
     day_shift_overrides: Optional[Dict[str, Any]] = None
 
 
+class SiteSettingsPayload(BaseModel):
+    site: str = "WL"
+    horizon_days: Optional[int] = 10
+    start_date: Optional[str] = "2026-10-12"
+    calendar_mode: Optional[str] = "SEVEN_ZERO"
+    lookahead_enabled: Optional[bool] = True
+    lookahead_days: Optional[int] = 30
+    max_pull_forward_days: Optional[int] = 10
+    campaign_merge_enabled: Optional[bool] = True
+    day_shift_overrides: Optional[Dict[str, Any]] = None
+
+
 class SolvePayload(BaseModel):
     site: str = "WL"
-    calendar_mode: str = "SEVEN_ZERO"
+    calendar_mode: Optional[str] = "SEVEN_ZERO"
     enabled_rules: List[str] = []
     time_limit_seconds: float = 30.0
     horizon_days: Optional[int] = 10
@@ -280,6 +428,9 @@ class SolvePayload(BaseModel):
     allow_105_utilization_fg: bool = False
     allow_105_utilization_sf: bool = False
     rule_options: Optional[Dict[str, Any]] = None
+    lookahead_enabled: Optional[bool] = None
+    lookahead_days: Optional[int] = None
+    max_pull_forward_days: Optional[int] = None
 
 
 # ---------------- API Endpoints ----------------
@@ -288,14 +439,100 @@ def list_sites():
     return {
         "current": session_state["site"],
         "available": [
-            {"code": "WL", "name": "WL 工厂 (WE34 车间)", "description": "雨刮传动杆总成装配线 (PGLINKAGE) + 轴套冲压线 (轴套6)"},
-            {"code": "SY38", "name": "SY38 工厂 (沈阳产线)", "description": "注塑与涂装车间 (PU07/PU22, 1400T-6)"},
+            {"code": "WL", "name": "WL 工厂 (WE34 车间 - 雨刮/轴套)", "description": "雨刮传动杆总成装配线 (PGLINKAGE) + 轴套冲压线 (轴套6)"},
+            {"code": "SY38", "name": "SY38 工厂 (沈阳产线 - 涂装/注塑)", "description": "注塑与涂装车间 (PU07/PU22 涂装线 + 1400T-6 注塑机)"},
         ],
     }
 
 
+@app.get("/api/site-settings")
+def get_site_settings(site: str = "WL"):
+    if site not in site_settings_store:
+        site_settings_store[site] = copy.deepcopy(DEFAULT_SITE_SETTINGS.get("WL", {}))
+        site_settings_store[site]["site"] = site
+    return site_settings_store[site]
+
+
+@app.post("/api/site-settings")
+def update_site_settings(payload: SiteSettingsPayload):
+    site = payload.site
+    if site not in site_settings_store:
+        site_settings_store[site] = copy.deepcopy(DEFAULT_SITE_SETTINGS.get("WL", {}))
+        site_settings_store[site]["site"] = site
+    cfg = site_settings_store[site]
+    if payload.horizon_days is not None:
+        cfg["horizon_days"] = payload.horizon_days
+    if payload.start_date is not None:
+        cfg["start_date"] = payload.start_date
+    if payload.calendar_mode is not None:
+        cfg["calendar_mode"] = payload.calendar_mode
+    if payload.lookahead_enabled is not None:
+        cfg["lookahead_enabled"] = payload.lookahead_enabled
+    if payload.lookahead_days is not None:
+        cfg["lookahead_days"] = payload.lookahead_days
+    if payload.max_pull_forward_days is not None:
+        cfg["max_pull_forward_days"] = payload.max_pull_forward_days
+    if payload.campaign_merge_enabled is not None:
+        cfg["campaign_merge_enabled"] = payload.campaign_merge_enabled
+    if payload.day_shift_overrides is not None:
+        cfg["day_shift_overrides"] = payload.day_shift_overrides
+
+    # If this is active site, sync session_state calendar_config
+    if site == session_state["site"]:
+        session_state["calendar_config"]["horizon_days"] = cfg["horizon_days"]
+        session_state["calendar_config"]["start_date"] = cfg["start_date"]
+        session_state["calendar_config"]["calendar_mode"] = cfg["calendar_mode"]
+        session_state["calendar_config"]["day_shift_overrides"] = cfg["day_shift_overrides"]
+
+    return {"status": "success", "message": f"工厂 [{site}] 生产策略配置已更新", "settings": cfg}
+
+
+@app.post("/api/sites/switch")
+def switch_site(site: str = Body(..., embed=True)):
+    session_state["site"] = site
+    session_state["snapshot"] = get_fresh_snapshot(site)
+    session_state["plan"] = build_requirement_plan(session_state["snapshot"])
+    session_state["result"] = None
+    session_state["matrix"] = None
+    session_state["checks"] = None
+    if site not in site_settings_store:
+        site_settings_store[site] = copy.deepcopy(DEFAULT_SITE_SETTINGS.get("WL", {}))
+        site_settings_store[site]["site"] = site
+    cfg = site_settings_store[site]
+    session_state["calendar_config"] = {
+        "baseline_date": "2026-10-11",
+        "start_date": cfg.get("start_date", "2026-10-12"),
+        "horizon_days": cfg.get("horizon_days", 10),
+        "calendar_mode": cfg.get("calendar_mode", "SEVEN_ZERO"),
+        "day_shift_overrides": cfg.get("day_shift_overrides", {}),
+    }
+    return {
+        "status": "success",
+        "message": f"已成功切换至工厂站点 [{site}]",
+        "site": site,
+        "settings": cfg,
+    }
+
+
 @app.get("/api/inputs")
-def get_inputs():
+def get_inputs(site: Optional[str] = None):
+    if site and site != session_state["site"]:
+        session_state["site"] = site
+        session_state["snapshot"] = get_fresh_snapshot(site)
+        session_state["plan"] = build_requirement_plan(session_state["snapshot"])
+        session_state["result"] = None
+        session_state["matrix"] = None
+        session_state["checks"] = None
+        if site in site_settings_store:
+            cfg = site_settings_store[site]
+            session_state["calendar_config"] = {
+                "baseline_date": "2026-10-11",
+                "start_date": cfg.get("start_date", "2026-10-12"),
+                "horizon_days": cfg.get("horizon_days", 10),
+                "calendar_mode": cfg.get("calendar_mode", "SEVEN_ZERO"),
+                "day_shift_overrides": cfg.get("day_shift_overrides", {}),
+            }
+
     snap = session_state["snapshot"]
     if snap is None:
         snap = get_fresh_snapshot(session_state["site"])
@@ -364,60 +601,110 @@ def get_inputs():
                 "ratio": ratio,
             })
 
-    # Master Data: Shift & Calendar specs
-    calendar_info = {
-        "shift_hours": 8.0,
-        "shifts_per_day": 3,
-        "shift_seconds": 28800,
-        "min_utilization": 0.95,
-        "min_shift_seconds": 27360,
-        "shifts": [
-            {
-                "name": "早班",
-                "time_range": "07:00 ~ 15:00",
-                "duration_hours": 8.0,
-                "is_critical": True,
-                "description": "当日客户交付截单基准线（早班下班 15:00 截止发货入库）",
-            },
-            {
-                "name": "中班",
-                "time_range": "15:00 ~ 23:00",
-                "duration_hours": 8.0,
-                "is_critical": False,
-                "description": "标准连续装配与冲压班次，为后道及次日产出提供缓冲",
-            },
-            {
-                "name": "晚班",
-                "time_range": "23:00 ~ 07:00 (+1)",
-                "duration_hours": 8.0,
-                "is_critical": False,
-                "description": "夜间连产班次，为次日早班交付储备成品",
-            },
-        ],
-        "modes": [
-            {
-                "code": "SEVEN_ZERO",
-                "name": "连续生产 (7天×3班)",
-                "work_days": "周一至周日全开工 (21班/周)",
-                "condition": "周总负荷 > 5/7 极限产能",
-                "desc": "订单高企时打破常规周末休息，全量释放产线极限理论产能保障准时交付",
-            },
-            {
-                "code": "FIVE_TWO",
-                "name": "正常均衡 (5天×3班)",
-                "work_days": "周一至周五开工，周六日双休 (15班/周)",
-                "condition": "4/7 < 周总负荷 ≤ 5/7 极限产能",
-                "desc": "标准法定工作制，工时平准化排程，周末产线正常停工保养",
-            },
-            {
-                "code": "FOUR_THREE",
-                "name": "极度空闲 (4天×3班)",
-                "work_days": "周一至周四开工，周五六日休假 (12班/周)",
-                "condition": "周总负荷 ≤ 4/7 极限产能",
-                "desc": "需求低谷时集中压缩开机天数，周四预估库存覆盖周末提货，降本节能",
-            },
-        ],
-    }
+    # Master Data: Shift & Calendar specs (Adapted to Site)
+    current_site = session_state["site"]
+    is_sy = (current_site == "SY38")
+    if is_sy:
+        calendar_info = {
+            "shift_hours": 12.0,
+            "shifts_per_day": 2,
+            "shift_seconds": 43200,
+            "min_utilization": 0.95,
+            "min_shift_seconds": 41040,
+            "shifts": [
+                {
+                    "name": "早班",
+                    "time_range": "08:00 ~ 20:00",
+                    "duration_hours": 12.0,
+                    "is_critical": True,
+                    "description": "沈阳白班（含日内紧急加急订单插入及完工截单出货）",
+                },
+                {
+                    "name": "晚班",
+                    "time_range": "20:00 ~ 08:00 (+1)",
+                    "duration_hours": 12.0,
+                    "is_critical": False,
+                    "description": "沈阳夜班（注塑与喷涂连产，为次日装配及发运储备安全缓冲库存）",
+                },
+            ],
+            "modes": [
+                {
+                    "code": "SEVEN_ZERO",
+                    "name": "连续生产 (7天×2班)",
+                    "work_days": "周一至周日全开工 (14班/周，168小时)",
+                    "condition": "周总负荷 > 5/7 极限产能",
+                    "desc": "高负荷时释放注塑与喷涂极限产能，保障宝马/奥迪主机厂准时交付",
+                },
+                {
+                    "code": "FIVE_TWO",
+                    "name": "正常均衡 (5天×2班)",
+                    "work_days": "周一至周五开工，周六日双休 (10班/周，120小时)",
+                    "condition": "4/7 < 周总负荷 ≤ 5/7 极限产能",
+                    "desc": "标准法定工作制，工时平准化排程，周末设备停机维护",
+                },
+                {
+                    "code": "FOUR_THREE",
+                    "name": "极度空闲 (4天×2班)",
+                    "work_days": "周一至周四开工，周五六日休假 (8班/周，96小时)",
+                    "condition": "周总负荷 ≤ 4/7 极限产能",
+                    "desc": "需求低谷时压缩开机天数，降本节能",
+                },
+            ],
+        }
+    else:
+        calendar_info = {
+            "shift_hours": 8.0,
+            "shifts_per_day": 3,
+            "shift_seconds": 28800,
+            "min_utilization": 0.95,
+            "min_shift_seconds": 27360,
+            "shifts": [
+                {
+                    "name": "早班",
+                    "time_range": "07:00 ~ 15:00",
+                    "duration_hours": 8.0,
+                    "is_critical": True,
+                    "description": "当日客户交付截单基准线（早班下班 15:00 截止发货入库）",
+                },
+                {
+                    "name": "中班",
+                    "time_range": "15:00 ~ 23:00",
+                    "duration_hours": 8.0,
+                    "is_critical": False,
+                    "description": "标准连续装配与冲压班次，为后道及次日产出提供缓冲",
+                },
+                {
+                    "name": "晚班",
+                    "time_range": "23:00 ~ 07:00 (+1)",
+                    "duration_hours": 8.0,
+                    "is_critical": False,
+                    "description": "夜间连产班次，为次日早班交付储备成品",
+                },
+            ],
+            "modes": [
+                {
+                    "code": "SEVEN_ZERO",
+                    "name": "连续生产 (7天×3班)",
+                    "work_days": "周一至周日全开工 (21班/周，168小时)",
+                    "condition": "周总负荷 > 5/7 极限产能",
+                    "desc": "订单高企时打破常规周末休息，全量释放产线极限理论产能保障准时交付",
+                },
+                {
+                    "code": "FIVE_TWO",
+                    "name": "正常均衡 (5天×3班)",
+                    "work_days": "周一至周五开工，周六日双休 (15班/周，120小时)",
+                    "condition": "4/7 < 周总负荷 ≤ 5/7 极限产能",
+                    "desc": "标准法定工作制，工时平准化排程，周末产线正常停工保养",
+                },
+                {
+                    "code": "FOUR_THREE",
+                    "name": "极度空闲 (4天×3班)",
+                    "work_days": "周一至周四开工，周五六日休假 (12班/周，96小时)",
+                    "condition": "周总负荷 ≤ 4/7 极限产能",
+                    "desc": "需求低谷时集中压缩开机天数，周四预估库存覆盖周末提货，降本节能",
+                },
+            ],
+        }
 
     # Master Data: Tooling Molds
     tooling_molds_list = [
@@ -700,9 +987,46 @@ def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SE
 
 
 @app.get("/api/rules")
-def get_rules():
+def get_rules(site: Optional[str] = None):
+    target_site = site or session_state["site"]
+    site_rules = get_rules_for_site(target_site)
     rules_list = []
     engine_switches = {
+        # WL (WE34 27 Rules)
+        "R-WL-01": "enforce_tooling_exclusivity",
+        "R-WL-02": "enforce_peak_smoothing",
+        "R-WL-03": "enforce_demand_lookahead",
+        "R-WL-04": "enforce_segmented_calendar",
+        "R-WL-05": "enforce_delay_suggestions",
+        "R-WL-06": "calendar_mode",
+        "R-WL-07": "calendar_mode",
+        "R-WL-08": "calendar_mode",
+        "R-WL-09": "enforce_mpq_batch",
+        "R-WL-10": "enforce_freeze_window",
+        "R-WL-11": "enforce_continuous_merge",
+        "R-WL-12": "enforce_sequential_pulling",
+        "R-WL-13": "enforce_exact_demand",
+        "R-WL-14": "enforce_controlled_window",
+        "R-WL-15": "enforce_mpq_batch",
+        "R-WL-20": "enforce_on_time_delivery",
+        "R-WL-21": "enforce_material_arrival",
+        "R-WL-22": "enforce_safety_stock",
+        "R-WL-23": "enforce_material_balance",
+        "R-WL-24": "enforce_lookahead_limits",
+        "R-WL-25": "calendar_mode",
+        "R-WL-26": "enforce_utilization_95",
+        "R-WL-27": "enforce_pm_maintenance",
+        # SY38 (9 Rules)
+        "R-SY-01": "enforce_rush_order_day_shift",
+        "R-SY-02": "enforce_anti_starvation_overstock",
+        "R-SY-03": "enforce_lr_co_mold_sync",
+        "R-SY-04": "enforce_sf_lead_time_12h",
+        "R-SY-05": "enforce_max_2_molds_per_shift",
+        "R-SY-06": "enforce_fg_stock_limit_5d",
+        "R-SY-07": "enforce_sf_stock_limit_penalty",
+        "R-SY-08": "enforce_utilization_95",
+        "R-SY-09": "enforce_fg_1day_ship_buffer",
+        # Legacy IDs
         "R-SF-01": "enforce_utilization_95",
         "R-SF-02": "enforce_sequential_pulling",
         "R-SF-03": "enforce_material_balance",
@@ -730,7 +1054,7 @@ def get_rules():
         "R-CR-01": "enforce_customer_priority",
     }
 
-    for r_id, r in sorted(REGISTRY.items(), key=lambda x: x[1].row_index):
+    for r_id, r in sorted(site_rules.items(), key=lambda x: x[1].row_index):
         rules_list.append({
             "rule_id": r.rule_id,
             "row_index": r.row_index,
@@ -750,15 +1074,16 @@ def get_rules():
             "checked": True,  # Default all checked
             "load_limit_mode": "100",  # Default 95% ~ 100%
         })
-    return {"site": session_state["site"], "rules": rules_list}
+    return {"site": target_site, "rules": rules_list}
 
 
 @app.post("/api/solve")
 def run_solver(payload: SolvePayload):
     snap = session_state["snapshot"]
-    if snap is None:
+    if snap is None or session_state.get("site") != payload.site:
         snap = get_fresh_snapshot(payload.site)
         session_state["snapshot"] = snap
+        session_state["site"] = payload.site
 
     cfg = session_state.setdefault("calendar_config", {})
     horizon_days = payload.horizon_days if (payload.horizon_days and payload.horizon_days > 0) else cfg.get("horizon_days", 10)
@@ -778,17 +1103,54 @@ def run_solver(payload: SolvePayload):
     except Exception:
         start_dt = datetime(2026, 10, 12, 7, 0, 0)
 
-    # Scoped orders for the chosen planning horizon
-    horizon_end = start_dt + timedelta(days=horizon_days)
-    solve_snap = copy.deepcopy(snap)
-    solve_snap.orders = [o for o in solve_snap.orders if o.due_datetime <= horizon_end]
+
+
+    # Determine lookahead configuration for this site
+    # Map checked rule IDs to scheduler options (Site-Scoped)
+    site_rules = get_rules_for_site(payload.site)
+    enabled = set(payload.enabled_rules or [r_id for r_id in site_rules])
+    site_cfg = site_settings_store.get(payload.site, DEFAULT_SITE_SETTINGS.get("WL", {}))
+    lookahead_on = payload.lookahead_enabled if payload.lookahead_enabled is not None else site_cfg.get("lookahead_enabled", True)
+    if "R-WL-03" in site_rules and "R-WL-03" not in enabled:
+        lookahead_on = False
+    lookahead_days = payload.lookahead_days or site_cfg.get("lookahead_days", 30)
+    max_pull_days = payload.max_pull_forward_days or site_cfg.get("max_pull_forward_days", 10)
+
+    # Scoped orders for the chosen planning horizon (with or without 30-day lookahead)
+    if lookahead_on:
+        solve_snap, lookahead_summary = apply_demand_lookahead(
+            snapshot=snap,
+            start_dt=start_dt,
+            horizon_days=horizon_days,
+            lookahead_days=lookahead_days,
+            max_pull_forward_days=max_pull_days,
+            max_line_utilization=0.98,
+        )
+    else:
+        horizon_end = start_dt + timedelta(days=horizon_days)
+        solve_snap = copy.deepcopy(snap)
+        solve_snap.orders = [o for o in solve_snap.orders if o.due_datetime <= horizon_end]
+        lookahead_summary = {
+            "is_enabled": False,
+            "horizon_days": horizon_days,
+            "lookahead_days": lookahead_days,
+            "immediate_orders_count": len(solve_snap.orders),
+            "pulled_orders_count": 0,
+            "pulled_quantity_total": 0,
+            "active_parts_count": len(set(o.part_no for o in solve_snap.orders)),
+            "pulled_parts_count": 0,
+            "pulled_details": [],
+            "pulled_by_part": {},
+            "changeovers_saved_estimate": 0,
+        }
 
     plan = build_requirement_plan(solve_snap)
     session_state["plan"] = plan
 
-    # Map checked rule IDs to scheduler options
-    enabled = set(payload.enabled_rules or [r_id for r_id in REGISTRY])
-    enforce_utilization_95 = ("R-FG-03" in enabled or "R-SF-01" in enabled)
+    # Map checked rule IDs to scheduler options (Site-Scoped)
+    enforce_utilization_95 = (
+        "R-FG-03" in enabled or "R-SF-01" in enabled or "R-WL-26" in enabled or "R-SY-08" in enabled
+    )
 
     # 105% utilization threshold option for R-FG-03 and R-SF-01
     allow_105_fg = payload.allow_105_utilization_fg
@@ -798,18 +1160,18 @@ def run_solver(payload: SolvePayload):
             allow_105_fg = True
         if payload.rule_options.get("R-SF-01", {}).get("load_limit_mode") == "105":
             allow_105_sf = True
-    enforce_on_time_delivery = ("R-FG-01" in enabled)
-    enforce_concurrency_limit = ("R-FG-13" in enabled)
-    enforce_mpq_batch = ("R-FG-02" in enabled or "R-SF-09" in enabled)
-    enforce_material_balance = ("R-SF-03" in enabled)
-    enforce_sequential_pulling = ("R-SF-02" in enabled or "R-FG-05" in enabled)
-    enforce_freeze_window = ("R-SF-04" in enabled or "R-FG-04" in enabled)
-    enforce_tooling_exclusivity = ("R-TL-01" in enabled)
-    enforce_material_arrival = ("R-MT-01" in enabled)
-    enforce_pm_maintenance = ("R-PM-01" in enabled)
-    enforce_customer_priority = ("R-CR-01" in enabled)
-    enforce_weekend_penalty = ("R-SF-07" in enabled or "R-FG-09" in enabled)
-    enforce_exact_demand = ("R-SF-05" in enabled or "R-FG-07" in enabled)
+    enforce_on_time_delivery = ("R-FG-01" in enabled or "R-WL-20" in enabled or "R-SY-01" in enabled or "R-SY-09" in enabled)
+    enforce_concurrency_limit = ("R-FG-13" in enabled or "R-SY-05" in enabled)
+    enforce_mpq_batch = ("R-FG-02" in enabled or "R-SF-09" in enabled or "R-WL-09" in enabled or "R-WL-15" in enabled)
+    enforce_material_balance = ("R-SF-03" in enabled or "R-WL-23" in enabled or "R-SY-02" in enabled or "R-SY-04" in enabled)
+    enforce_sequential_pulling = ("R-SF-02" in enabled or "R-FG-05" in enabled or "R-WL-12" in enabled)
+    enforce_freeze_window = ("R-SF-04" in enabled or "R-FG-04" in enabled or "R-WL-10" in enabled)
+    enforce_tooling_exclusivity = ("R-TL-01" in enabled or "R-WL-01" in enabled or "R-SY-03" in enabled)
+    enforce_material_arrival = ("R-MT-01" in enabled or "R-WL-21" in enabled)
+    enforce_pm_maintenance = ("R-PM-01" in enabled or "R-WL-27" in enabled)
+    enforce_customer_priority = ("R-CR-01" in enabled or "R-WL-24" in enabled)
+    enforce_weekend_penalty = ("R-SF-07" in enabled or "R-FG-09" in enabled or "R-WL-06" in enabled)
+    enforce_exact_demand = ("R-SF-05" in enabled or "R-FG-07" in enabled or "R-WL-13" in enabled)
 
     try:
         cal_mode = CalendarMode(cal_mode_str)
@@ -901,9 +1263,14 @@ def run_solver(payload: SolvePayload):
     late_tasks = [t for t in fg_tasks if t.end_dt > t.due_datetime]
     on_time_rate = ((len(fg_tasks) - len(late_tasks)) / len(fg_tasks) * 100.0) if fg_tasks else 100.0
 
-    min_start = min(t.start_dt for t in result.tasks)
-    max_end = max(t.end_dt for t in result.tasks)
-    makespan_hours = (max_end - min_start).total_seconds() / 3600.0
+    if result.tasks:
+        min_start = min(t.start_dt for t in result.tasks)
+        max_end = max(t.end_dt for t in result.tasks)
+        makespan_hours = (max_end - min_start).total_seconds() / 3600.0
+    else:
+        min_start = scheduler.shifts[0].start_dt if scheduler.shifts else start_dt
+        max_end = scheduler.shifts[-1].end_dt if scheduler.shifts else (start_dt + timedelta(days=horizon_days))
+        makespan_hours = 0.0
 
     # Line Average Utilization
     line_utilizations = {}
@@ -1006,7 +1373,7 @@ def run_solver(payload: SolvePayload):
             check_status[r_id] = check_status.get(r_id, True) and c.passed
 
     compliance_rows = []
-    for r_id, rule in sorted(REGISTRY.items(), key=lambda x: x[1].row_index):
+    for r_id, rule in sorted(site_rules.items(), key=lambda x: x[1].row_index):
         is_checked = r_id in enabled
         if not is_checked:
             eff_status = "SKIPPED (未勾选)"
@@ -1145,6 +1512,7 @@ def run_solver(payload: SolvePayload):
         "tasks": task_schedule_list,
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
+        "lookahead_summary": lookahead_summary,
         "calendar_summary": {
             "start_date": start_dt.strftime("%Y-%m-%d"),
             "horizon_days": horizon_days,

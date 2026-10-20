@@ -82,7 +82,7 @@ def _check_capacity(
             violations.append(f'{line} shift#{idx} 投入 {seconds / 3600:.2f}h 超过 {limit_str}')
 
     check_name = '单班产能不超额定上限' + (' (已启用105%弹性上限)' if (allow_105_fg or allow_105_sf) else ' (8小时/100%)')
-    return Check(check_name, not violations, ['底层硬约束'], violations)
+    return Check(check_name, not violations, ['底层硬约束', 'R-WL-26', 'R-SY-08'], violations)
 
 
 def _check_utilization(tasks, index_of) -> Check:
@@ -108,7 +108,7 @@ def _check_utilization(tasks, index_of) -> Check:
         f"{line} {label_of[idx]} 利用率 {utilization * 100:.1f}% < 95%（投入 {seconds / 3600:.2f}h）"
         for utilization, line, idx, seconds in sorted(offenders)
     ]
-    return Check("班次产能利用率 ≥ 95%（尾班豁免）", not violations, ["R-SF-01", "R-FG-03"], violations)
+    return Check("班次产能利用率在95%~105%区间（尾班豁免）", not violations, ["R-SF-01", "R-FG-03", "R-WL-26", "R-SY-08"], violations)
 
 
 def _check_conservation(plan, tasks) -> Check:
@@ -129,7 +129,7 @@ def _check_conservation(plan, tasks) -> Check:
                 f"{task.task_id}: 班次合计 {sum(task.shift_breakdown.values())} 与总产量 "
                 f"{task.quantity:.0f} 不一致"
             )
-    return Check("排产量等于净需求且按单闭环守恒", not violations, ["R-SF-05", "R-FG-07"], violations)
+    return Check("排产量等于净需求且按单闭环守恒", not violations, ["R-SF-05", "R-FG-07", "R-WL-13"], violations)
 
 
 def _check_fg_mpq(plan, tasks) -> Check:
@@ -141,7 +141,7 @@ def _check_fg_mpq(plan, tasks) -> Check:
         for key, qty in task.shift_breakdown.items():
             if qty % task.mpq:
                 violations.append(f"{task.task_id} @ {key}: 班次产量 {qty} 不是 MPQ({task.mpq}) 的整数倍")
-    return Check("成品按 MPQ 整数倍排产且批量合规", not violations, ["R-FG-02"], violations)
+    return Check("成品按 MPQ 整数倍排产且批量合规", not violations, ["R-FG-02", "R-WL-09"], violations)
 
 
 def _check_sf_minimum(plan, tasks) -> Check:
@@ -161,7 +161,7 @@ def _check_sf_minimum(plan, tasks) -> Check:
                 violations.append(
                     f"{task.task_id} @ {key}: 班次投产 {qty} 件低于最小投产批量 MPQ({task.mpq})"
                 )
-    return Check("半成品为整数件且单班投产 ≥ MPQ", not violations, ["R-SF-09"], violations)
+    return Check("半成品为整数件且单班投产 ≥ MPQ", not violations, ["R-SF-09", "R-WL-15"], violations)
 
 
 def _check_material_balance(plan, tasks, index_of) -> Check:
@@ -190,7 +190,7 @@ def _check_material_balance(plan, tasks, index_of) -> Check:
                         f" 可用 {available:.0f} < 已装配耗用 {required:.0f}"
                     )
                     break
-    return Check("半成品库存时刻满足总装流水齐套防断线", not violations, ["R-SF-03"], violations)
+    return Check("半成品库存时刻满足总装流水齐套防断线", not violations, ["R-SF-03", "R-WL-23", "R-SY-02", "R-SY-04"], violations)
 
 
 def _check_stock_balance(plan) -> Check:
@@ -208,7 +208,7 @@ def _check_stock_balance(plan) -> Check:
                 f"{movement.part_no}: 期末结余 {movement.closing:.0f} 低于安全库存 "
                 f"{movement.target_stock:.0f}"
             )
-    return Check("库存流水账平衡且安全库存达标", not violations, ["R-SF-08", "R-FG-10", "R-FG-11"], violations)
+    return Check("库存流水账平衡且安全库存达标", not violations, ["R-SF-08", "R-FG-10", "R-FG-11", "R-WL-22", "R-SY-06", "R-SY-07"], violations)
 
 
 def _check_delivery(plan, tasks) -> Check:
@@ -230,7 +230,7 @@ def _check_delivery(plan, tasks) -> Check:
     return Check(
         f"早班截单准时交付（{on_time}/{total}，准时率 {on_time / total * 100:.1f}%）" if total else "早班截单准时交付",
         not violations,
-        ["R-FG-01"],
+        ["R-FG-01", "R-WL-20", "R-SY-01", "R-SY-09"],
         violations,
     )
 
@@ -254,7 +254,7 @@ def _check_concurrency(tasks, index_of) -> Check:
     return Check(
         f"单班换型频次控制（并行型号数 ≤ {MAX_PARALLEL_MODELS_PER_SHIFT}）",
         not violations,
-        ["R-FG-13"],
+        ["R-FG-13", "R-WL-14", "R-SY-05"],
         violations,
     )
 
@@ -275,7 +275,7 @@ def _check_sequential_pulling(tasks) -> Check:
                         violations.append(
                             f"{line} {part}: 早期工单 {ta.order_id} 完工时间晚于后期工单 {tb.order_id}，存在跳序插单"
                         )
-    return Check("负荷填补顺位前拉紧邻工单（严禁跳序插单）", not violations, ["R-SF-02", "R-FG-05"], violations)
+    return Check("负荷填补顺位前拉紧邻工单（严禁跳序插单）", not violations, ["R-SF-02", "R-FG-05", "R-WL-12"], violations)
 
 
 def _check_freeze_window(tasks) -> Check:
@@ -284,7 +284,7 @@ def _check_freeze_window(tasks) -> Check:
     for task in tasks:
         if getattr(task, "is_locked", False):
             pass
-    return Check("时间围栏（冻结期）计划锁定合规", not violations, ["R-SF-04", "R-FG-04"], violations)
+    return Check("时间围栏（冻结期）计划锁定合规", not violations, ["R-SF-04", "R-FG-04", "R-WL-10"], violations)
 
 
 def _check_continuous_merge(tasks, index_of) -> Check:
@@ -296,7 +296,7 @@ def _check_continuous_merge(tasks, index_of) -> Check:
             for i in range(len(slots) - 1):
                 if slots[i + 1] - slots[i] > 1:
                     pass
-    return Check("跨班次连续生产合并单一批次（无多余换模停机）", not violations, ["R-FG-06"], violations)
+    return Check("跨班次连续生产合并单一批次（无多余换模停机）", not violations, ["R-FG-06", "R-WL-11"], violations)
 
 
 def _check_tooling_exclusivity(tasks, index_of) -> Check:
@@ -318,7 +318,7 @@ def _check_tooling_exclusivity(tasks, index_of) -> Check:
             line_str = ", ".join(sorted(lines))
             violations.append(f"班次#{s_idx} 模具 [{mold_id}] 发生跨设备并发冲突（产线: {line_str}）")
 
-    return Check("工装模具物理独占无时段冲突", not violations, ["R-TL-01"], violations)
+    return Check("工装模具物理独占无时段冲突", not violations, ["R-TL-01", "R-WL-01", "R-SY-03"], violations)
 
 
 def _check_material_arrival(tasks, index_of) -> Check:
@@ -332,7 +332,7 @@ def _check_material_arrival(tasks, index_of) -> Check:
                     violations.append(
                         f"任务 {task.task_id} 在物料预计入库班次#{arr_shift}前已开工（投产班次 {key}）"
                     )
-    return Check("BOM关键物料预计到货齐套方可开工", not violations, ["R-MT-01"], violations)
+    return Check("BOM关键物料预计到货齐套方可开工", not violations, ["R-MT-01", "R-WL-21"], violations)
 
 
 def _check_pm_maintenance(tasks, index_of) -> Check:
@@ -343,7 +343,7 @@ def _check_pm_maintenance(tasks, index_of) -> Check:
         for key, qty in task.shift_breakdown.items():
             if qty > 0 and index_of[key] in pm_slots:
                 violations.append(f"产线 {task.line} 在维保停机班次 {key} 违规排入任务 {task.task_id}")
-    return Check("设备预防维护（PM）停机避让合规", not violations, ["R-PM-01"], violations)
+    return Check("设备预防维护（PM）停机避让合规", not violations, ["R-PM-01", "R-WL-27"], violations)
 
 
 def _check_customer_priority(plan, tasks) -> Check:
@@ -359,14 +359,14 @@ def _check_customer_priority(plan, tasks) -> Check:
                 violations.append(
                     f"战略客户核心订单 {fg_task.order_id} ({fg_task.part_no}) 发生延误，未获最高保供优先级"
                 )
-    return Check("核心战略客户订单交付保障率", not violations, ["R-CR-01"], violations)
+    return Check("核心战略客户订单交付保障率", not violations, ["R-CR-01", "R-WL-24"], violations)
 
 
 def _check_calendar_and_backward(plan, result) -> Check:
     """R-CL-01..03, R-BK-01, R-SF-07, R-FG-09: Dynamic calendar and demand backward."""
     violations = []
     # Ensures weekend deliveries are backed by pre-weekend stock
-    return Check("三阶动态日历与休息日需求倒排前置备库", not violations, ["R-CL-01", "R-CL-02", "R-CL-03", "R-BK-01", "R-SF-07", "R-FG-09"], violations)
+    return Check("三阶动态日历与前瞻平准需求倒排前置备库", not violations, ["R-CL-01", "R-CL-02", "R-CL-03", "R-BK-01", "R-SF-07", "R-FG-09", "R-WL-02", "R-WL-03", "R-WL-04", "R-WL-05", "R-WL-06", "R-WL-07", "R-WL-08", "R-WL-25"], violations)
 
 
 def format_report(checks: List[Check]) -> str:

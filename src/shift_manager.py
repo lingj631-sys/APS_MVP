@@ -324,6 +324,7 @@ def evaluate_calendar_recommendation(
         "recommended_short_name": recommended_short_name,
         "rule_id": rule_id,
         "confidence": confidence,
+        "reason": summary_text,
         "summary_text": summary_text,
         "reasons": reasons,
         "bottleneck_line": bottleneck_line,

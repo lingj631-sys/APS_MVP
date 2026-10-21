@@ -7,6 +7,8 @@
   <script src="/static/tailwind.js"></script>
   <script src="/static/vue.global.prod.js"></script>
   <style>
+    [v-cloak] { display: none !important; }
+
     /* Custom scrollbar */
     ::-webkit-scrollbar {
       width: 6px;
@@ -110,7 +112,7 @@
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased font-sans min-h-screen flex flex-col">
-  <div id="app" class="flex-1 flex flex-col">
+  <div id="app" v-cloak class="flex-1 flex flex-col">
     <!-- Header -->
     <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
       <div class="max-w-[98%] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-4">
@@ -1257,7 +1259,7 @@
                       <div class="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{{ rule.description }}</div>
 
                       <!-- 单班负荷率阈值控制 (Radio Box: 95%~100% vs 95%~105%) -->
-                      <div v-if="rule.rule_id === 'R-SF-01' || rule.rule_id === 'R-FG-03'" class="mt-2.5 p-2.5 rounded-lg bg-indigo-50/80 border border-indigo-200 text-xs shadow-2xs">
+                      <div v-if="rule.rule_id === 'R-SF-01' || rule.rule_id === 'R-FG-03' || rule.rule_id === 'R-WL-26' || rule.rule_id === 'R-SY-08'" class="mt-2.5 p-2.5 rounded-lg bg-indigo-50/80 border border-indigo-200 text-xs shadow-2xs">
                         <div class="flex items-center justify-between mb-2">
                           <span class="font-bold text-indigo-900 flex items-center space-x-1.5 text-xs">
                             <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
@@ -2721,7 +2723,7 @@
                   </div>
                 </div>
                 <div class="text-[11px] text-slate-500 pt-2 border-t border-slate-200 flex items-center justify-between">
-                  <span>合批原则: 仅对当前执行窗口已排型号顺位前拉 (R-SF-02 / R-FG-05)</span>
+                  <span>合批原则: 仅对当前执行窗口已排型号顺位前拉 (R-WL-03 / R-WL-12)</span>
                   <span class="text-emerald-700 font-semibold">规避远期孤立散单 ✓</span>
                 </div>
               </div>
@@ -2797,9 +2799,12 @@
               <!-- AI Recommendation Panel -->
               <div v-if="calendarConfig && calendarConfig.ai_recommendation" class="p-3.5 rounded-xl border text-xs space-y-2" :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'bg-emerald-50/60 border-emerald-200' : 'bg-amber-50/60 border-amber-200'">
                 <div class="flex items-center justify-between">
-                  <div class="font-bold flex items-center space-x-1.5" :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'text-emerald-900' : 'text-amber-950'">
-                    <span>💡 AI 智能排班评估:</span>
-                    <span>{{ calendarConfig.ai_recommendation.recommended_short_name }}</span>
+                  <div class="font-bold flex items-center space-x-1.5" :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'text-emerald-900' : 'text-amber-900'">
+                    <span class="text-sm">💡</span>
+                    <span>AI 智能排班评估:</span>
+                    <span class="font-bold" :class="calendarConfig.ai_recommendation.bottleneck_ratio > 0.714 ? 'text-amber-700' : 'text-emerald-700'">
+                      {{ calendarConfig.ai_recommendation.recommended_short_name }}
+                    </span>
                   </div>
                   <button v-if="!calendarConfig.ai_recommendation.is_current_mode_matched" @click="adoptAiRecommendation(false)" class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[11px] font-bold shadow-xs">
                     采纳建议
@@ -3346,6 +3351,7 @@
         // Factory Calendar & Horizon Workstation state
         const horizonDays = ref(10);
         const startDate = ref("2026-10-12");
+        const baselineDate = ref("2026-10-11");
         const calendarConfig = ref({
           baseline_date: "2026-10-11",
           start_date: "2026-10-12",
@@ -3776,6 +3782,7 @@
               horizonDays.value = data.horizon_days || 10;
               calendarMode.value = data.calendar_mode || 'SEVEN_ZERO';
               startDate.value = data.start_date || '2026-10-12';
+              baselineDate.value = data.baseline_date || '2026-10-11';
               dayShiftOverrides.value = data.day_shift_overrides || {};
             }
           } catch (e) {
@@ -3789,6 +3796,7 @@
             siteSettings.value.horizon_days = horizonDays.value;
             siteSettings.value.calendar_mode = calendarMode.value;
             siteSettings.value.start_date = startDate.value;
+            siteSettings.value.baseline_date = baselineDate.value;
             siteSettings.value.day_shift_overrides = dayShiftOverrides.value;
 
             const res = await fetch('/api/site-settings', {
@@ -3813,6 +3821,8 @@
           siteSettings.value.campaign_merge_enabled = true;
           horizonDays.value = 10;
           calendarMode.value = (selectedSite.value === 'WL') ? 'SEVEN_ZERO' : 'FIVE_TWO';
+          startDate.value = '2026-10-12';
+          baselineDate.value = '2026-10-11';
           dayShiftOverrides.value = {};
           saveSiteSettings();
         };
@@ -3824,11 +3834,34 @@
             calendarConfig.value = data;
             horizonDays.value = data.horizon_days;
             startDate.value = data.start_date;
+            if (data.baseline_date) {
+              baselineDate.value = data.baseline_date;
+            }
             dayShiftOverrides.value = data.day_shift_overrides || {};
             calendarMode.value = data.calendar_mode;
           } catch (e) {
             console.error("Failed to load calendar", e);
           }
+        };
+
+        const onStartDateChange = async () => {
+          try {
+            const dt = new Date(startDate.value);
+            if (!isNaN(dt.getTime())) {
+              dt.setDate(dt.getDate() - 1);
+              const yyyy = dt.getFullYear();
+              const mm = String(dt.getMonth() + 1).padStart(2, '0');
+              const dd = String(dt.getDate()).padStart(2, '0');
+              baselineDate.value = `${yyyy}-${mm}-${dd}`;
+            }
+            await saveCalendarConfig(false);
+          } catch (e) {
+            console.error("onStartDateChange error: ", e);
+          }
+        };
+
+        const onBaselineDateChange = async () => {
+          await saveCalendarConfig(false);
         };
 
         const selectHorizon = async (days) => {
@@ -3905,6 +3938,7 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 start_date: startDate.value,
+                baseline_date: baselineDate.value,
                 horizon_days: horizonDays.value,
                 calendar_mode: calendarMode.value,
                 day_shift_overrides: dayShiftOverrides.value,
@@ -3964,8 +3998,10 @@
             const enabled_rule_ids = rules.value.filter(r => r.checked).map(r => r.rule_id);
             const r_sf_01 = rules.value.find(r => r.rule_id === 'R-SF-01');
             const r_fg_03 = rules.value.find(r => r.rule_id === 'R-FG-03');
-            const allow_105_sf = r_sf_01 ? (r_sf_01.load_limit_mode === '105') : false;
-            const allow_105_fg = r_fg_03 ? (r_fg_03.load_limit_mode === '105') : false;
+            const r_wl_26 = rules.value.find(r => r.rule_id === 'R-WL-26');
+            const r_sy_08 = rules.value.find(r => r.rule_id === 'R-SY-08');
+            const allow_105_sf = (r_wl_26 && r_wl_26.load_limit_mode === '105') || (r_sy_08 && r_sy_08.load_limit_mode === '105') || (r_sf_01 ? (r_sf_01.load_limit_mode === '105') : false);
+            const allow_105_fg = (r_wl_26 && r_wl_26.load_limit_mode === '105') || (r_sy_08 && r_sy_08.load_limit_mode === '105') || (r_fg_03 ? (r_fg_03.load_limit_mode === '105') : false);
 
             const res = await fetch('/api/solve', {
               method: 'POST',
@@ -3977,6 +4013,7 @@
                 time_limit_seconds: 35.0,
                 horizon_days: horizonDays.value,
                 start_date: startDate.value,
+                baseline_date: baselineDate.value,
                 day_shift_overrides: dayShiftOverrides.value,
                 allow_105_utilization_fg: allow_105_fg,
                 allow_105_utilization_sf: allow_105_sf,
@@ -3985,7 +4022,9 @@
                 max_pull_forward_days: siteSettings.value.max_pull_forward_days,
                 rule_options: {
                   'R-SF-01': { load_limit_mode: r_sf_01 ? r_sf_01.load_limit_mode : '100' },
-                  'R-FG-03': { load_limit_mode: r_fg_03 ? r_fg_03.load_limit_mode : '100' }
+                  'R-FG-03': { load_limit_mode: r_fg_03 ? r_fg_03.load_limit_mode : '100' },
+                  'R-WL-26': { load_limit_mode: r_wl_26 ? r_wl_26.load_limit_mode : '100' },
+                  'R-SY-08': { load_limit_mode: r_sy_08 ? r_sy_08.load_limit_mode : '100' }
                 }
               })
             });
@@ -4181,6 +4220,9 @@
           calendarMode,
           horizonDays,
           startDate,
+          baselineDate,
+          onStartDateChange,
+          onBaselineDateChange,
           calendarConfig,
           dayShiftOverrides,
           currentTab,

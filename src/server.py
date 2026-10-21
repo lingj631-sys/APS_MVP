@@ -220,6 +220,7 @@ def generate_calendar_view(
     mode_str: str,
     overrides: Dict[str, Any],
     snap: Optional[ProductionInputSnapshot] = None,
+    baseline_date_str: Optional[str] = None,
 ) -> Dict[str, Any]:
     try:
         y, m, d = [int(p) for p in start_date_str.split("-")]
@@ -227,7 +228,14 @@ def generate_calendar_view(
     except Exception:
         start_day = datetime(2026, 10, 12)
 
-    baseline_day = start_day - timedelta(days=1)
+    if baseline_date_str:
+        try:
+            by, bm, bd = [int(p) for p in baseline_date_str.split("-")]
+            baseline_day = datetime(by, bm, bd)
+        except Exception:
+            baseline_day = start_day - timedelta(days=1)
+    else:
+        baseline_day = start_day - timedelta(days=1)
 
     if mode_str == "FIVE_TWO":
         mode_working_weekdays = {0, 1, 2, 3, 4}
@@ -400,6 +408,7 @@ class UpdateInputsPayload(BaseModel):
 
 class CalendarUpdatePayload(BaseModel):
     start_date: Optional[str] = "2026-10-12"
+    baseline_date: Optional[str] = "2026-10-11"
     horizon_days: Optional[int] = 10
     calendar_mode: Optional[str] = "SEVEN_ZERO"
     day_shift_overrides: Optional[Dict[str, Any]] = None
@@ -409,6 +418,7 @@ class SiteSettingsPayload(BaseModel):
     site: str = "WL"
     horizon_days: Optional[int] = 10
     start_date: Optional[str] = "2026-10-12"
+    baseline_date: Optional[str] = "2026-10-11"
     calendar_mode: Optional[str] = "SEVEN_ZERO"
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
@@ -424,6 +434,7 @@ class SolvePayload(BaseModel):
     time_limit_seconds: float = 30.0
     horizon_days: Optional[int] = 10
     start_date: Optional[str] = "2026-10-12"
+    baseline_date: Optional[str] = "2026-10-11"
     day_shift_overrides: Optional[Dict[str, Any]] = None
     allow_105_utilization_fg: bool = False
     allow_105_utilization_sf: bool = False
@@ -464,6 +475,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["horizon_days"] = payload.horizon_days
     if payload.start_date is not None:
         cfg["start_date"] = payload.start_date
+    if payload.baseline_date is not None:
+        cfg["baseline_date"] = payload.baseline_date
     if payload.calendar_mode is not None:
         cfg["calendar_mode"] = payload.calendar_mode
     if payload.lookahead_enabled is not None:
@@ -481,6 +494,7 @@ def update_site_settings(payload: SiteSettingsPayload):
     if site == session_state["site"]:
         session_state["calendar_config"]["horizon_days"] = cfg["horizon_days"]
         session_state["calendar_config"]["start_date"] = cfg["start_date"]
+        session_state["calendar_config"]["baseline_date"] = cfg.get("baseline_date", "2026-10-11")
         session_state["calendar_config"]["calendar_mode"] = cfg["calendar_mode"]
         session_state["calendar_config"]["day_shift_overrides"] = cfg["day_shift_overrides"]
 
@@ -928,6 +942,7 @@ def get_calendar():
         mode_str=cfg.get("calendar_mode", "SEVEN_ZERO"),
         overrides=cfg.get("day_shift_overrides", {}),
         snap=snap,
+        baseline_date_str=cfg.get("baseline_date"),
     )
 
 
@@ -941,6 +956,8 @@ def update_calendar(payload: CalendarUpdatePayload):
     cfg = session_state.setdefault("calendar_config", {})
     if payload.start_date:
         cfg["start_date"] = payload.start_date
+    if payload.baseline_date:
+        cfg["baseline_date"] = payload.baseline_date
     if payload.horizon_days and payload.horizon_days > 0:
         cfg["horizon_days"] = payload.horizon_days
     if payload.calendar_mode:
@@ -954,6 +971,7 @@ def update_calendar(payload: CalendarUpdatePayload):
         mode_str=cfg["calendar_mode"],
         overrides=cfg["day_shift_overrides"],
         snap=snap,
+        baseline_date_str=cfg.get("baseline_date"),
     )
     return {"status": "success", "message": "工厂日历配置已更新", "calendar": view}
 
@@ -1094,6 +1112,8 @@ def run_solver(payload: SolvePayload):
     # Update session calendar config
     cfg["horizon_days"] = horizon_days
     cfg["start_date"] = start_date_str
+    if payload.baseline_date:
+        cfg["baseline_date"] = payload.baseline_date
     cfg["calendar_mode"] = cal_mode_str
     cfg["day_shift_overrides"] = day_shift_overrides
 
@@ -1152,16 +1172,19 @@ def run_solver(payload: SolvePayload):
         "R-FG-03" in enabled or "R-SF-01" in enabled or "R-WL-26" in enabled or "R-SY-08" in enabled
     )
 
-    # 105% utilization threshold option for R-FG-03 and R-SF-01
+    # 105% utilization threshold option for R-FG-03, R-SF-01, R-WL-26, R-SY-08
     allow_105_fg = payload.allow_105_utilization_fg
     allow_105_sf = payload.allow_105_utilization_sf
     if payload.rule_options:
-        if payload.rule_options.get("R-FG-03", {}).get("load_limit_mode") == "105":
-            allow_105_fg = True
-        if payload.rule_options.get("R-SF-01", {}).get("load_limit_mode") == "105":
-            allow_105_sf = True
+        for rk in ("R-FG-03", "R-WL-26", "R-SY-08"):
+            if payload.rule_options.get(rk, {}).get("load_limit_mode") == "105":
+                allow_105_fg = True
+        for rk in ("R-SF-01", "R-WL-26", "R-SY-08"):
+            if payload.rule_options.get(rk, {}).get("load_limit_mode") == "105":
+                allow_105_sf = True
     enforce_on_time_delivery = ("R-FG-01" in enabled or "R-WL-20" in enabled or "R-SY-01" in enabled or "R-SY-09" in enabled)
     enforce_concurrency_limit = ("R-FG-13" in enabled or "R-SY-05" in enabled)
+    enforce_controlled_window = ("R-WL-14" in enabled)
     enforce_mpq_batch = ("R-FG-02" in enabled or "R-SF-09" in enabled or "R-WL-09" in enabled or "R-WL-15" in enabled)
     enforce_material_balance = ("R-SF-03" in enabled or "R-WL-23" in enabled or "R-SY-02" in enabled or "R-SY-04" in enabled)
     enforce_sequential_pulling = ("R-SF-02" in enabled or "R-FG-05" in enabled or "R-WL-12" in enabled)
@@ -1196,7 +1219,7 @@ def run_solver(payload: SolvePayload):
         enforce_concurrency_limit=enforce_concurrency_limit,
         enforce_mpq_batch=enforce_mpq_batch,
         enforce_material_balance=enforce_material_balance,
-        price_changeovers=("R-FG-06" in enabled or "R-FG-13" in enabled),
+        price_changeovers=("R-FG-06" in enabled or "R-FG-13" in enabled or "R-WL-11" in enabled or "R-WL-14" in enabled or "R-SY-05" in enabled),
         enforce_sequential_pulling=enforce_sequential_pulling,
         enforce_freeze_window=enforce_freeze_window,
         enforce_tooling_exclusivity=enforce_tooling_exclusivity,
@@ -1254,7 +1277,13 @@ def run_solver(payload: SolvePayload):
     session_state["matrix"] = matrix
 
     # Run Independent Validation
-    checks = validate_schedule(plan, result, allow_105_fg=allow_105_fg, allow_105_sf=allow_105_sf)
+    checks = validate_schedule(
+        plan,
+        result,
+        site=payload.site,
+        allow_105_fg=allow_105_fg,
+        allow_105_sf=allow_105_sf,
+    )
     session_state["checks"] = checks
 
     # Calculate KPIs

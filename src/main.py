@@ -40,9 +40,11 @@ TIME_LIMIT_SECONDS = 90.0
 
 
 def main():
-    excel_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
-    backup_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.backup.xlsx")
-    if not os.path.exists(backup_path):
+    excel_path = os.path.join(BASE_DIR, "dataSource.xlsx")
+    if not os.path.exists(excel_path):
+        excel_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
+    backup_path = os.path.join(BASE_DIR, "dataSource.backup.xlsx")
+    if not os.path.exists(backup_path) and os.path.exists(excel_path):
         shutil.copyfile(excel_path, backup_path)
         print(f"Created backup at {backup_path}")
 

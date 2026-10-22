@@ -1,0 +1,1298 @@
+{
+  "fg_params": {
+    "L755390S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "ct_seconds": 35.0,
+      "trp": 0.85,
+      "mpq": 70.0,
+      "output_per_shift": 1050.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "L755392S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "ct_seconds": 35.0,
+      "trp": 0.85,
+      "mpq": 70.0,
+      "output_per_shift": 1050.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LA96403S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "LA96403S",
+      "description": "B9RL Fender lamp Left side OEM",
+      "ct_seconds": 35.0,
+      "trp": 0.85,
+      "mpq": 70.0,
+      "output_per_shift": 1050.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LA96404S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "LA96404S",
+      "description": "B9RL Fender lamp Right side OEM",
+      "ct_seconds": 35.0,
+      "trp": 0.85,
+      "mpq": 70.0,
+      "output_per_shift": 1050.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LA83453S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "LA83453S",
+      "description": "B9 Low Trunk",
+      "ct_seconds": 70.0,
+      "trp": 0.85,
+      "mpq": 24.0,
+      "output_per_shift": 525.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "L755548S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "ct_seconds": 70.0,
+      "trp": 0.85,
+      "mpq": 24.0,
+      "output_per_shift": 525.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LA96445S": {
+      "site": "SY38",
+      "line": "PU07",
+      "part_no": "LA96445S",
+      "description": "B9RL TRUNK High OEM",
+      "ct_seconds": 70.0,
+      "trp": 0.85,
+      "mpq": 24.0,
+      "output_per_shift": 525.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LCC4666ZO04": {
+      "site": "SY38",
+      "line": "PU22",
+      "part_no": "LCC4666ZO04",
+      "description": "BMW NA8 翼灯总成左",
+      "ct_seconds": 45.0,
+      "trp": 0.7,
+      "mpq": 24.0,
+      "output_per_shift": 672.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LCC4690ZO04": {
+      "site": "SY38",
+      "line": "PU22",
+      "part_no": "LCC4690ZO04",
+      "description": "BMW NA8 翼灯总成右",
+      "ct_seconds": 45.0,
+      "trp": 0.7,
+      "mpq": 24.0,
+      "output_per_shift": 672.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LCC4710ZN04": {
+      "site": "SY38",
+      "line": "PU22",
+      "part_no": "LCC4710ZN04",
+      "description": "BMW NA8 箱灯总成左",
+      "ct_seconds": 50.0,
+      "trp": 0.7,
+      "mpq": 24.0,
+      "output_per_shift": 605.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "LCC4725ZN04": {
+      "site": "SY38",
+      "line": "PU22",
+      "part_no": "LCC4725ZN04",
+      "description": "BMW NA8 箱灯总成右",
+      "ct_seconds": 50.0,
+      "trp": 0.7,
+      "mpq": 24.0,
+      "output_per_shift": 605.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    }
+  },
+  "sf_params": {
+    "L755405": {
+      "site": "SY38",
+      "line": "1400T-6",
+      "part_no": "L755405",
+      "description": "B9RL Fender 2K Outer Lens Left sde",
+      "ct_seconds": 100.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 368.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.5,
+      "scrap_rate": 0.0
+    },
+    "L782264": {
+      "site": "SY38",
+      "line": "1400T-6",
+      "part_no": "L782264",
+      "description": "B9RL Fender 2K Outer Lens Right sde",
+      "ct_seconds": 100.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 368.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.5,
+      "scrap_rate": 0.0
+    },
+    "L755774": {
+      "site": "SY38",
+      "line": "1400T-6",
+      "part_no": "L755774",
+      "description": "B9RL Trunk 2K Outer Lens",
+      "ct_seconds": 90.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 408.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.5,
+      "scrap_rate": 0.0
+    },
+    "LAC3180": {
+      "site": "SY38",
+      "line": "1400T-6",
+      "part_no": "LAC3180",
+      "description": "BMW G58 箱灯透镜左",
+      "ct_seconds": 60.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 612.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.5,
+      "scrap_rate": 0.0
+    },
+    "LAC3181": {
+      "site": "SY38",
+      "line": "1400T-6",
+      "part_no": "LAC3181",
+      "description": "BMW G58 箱灯透镜右",
+      "ct_seconds": 60.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 612.0,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.5,
+      "scrap_rate": 0.0
+    }
+  },
+  "bom": {
+    "LCC4710ZN04": [
+      [
+        "LAC3180",
+        1.0
+      ]
+    ],
+    "LCC4725ZN04": [
+      [
+        "LAC3181",
+        1.0
+      ]
+    ],
+    "L755390S": [
+      [
+        "L755405",
+        1.0
+      ]
+    ],
+    "L755392S": [
+      [
+        "L782264",
+        1.0
+      ]
+    ],
+    "LA96403S": [
+      [
+        "L755405",
+        1.0
+      ]
+    ],
+    "LA96404S": [
+      [
+        "L782264",
+        1.0
+      ]
+    ],
+    "LA83453S": [
+      [
+        "L755774",
+        1.0
+      ]
+    ],
+    "L755548S": [
+      [
+        "L755774",
+        1.0
+      ]
+    ],
+    "LA96445S": [
+      [
+        "L755774",
+        1.0
+      ]
+    ]
+  },
+  "initial_stock": {
+    "L755390S": 930.0,
+    "L755392S": 960.0,
+    "LA96403S": 0.0,
+    "LA96404S": 0.0,
+    "LA83453S": 7.0,
+    "L755548S": 910.0,
+    "LA96445S": 0.0,
+    "LCC4666ZO04": 0.0,
+    "LCC4690ZO04": 0.0,
+    "LCC4710ZN04": 0.0,
+    "LCC4725ZN04": 0.0,
+    "L755405": 583.0,
+    "L782264": 1684.0,
+    "L755774": 566.0,
+    "LAC3180": 80.0,
+    "LAC3181": 149.0
+  },
+  "orders": [
+    {
+      "order_id": "ORD_SY38_L755390S_1013",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/13",
+      "due_datetime": "2026-10-13T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1014",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/14",
+      "due_datetime": "2026-10-14T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1015",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/15",
+      "due_datetime": "2026-10-15T20:00:00",
+      "demand_quantity": 350.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1017",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/17",
+      "due_datetime": "2026-10-17T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1019",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T20:00:00",
+      "demand_quantity": 350.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1020",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/20",
+      "due_datetime": "2026-10-20T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1021",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/21",
+      "due_datetime": "2026-10-21T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1022",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 210.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1023",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T20:00:00",
+      "demand_quantity": 770.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1024",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T20:00:00",
+      "demand_quantity": 210.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1026",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T20:00:00",
+      "demand_quantity": 420.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1027",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/27",
+      "due_datetime": "2026-10-27T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1028",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/28",
+      "due_datetime": "2026-10-28T20:00:00",
+      "demand_quantity": 490.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1029",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/29",
+      "due_datetime": "2026-10-29T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1030",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/30",
+      "due_datetime": "2026-10-30T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1031",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T20:00:00",
+      "demand_quantity": 610.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1101",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/1",
+      "due_datetime": "2026-11-01T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1102",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/2",
+      "due_datetime": "2026-11-02T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1103",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1104",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/4",
+      "due_datetime": "2026-11-04T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1105",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/5",
+      "due_datetime": "2026-11-05T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1106",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/6",
+      "due_datetime": "2026-11-06T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1107",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/7",
+      "due_datetime": "2026-11-07T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1109",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1110",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1111",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/11",
+      "due_datetime": "2026-11-11T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1112",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1113",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755390S_1114",
+      "part_no": "L755390S",
+      "description": "B9 Low Fender L",
+      "due_date": "11/14",
+      "due_datetime": "2026-11-14T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1013",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/13",
+      "due_datetime": "2026-10-13T20:00:00",
+      "demand_quantity": 350.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1014",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/14",
+      "due_datetime": "2026-10-14T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1015",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/15",
+      "due_datetime": "2026-10-15T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1017",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/17",
+      "due_datetime": "2026-10-17T20:00:00",
+      "demand_quantity": 210.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1019",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1020",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/20",
+      "due_datetime": "2026-10-20T20:00:00",
+      "demand_quantity": 630.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1021",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/21",
+      "due_datetime": "2026-10-21T20:00:00",
+      "demand_quantity": 280.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1022",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 210.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1023",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T20:00:00",
+      "demand_quantity": 770.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1024",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T20:00:00",
+      "demand_quantity": 210.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1026",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T20:00:00",
+      "demand_quantity": 420.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1027",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/27",
+      "due_datetime": "2026-10-27T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1028",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/28",
+      "due_datetime": "2026-10-28T20:00:00",
+      "demand_quantity": 490.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1029",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/29",
+      "due_datetime": "2026-10-29T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1030",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/30",
+      "due_datetime": "2026-10-30T20:00:00",
+      "demand_quantity": 560.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1031",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T20:00:00",
+      "demand_quantity": 610.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1101",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/1",
+      "due_datetime": "2026-11-01T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1102",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/2",
+      "due_datetime": "2026-11-02T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1103",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1104",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/4",
+      "due_datetime": "2026-11-04T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1105",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/5",
+      "due_datetime": "2026-11-05T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1106",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/6",
+      "due_datetime": "2026-11-06T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1107",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/7",
+      "due_datetime": "2026-11-07T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1109",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1110",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1111",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/11",
+      "due_datetime": "2026-11-11T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1112",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1113",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755392S_1114",
+      "part_no": "L755392S",
+      "description": "B9 Low Fender R",
+      "due_date": "11/14",
+      "due_datetime": "2026-11-14T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_LA96403S_1027",
+      "part_no": "LA96403S",
+      "description": "B9RL Fender lamp Left side OEM",
+      "due_date": "10/27",
+      "due_datetime": "2026-10-27T20:00:00",
+      "demand_quantity": 7.0
+    },
+    {
+      "order_id": "ORD_SY38_LA96404S_1027",
+      "part_no": "LA96404S",
+      "description": "B9RL Fender lamp Right side OEM",
+      "due_date": "10/27",
+      "due_datetime": "2026-10-27T20:00:00",
+      "demand_quantity": 7.0
+    },
+    {
+      "order_id": "ORD_SY38_LA83453S_1031",
+      "part_no": "LA83453S",
+      "description": "B9 Low Trunk",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T20:00:00",
+      "demand_quantity": 1.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1013",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/13",
+      "due_datetime": "2026-10-13T20:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1014",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/14",
+      "due_datetime": "2026-10-14T20:00:00",
+      "demand_quantity": 312.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1015",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/15",
+      "due_datetime": "2026-10-15T20:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1017",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/17",
+      "due_datetime": "2026-10-17T20:00:00",
+      "demand_quantity": 336.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1019",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T20:00:00",
+      "demand_quantity": 264.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1020",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/20",
+      "due_datetime": "2026-10-20T20:00:00",
+      "demand_quantity": 600.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1021",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/21",
+      "due_datetime": "2026-10-21T20:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1022",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 240.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1023",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T20:00:00",
+      "demand_quantity": 744.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1024",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T20:00:00",
+      "demand_quantity": 240.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1026",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T20:00:00",
+      "demand_quantity": 456.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1027",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/27",
+      "due_datetime": "2026-10-27T20:00:00",
+      "demand_quantity": 504.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1028",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/28",
+      "due_datetime": "2026-10-28T20:00:00",
+      "demand_quantity": 552.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1029",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/29",
+      "due_datetime": "2026-10-29T20:00:00",
+      "demand_quantity": 552.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1030",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/30",
+      "due_datetime": "2026-10-30T20:00:00",
+      "demand_quantity": 528.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1031",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T20:00:00",
+      "demand_quantity": 609.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1101",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/1",
+      "due_datetime": "2026-11-01T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1102",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/2",
+      "due_datetime": "2026-11-02T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1103",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1104",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/4",
+      "due_datetime": "2026-11-04T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1105",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/5",
+      "due_datetime": "2026-11-05T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1106",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/6",
+      "due_datetime": "2026-11-06T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1107",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/7",
+      "due_datetime": "2026-11-07T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1109",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1110",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1111",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/11",
+      "due_datetime": "2026-11-11T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1112",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1113",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_L755548S_1114",
+      "part_no": "L755548S",
+      "description": "B9 High Trunk",
+      "due_date": "11/14",
+      "due_datetime": "2026-11-14T20:00:00",
+      "demand_quantity": 645.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4666ZO04_1022",
+      "part_no": "LCC4666ZO04",
+      "description": "BMW NA8 翼灯总成左",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4666ZO04_1103",
+      "part_no": "LCC4666ZO04",
+      "description": "BMW NA8 翼灯总成左",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 100.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4666ZO04_1110",
+      "part_no": "LCC4666ZO04",
+      "description": "BMW NA8 翼灯总成左",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4666ZO04_1113",
+      "part_no": "LCC4666ZO04",
+      "description": "BMW NA8 翼灯总成左",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 50.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4690ZO04_1022",
+      "part_no": "LCC4690ZO04",
+      "description": "BMW NA8 翼灯总成右",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4690ZO04_1103",
+      "part_no": "LCC4690ZO04",
+      "description": "BMW NA8 翼灯总成右",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 100.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4690ZO04_1110",
+      "part_no": "LCC4690ZO04",
+      "description": "BMW NA8 翼灯总成右",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4690ZO04_1113",
+      "part_no": "LCC4690ZO04",
+      "description": "BMW NA8 翼灯总成右",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 50.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4710ZN04_1022",
+      "part_no": "LCC4710ZN04",
+      "description": "BMW NA8 箱灯总成左",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4710ZN04_1103",
+      "part_no": "LCC4710ZN04",
+      "description": "BMW NA8 箱灯总成左",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 100.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4710ZN04_1110",
+      "part_no": "LCC4710ZN04",
+      "description": "BMW NA8 箱灯总成左",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4710ZN04_1113",
+      "part_no": "LCC4710ZN04",
+      "description": "BMW NA8 箱灯总成左",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 50.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4725ZN04_1022",
+      "part_no": "LCC4725ZN04",
+      "description": "BMW NA8 箱灯总成右",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4725ZN04_1103",
+      "part_no": "LCC4725ZN04",
+      "description": "BMW NA8 箱灯总成右",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T20:00:00",
+      "demand_quantity": 100.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4725ZN04_1110",
+      "part_no": "LCC4725ZN04",
+      "description": "BMW NA8 箱灯总成右",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T20:00:00",
+      "demand_quantity": 150.0
+    },
+    {
+      "order_id": "ORD_SY38_LCC4725ZN04_1113",
+      "part_no": "LCC4725ZN04",
+      "description": "BMW NA8 箱灯总成右",
+      "due_date": "11/13",
+      "due_datetime": "2026-11-13T20:00:00",
+      "demand_quantity": 50.0
+    }
+  ],
+  "planning_dates": [
+    "10/13",
+    "10/14",
+    "10/15",
+    "10/16",
+    "10/17",
+    "10/18",
+    "10/19",
+    "10/20",
+    "10/21",
+    "10/22",
+    "10/23",
+    "10/24",
+    "10/25",
+    "10/26",
+    "10/27",
+    "10/28",
+    "10/29",
+    "10/30",
+    "10/31",
+    "11/1",
+    "11/2",
+    "11/3",
+    "11/4",
+    "11/5",
+    "11/6",
+    "11/7",
+    "11/8",
+    "11/9",
+    "11/10",
+    "11/11",
+    "11/12",
+    "11/13",
+    "11/14",
+    "11/15"
+  ],
+  "tooling_molds": [
+    {
+      "site": "SY38",
+      "mold_id": "MOLD_SY_1400T_01",
+      "mold_name": "1400T 注塑机双腔大型精密模具",
+      "applicable_lines": [
+        "1400T-6",
+        "1400T-7"
+      ],
+      "applicable_parts": [
+        "SY_INJ_001",
+        "SY_INJ_002"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 120.0,
+      "max_life_strokes": 300000,
+      "current_strokes": 78000,
+      "maintenance_cycle_strokes": 30000,
+      "status": "可用 (Available)"
+    },
+    {
+      "site": "SY38",
+      "mold_id": "MOLD_SY_PAINT_01",
+      "mold_name": "PU07/PU22 静电旋杯自动喷涂挂具",
+      "applicable_lines": [
+        "PU07",
+        "PU22"
+      ],
+      "applicable_parts": [
+        "SY_PAINT_F01",
+        "SY_PAINT_R01"
+      ],
+      "available_qty": 2,
+      "changeover_time_min": 40.0,
+      "max_life_strokes": 200000,
+      "current_strokes": 45000,
+      "maintenance_cycle_strokes": 20000,
+      "status": "可用 (Available)"
+    }
+  ],
+  "pm_schedules": [
+    {
+      "site": "SY38",
+      "pm_plan_no": "PM-SY-202610-01",
+      "line": "1400T-6",
+      "equipment_name": "1400T 注塑机 6号机",
+      "pm_type": "Level-2 液压阀组与温控保养",
+      "start_date": "2026-10-16",
+      "start_shift": "早班",
+      "end_date": "2026-10-16",
+      "end_shift": "早班",
+      "downtime_hours": 8.0,
+      "capacity_rate": 0.0,
+      "handling_strategy": "避让顺延 (Shift_Delay)",
+      "responsible_team": "注塑保全班",
+      "status": "已排定 (Planned)"
+    },
+    {
+      "site": "SY38",
+      "pm_plan_no": "PM-SY-202610-02",
+      "line": "PU07",
+      "equipment_name": "PU07 自动化涂装线",
+      "pm_type": "Level-1 喷房水帘与废气过滤换芯",
+      "start_date": "2026-10-17",
+      "start_shift": "晚班",
+      "end_date": "2026-10-17",
+      "end_shift": "晚班",
+      "downtime_hours": 8.0,
+      "capacity_rate": 0.0,
+      "handling_strategy": "避让顺延 (Shift_Delay)",
+      "responsible_team": "涂装环保工务段",
+      "status": "已排定 (Planned)"
+    }
+  ],
+  "material_arrivals": [],
+  "customer_tiers": []
+}

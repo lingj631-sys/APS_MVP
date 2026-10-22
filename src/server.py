@@ -15,7 +15,7 @@ import sys
 import tempfile
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,14 +34,16 @@ from src.data_loader import (
     RequirementPlan,
     build_requirement_plan,
     load_aps_database,
+    save_snapshot_json,
 )
 from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.prechecker import precheck_capacity
 from src.rules import REGISTRY, RuleCategory, RuleStatus, get_rules_for_site
 from src.scheduler import APSScheduler, ScheduleResult
-from src.shift_manager import CalendarMode, evaluate_calendar_recommendation
+from src.shift_manager import CalendarMode, evaluate_calendar_recommendation, get_topology
 from src.validator import validate_schedule
 
+DATA_DIR = os.path.join(BASE_DIR, "data")
 EXCEL_PATH = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
 SITE = "WL"
 
@@ -211,7 +213,8 @@ session_state = {
 
 
 def get_fresh_snapshot(site: str = "WL") -> ProductionInputSnapshot:
-    return load_aps_database(EXCEL_PATH, site_filter=site)
+    source = DATA_DIR if os.path.exists(DATA_DIR) else EXCEL_PATH
+    return load_aps_database(source, site_filter=site)
 
 
 def generate_calendar_view(
@@ -221,7 +224,9 @@ def generate_calendar_view(
     overrides: Dict[str, Any],
     snap: Optional[ProductionInputSnapshot] = None,
     baseline_date_str: Optional[str] = None,
+    site: str = "WL",
 ) -> Dict[str, Any]:
+    topology = get_topology(site)
     try:
         y, m, d = [int(p) for p in start_date_str.split("-")]
         start_day = datetime(y, m, d)
@@ -266,19 +271,18 @@ def generate_calendar_view(
             shifts_ov = {}
 
         shifts_status = {
-            "早班": is_day_work and bool(shifts_ov.get("早班", True)),
-            "中班": is_day_work and bool(shifts_ov.get("中班", True)),
-            "晚班": is_day_work and bool(shifts_ov.get("晚班", True)),
+            name: is_day_work and bool(shifts_ov.get(name, True))
+            for name in topology.shift_names
         }
         open_shifts_count = sum(1 for v in shifts_status.values() if v)
-        day_cap_hours = open_shifts_count * 8.0
+        day_cap_hours = open_shifts_count * topology.shift_hours
         total_hours += day_cap_hours
 
         if open_shifts_count > 0:
             working_days_count += 1
             tag = "周末连产" if is_weekend else "正常工日"
-            if open_shifts_count < 3:
-                tag = f"部分开班 ({open_shifts_count}/3班)"
+            if open_shifts_count < topology.shifts_per_day:
+                tag = f"部分开班 ({open_shifts_count}/{topology.shifts_per_day}班)"
         else:
             rest_days_count += 1
             tag = "周末休假" if is_weekend else "停工检修"
@@ -319,6 +323,7 @@ def generate_calendar_view(
         start_date=start_day,
         horizon_days=horizon_days,
         current_calendar_mode=mode_str,
+        site=site,
     )
 
     return {
@@ -908,6 +913,10 @@ def update_inputs(payload: UpdateInputsPayload):
 
     # Rebuild plan
     session_state["plan"] = build_requirement_plan(snap)
+    try:
+        save_snapshot_json(snap, os.path.join(DATA_DIR, f"snapshot_{session_state['site']}.json"))
+    except Exception:
+        pass
     return {"status": "success", "message": "输入数据已更新"}
 
 
@@ -918,6 +927,10 @@ def delete_order(order_id: str):
         raise HTTPException(status_code=400, detail="Snapshot not loaded")
     snap.orders = [o for o in snap.orders if o.order_id != order_id]
     session_state["plan"] = build_requirement_plan(snap)
+    try:
+        save_snapshot_json(snap, os.path.join(DATA_DIR, f"snapshot_{session_state['site']}.json"))
+    except Exception:
+        pass
     return {"status": "success", "message": f"订单 {order_id} 已删除"}
 
 
@@ -943,6 +956,7 @@ def get_calendar():
         overrides=cfg.get("day_shift_overrides", {}),
         snap=snap,
         baseline_date_str=cfg.get("baseline_date"),
+        site=session_state["site"],
     )
 
 
@@ -972,6 +986,7 @@ def update_calendar(payload: CalendarUpdatePayload):
         overrides=cfg["day_shift_overrides"],
         snap=snap,
         baseline_date_str=cfg.get("baseline_date"),
+        site=session_state["site"],
     )
     return {"status": "success", "message": "工厂日历配置已更新", "calendar": view}
 
@@ -1001,6 +1016,7 @@ def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SE
         start_date=start_day,
         horizon_days=horizon_days,
         current_calendar_mode=calendar_mode,
+        site=session_state["site"],
     )
 
 

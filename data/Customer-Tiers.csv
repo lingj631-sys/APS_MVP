@@ -1,0 +1,6 @@
+﻿Site,Customer Code,Customer Name,Strategic Tier,Priority Weight,OTD Target Rate (%),Delivery Window (Days),Subcontract Allowed,Associated Products
+WL,CUST-GEELY,浙江吉利控股集团制造总装,STRATEGIC (战略级),10,100,0天严格保供,严禁外协 (No),"WA14208, WAB6404, W144813S"
+WL,CUST-SGM,上汽通用汽车有限公司,TIER_A (核心A级),3,98,±1天窗口协商,协商外协 (Negotiable),"WB35356, WB80510"
+WL,CUST-BYD,比亚迪乘用车弗迪动力,STRATEGIC (战略级),10,100,0天严格保供,严禁外协 (No),"WBC9317, WBC9324"
+WL,CUST-CHERY,奇瑞汽车新能源总装基地,TIER_A (核心A级),3,98,±1天窗口协商,协商外协 (Negotiable),"WD48696, WD59238"
+WL,CUST-AFTERMARKET,华东后市场备件流通中心,TIER_B (灵活B级),1,95,+3天或顺延次月,允许外协 (Yes),"W000014477SKR, W000014478SKR"

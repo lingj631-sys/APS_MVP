@@ -7,6 +7,26 @@ __pycache__/
 env/
 venv/
 .venv/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# UV & Package managers
+.uv/
+
+# Testing & Linting
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs & Environment
+*.log
+.env
+.env.*
+!.env.example
 
 # Excel lock files & temporary backups
 ~$*.xlsx

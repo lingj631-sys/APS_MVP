@@ -1,0 +1,9 @@
+﻿Site,Mold ID,Mold Name,Applicable Lines,Applicable Part Numbers,Available Qty,Changeover Time (min),Max Life Strokes,Current Strokes,Maintenance Cycle (Strokes),Status
+WL,MOLD_WL_AXLE_01,G38系列轴套冷挤压冲压成型模,"轴套6, 轴套7","W000061536, W000061541",1,45,500000,142500,50000,可用 (Available)
+WL,MOLD_WL_AXLE_02,DX11系列精密多工位轴套挤压模,"轴套6, 轴套7","WA14222, WA14229",1,50,500000,218000,50000,可用 (Available)
+WL,MOLD_WL_AXLE_03,E371 A1系列高精度轴套拉延模,"轴套6, 轴套7","WAB6407, WAB6412",1,45,450000,89000,40000,可用 (Available)
+WL,MOLD_WL_AXLE_04,930B系列高强度耐磨轴套冷冲模,"轴套6, 轴套7","WC84833, WC52036",1,60,500000,334000,50000,可用 (Available)
+WL,MOLD_WL_LINK_01,PGLINKAGE 传动杆多工位总装定位夹具,PGLINKAGE,"WA14208, WAB6404, WB35356, WB80510",1,30,1000000,420000,100000,可用 (Available)
+WL,MOLD_WL_LINK_02,PGLINKAGE 柔性压装与超声铆接模组,PGLINKAGE,"WD48696, WD59238, WBC9317, W000014477SKR",1,35,800000,156000,80000,可用 (Available)
+SY38,MOLD_SY_1400T_01,1400T 注塑机双腔大型精密模具,"1400T-6, 1400T-7","SY_INJ_001, SY_INJ_002",1,120,300000,78000,30000,可用 (Available)
+SY38,MOLD_SY_PAINT_01,PU07/PU22 静电旋杯自动喷涂挂具,"PU07, PU22","SY_PAINT_F01, SY_PAINT_R01",2,40,200000,45000,20000,可用 (Available)

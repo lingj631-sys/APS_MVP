@@ -36,9 +36,11 @@ from src.data_loader import TIME_SCALE, ProductionTask, RequirementPlan
 from src.shift_manager import (
     CalendarMode,
     MIN_SHIFT_SECONDS,
+    PlantTopology,
     SHIFT_SECONDS,
     ShiftBucket,
     generate_shift_calendar,
+    get_topology,
     last_shift_on_or_before,
 )
 
@@ -133,8 +135,16 @@ class APSScheduler:
         enforce_exact_demand: bool = True,
         allow_105_utilization_fg: bool = False,
         allow_105_utilization_sf: bool = False,
+        site: Optional[str] = None,
     ):
         self.plan = plan
+        self.site = site or getattr(plan, "site", "WL")
+        self.topology = get_topology(self.site)
+        self.shift_hours = self.topology.shift_hours
+        self.shift_seconds = self.topology.shift_seconds
+        self.shift_ms = self.topology.shift_ms
+        self.min_shift_ms = self.topology.min_shift_seconds * TIME_SCALE
+
         self.start_dt = start_datetime
         self.calendar_mode = calendar_mode
         self.enforce_utilization_95 = enforce_utilization_95
@@ -150,7 +160,16 @@ class APSScheduler:
         self.enforce_tooling_exclusivity = enforce_tooling_exclusivity
         self.enforce_material_arrival = enforce_material_arrival
         self.enforce_pm_maintenance = enforce_pm_maintenance
-        self.pm_shifts = pm_shifts or {}
+        if pm_shifts is not None:
+            self.pm_shifts = pm_shifts
+        else:
+            self.pm_shifts = defaultdict(list)
+            for t in getattr(self.plan, "tasks", []):
+                if t.line_pm_slots:
+                    for s in t.line_pm_slots:
+                        if s not in self.pm_shifts[t.line]:
+                            self.pm_shifts[t.line].append(s)
+            self.pm_shifts = dict(self.pm_shifts)
         self.enforce_customer_priority = enforce_customer_priority
         self.enforce_weekend_penalty = enforce_weekend_penalty
         self.enforce_exact_demand = enforce_exact_demand
@@ -162,6 +181,7 @@ class APSScheduler:
             planning_days,
             calendar_mode=calendar_mode,
             day_shift_overrides=day_shift_overrides,
+            site=self.site,
         )
         self.num_shifts = len(self.shifts)
         self.tasks = plan.tasks
@@ -172,7 +192,7 @@ class APSScheduler:
     def _get_line_max_shift_ms(self, line: str) -> int:
         is_fg = any(t.stage == "FG" for t in self.tasks if t.line == line)
         allow_105 = self.allow_105_utilization_fg if is_fg else self.allow_105_utilization_sf
-        return int(round(SHIFT_MS * 1.05)) if allow_105 else SHIFT_MS
+        return int(round(self.shift_ms * 1.05)) if allow_105 else self.shift_ms
 
     def solve(self, time_limit_seconds: float = 90.0) -> ScheduleResult:
         # WE34 ranks the constraints: on-time delivery first, 95% shift utilisation
@@ -282,7 +302,7 @@ class APSScheduler:
         for entries in by_line.values():
             entries.sort()
             for _, seconds in entries[:-1]:
-                gap = max(0, MIN_SHIFT_MS - int(round(seconds * TIME_SCALE)))
+                gap = max(0, self.min_shift_ms - int(round(seconds * TIME_SCALE)))
                 total += gap
                 worst = max(worst, gap)
                 count += gap > 0
@@ -328,7 +348,7 @@ class APSScheduler:
             for (line, slot), millis in loads.items():
                 by_line.setdefault(line, []).append((slot, millis))
             return all(
-                millis >= MIN_SHIFT_MS
+                millis >= self.min_shift_ms
                 for entries in by_line.values()
                 for _, millis in sorted(entries)[:-1]
             )
@@ -446,11 +466,15 @@ class APSScheduler:
                 by_line_part[(t.line, t.part_no)].append(t)
             for group in by_line_part.values():
                 if len(group) > 1:
-                    sorted_group = sorted(group, key=lambda t: t.due_datetime or datetime.max)
-                    for i in range(len(sorted_group) - 1):
-                        ta, tb = sorted_group[i], sorted_group[i + 1]
-                        if ta.due_datetime and tb.due_datetime and ta.due_datetime < tb.due_datetime:
-                            model.Add(end_of[ta.task_id] <= end_of[tb.task_id])
+                    by_due = defaultdict(list)
+                    for t in group:
+                        by_due[t.due_datetime or datetime.max].append(t)
+                    sorted_dues = sorted(by_due.keys())
+                    for i in range(len(sorted_dues) - 1):
+                        d_early, d_late = sorted_dues[i], sorted_dues[i + 1]
+                        for ta in by_due[d_early]:
+                            for tb in by_due[d_late]:
+                                model.Add(end_of[ta.task_id] <= end_of[tb.task_id])
 
         # R-TL-01: 工装模具物理独占硬约束（同班次跨产线互斥，禁止并发占用同一模具）
         if self.enforce_tooling_exclusivity:
@@ -524,6 +548,8 @@ class APSScheduler:
                         model.Add(p_act >= active[m.task_id, s])
                     part_actives.append(p_act)
                 if len(part_actives) > 3:
+                    if self.enforce_concurrency_limit:
+                        model.Add(sum(part_actives) <= 3)
                     excess = model.NewIntVar(0, len(part_actives), f"excess.{line}.{s}")
                     model.Add(excess >= sum(part_actives) - 3)
                     concurrency_penalties.append(excess)
@@ -566,7 +592,7 @@ class APSScheduler:
 
     def _violation_weight(self) -> int:
         """One slot below 95% costs more than every deficit that could pay for it."""
-        return self.num_shifts * MIN_SHIFT_MS + 1
+        return self.num_shifts * self.min_shift_ms + 1
 
     def _lateness_weight(self) -> int:
         """One late shift must outweigh every utilisation gain still on the table.
@@ -615,18 +641,7 @@ class APSScheduler:
                         )
 
     def _add_line_capacity(self, model, x, utilization_mode: str, gap_cap=None):
-        """Per line-shift load, the 8h ceiling, and the 95% floor.
-
-        'hard'  : every worked slot but the closing one must reach 95%
-        'soft'  : the same, with the short slots and their deficits collected for the
-                  objective
-        'off'   : ceiling only, used for the seeding model
-
-        `gap_cap` is the (total, worst, count) utilisation profile of a plan we
-        already hold: the deficits stay soft, but may not add up to more, open a
-        deeper single hole, or land on more slots than that plan. The compaction
-        pass needs the 95% outcome frozen so it has nothing left to trade.
-        """
+        """Per line-shift load, rated ceiling, and 95% floor based on plant topology."""
         shortfall = []
         violations = []
         overloads = []
@@ -645,9 +660,9 @@ class APSScheduler:
                 load.append(var)
                 running.append(run)
 
-                if max_line_ms > SHIFT_MS:
-                    over = model.NewIntVar(0, max_line_ms - SHIFT_MS, f"over.{line}.{s}")
-                    model.Add(over >= var - SHIFT_MS)
+                if max_line_ms > self.shift_ms:
+                    over = model.NewIntVar(0, max_line_ms - self.shift_ms, f"over.{line}.{s}")
+                    model.Add(over >= var - self.shift_ms)
                     overloads.append(over)
 
             work = sum(t.lots * t.lot_millis for t in line_tasks)
@@ -667,17 +682,17 @@ class APSScheduler:
                 model.Add(last_worked <= s).OnlyEnforceIf(tail)
                 model.Add(last_worked >= s + 1).OnlyEnforceIf(tail.Not())
                 if utilization_mode == "hard":
-                    model.Add(load[s] + MIN_SHIFT_MS * tail >= MIN_SHIFT_MS * running[s])
+                    model.Add(load[s] + self.min_shift_ms * tail >= self.min_shift_ms * running[s])
                     continue
-                gap = model.NewIntVar(0, MIN_SHIFT_MS, f"gap.{line}.{s}")
-                model.Add(gap >= MIN_SHIFT_MS * running[s] - MIN_SHIFT_MS * tail - load[s])
+                gap = model.NewIntVar(0, self.min_shift_ms, f"gap.{line}.{s}")
+                model.Add(gap >= self.min_shift_ms * running[s] - self.min_shift_ms * tail - load[s])
                 shortfall.append(gap)
                 # `below` is exactly "this slot is short of 95%": the tail exemption and
                 # an empty slot both force it off, so counting it measures what the
                 # report lists rather than how many milliseconds are behind.
                 below = model.NewBoolVar(f"below.{line}.{s}")
-                model.Add(load[s] >= MIN_SHIFT_MS * (running[s] - tail)).OnlyEnforceIf(below.Not())
-                model.Add(load[s] <= MIN_SHIFT_MS * (running[s] - tail) - 1).OnlyEnforceIf(below)
+                model.Add(load[s] >= self.min_shift_ms * (running[s] - tail)).OnlyEnforceIf(below.Not())
+                model.Add(load[s] <= self.min_shift_ms * (running[s] - tail) - 1).OnlyEnforceIf(below)
                 if gap_cap is not None:
                     model.Add(gap <= gap_cap[1])
                 violations.append(below)

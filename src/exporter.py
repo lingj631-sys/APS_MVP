@@ -165,7 +165,7 @@ def export_validation_matrix_excel(
         elif row_data.metric == "TRP":
             ref_txt = f"标准: {0.71 if row_data.line == 'PGLINKAGE' else 0.85}"
         else:
-            ref_txt = "单班定额: 8.0h"
+            ref_txt = "单班定额: 12.0h" if site == "SY38" else "单班定额: 8.0h"
         ws.cell(curr_row, 4).value = ref_txt
         ws.cell(curr_row, 4).font = Font(
             name="Segoe UI",

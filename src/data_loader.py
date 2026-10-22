@@ -6,13 +6,19 @@ workbook, then nets demand against stock to derive production tasks: finished
 goods rounded up to whole MPQ batches, semi-finished only floored at the MPQ
 start quantity.
 """
-from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-
+import csv
+import json
 import math
+import os
+import sys
+from collections import defaultdict
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
 import openpyxl
+
+from src.shift_manager import get_topology
 
 
 @dataclass
@@ -133,6 +139,7 @@ class ProductionTask:
     quantity: float
     lot_millis: int  # one lot's machine time, scaled to whole milliseconds
     order_id: str
+    site: str = "WL"
     bom_ratio: float = 1.0
     stock_covered: int = 0
     due_datetime: Optional[datetime] = None
@@ -161,6 +168,7 @@ class RequirementPlan:
     stock_movements: List[StockMovement]
     covered_by_stock: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    site: str = "WL"
 
     @property
     def tasks(self) -> List[ProductionTask]:
@@ -170,13 +178,380 @@ class RequirementPlan:
 def _to_float(value, default: float = 0.0) -> float:
     if value is None:
         return default
+    s = str(value).strip().replace(',', '')
+    if not s:
+        return default
+    if s.endswith('%'):
+        try:
+            return float(s[:-1]) / 100.0
+        except (TypeError, ValueError):
+            return default
     try:
-        return float(value)
+        return float(s)
     except (TypeError, ValueError):
         return default
 
 
-def load_aps_database(excel_path: str, site_filter: str = "WL") -> ProductionInputSnapshot:
+def snapshot_to_dict(snapshot: ProductionInputSnapshot) -> Dict[str, Any]:
+    """Serialize snapshot to pure Python dict suitable for JSON export."""
+    d = asdict(snapshot)
+    for o in d.get("orders", []):
+        if isinstance(o.get("due_datetime"), datetime):
+            o["due_datetime"] = o["due_datetime"].isoformat()
+    return d
+
+
+def snapshot_from_dict(d: Dict[str, Any]) -> ProductionInputSnapshot:
+    """Deserialize snapshot from Python dict."""
+    fg_params = {k: ProductParam(**v) for k, v in d.get("fg_params", {}).items()}
+    sf_params = {k: ProductParam(**v) for k, v in d.get("sf_params", {}).items()}
+    bom = {k: [(item[0], float(item[1])) for item in v] for k, v in d.get("bom", {}).items()}
+    initial_stock = {k: float(v) for k, v in d.get("initial_stock", {}).items()}
+    orders = []
+    for o in d.get("orders", []):
+        dt = o.get("due_datetime")
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt)
+            except Exception:
+                dt = datetime(2026, 10, 20, 15, 0)
+        orders.append(CustomerOrder(
+            order_id=o["order_id"],
+            part_no=o["part_no"],
+            description=o["description"],
+            due_date=o["due_date"],
+            due_datetime=dt,
+            demand_quantity=float(o["demand_quantity"]),
+        ))
+    tooling_molds = [ToolingMold(**m) for m in d.get("tooling_molds", [])]
+    pm_schedules = [PreventiveMaintenance(**p) for p in d.get("pm_schedules", [])]
+    material_arrivals = [MaterialArrival(**a) for a in d.get("material_arrivals", [])]
+    customer_tiers = [CustomerTier(**c) for c in d.get("customer_tiers", [])]
+    return ProductionInputSnapshot(
+        fg_params=fg_params,
+        sf_params=sf_params,
+        bom=bom,
+        initial_stock=initial_stock,
+        orders=orders,
+        planning_dates=d.get("planning_dates", []),
+        tooling_molds=tooling_molds,
+        pm_schedules=pm_schedules,
+        material_arrivals=material_arrivals,
+        customer_tiers=customer_tiers,
+    )
+
+
+def save_snapshot_json(snapshot: ProductionInputSnapshot, file_path: str) -> None:
+    """Save snapshot as readable JSON cache."""
+    d = snapshot_to_dict(snapshot)
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+
+
+def load_snapshot_json(file_path: str) -> ProductionInputSnapshot:
+    """Load snapshot from compiled JSON cache."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        d = json.load(f)
+    return snapshot_from_dict(d)
+
+
+def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionInputSnapshot:
+    """Loads master data, BOM, opening stock and customer demand from CSV files in data_dir,
+    generating a self-contained ProductionInputSnapshot and compiling a local snapshot JSON cache.
+    """
+    if not os.path.isabs(data_dir):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidate = os.path.join(base_dir, data_dir)
+        if os.path.exists(candidate):
+            data_dir = candidate
+
+    # 1. Load Parameters-FG.csv
+    fg_params: Dict[str, ProductParam] = {}
+    fg_file = os.path.join(data_dir, "Parameters-FG.csv")
+    if os.path.exists(fg_file):
+        with open(fg_file, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                if not row or (row.get("Site") or "").strip() != site_filter:
+                    continue
+                pn = (row.get("Part No.") or row.get("Part No", "")).strip()
+                if not pn:
+                    continue
+                line = (row.get("Production Line") or row.get("Line", "")).strip()
+                desc = (row.get("Description") or "").strip()
+                ct = _to_float(row.get("Cycle time"))
+                trp = _to_float(row.get("Line TRP"), 0.71)
+                mpq = _to_float(row.get("Mini Production QTY(MPQ)"), 1.0)
+                hours = _to_float(row.get("No. of hours/shift"), 8.0 if site_filter == "WL" else 12.0)
+                shifts = int(_to_float(row.get("No. of shift/day"), 3 if site_filter == "WL" else 2))
+                output_shift = _to_float(row.get("Output per shift")) or (hours * 3600.0 / ct * trp if ct > 0 else 0.0)
+                target_stock = _to_float(row.get("Target Stock"), 0.0)
+                fg_params[pn] = ProductParam(
+                    site=site_filter,
+                    line=line,
+                    part_no=pn,
+                    description=desc,
+                    ct_seconds=ct,
+                    trp=trp,
+                    mpq=mpq,
+                    output_per_shift=output_shift,
+                    hours_per_shift=hours,
+                    shifts_per_day=shifts,
+                    target_stock=target_stock,
+                )
+
+    # 2. Load Parameters-SFN.csv
+    sf_params: Dict[str, ProductParam] = {}
+    sf_file = os.path.join(data_dir, "Parameters-SFN.csv")
+    if os.path.exists(sf_file):
+        with open(sf_file, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                if not row or (row.get("Site") or "").strip() != site_filter:
+                    continue
+                pn = (row.get("Part No.") or row.get("Part No", "")).strip()
+                if not pn:
+                    continue
+                line = (row.get("Production Line") or row.get("Line", "")).strip()
+                desc = (row.get("Description") or "").strip()
+                ct = _to_float(row.get("Cycle time(S)") or row.get("Cycle time"))
+                trp = _to_float(row.get("Line TRP"), 0.85)
+                mpq = _to_float(row.get("Mini Production QTY(MPQ)"), 100.0)
+                hours = _to_float(row.get("No. of hours/shift"), 8.0 if site_filter == "WL" else 12.0)
+                shifts = int(_to_float(row.get("No. of shift/day"), 3 if site_filter == "WL" else 2))
+                output_shift = _to_float(row.get("Output per shift")) or (hours * 3600.0 / ct * trp if ct > 0 else 0.0)
+                target_stock_days = _to_float(row.get("Target Stock(days)") or row.get("Target Stock (days)"))
+                lead_days = _to_float(row.get("生产提前期(days）") or row.get("生产提前期(days)") or row.get("Lead time"))
+                scrap = _to_float(row.get("Scrap rate(%)") or row.get("Scrap rate"))
+                sf_params[pn] = ProductParam(
+                    site=site_filter,
+                    line=line,
+                    part_no=pn,
+                    description=desc,
+                    ct_seconds=ct,
+                    trp=trp,
+                    mpq=mpq,
+                    output_per_shift=output_shift,
+                    hours_per_shift=hours,
+                    shifts_per_day=shifts,
+                    target_stock=0.0,
+                    target_stock_days=target_stock_days,
+                    lead_time_days=lead_days,
+                    scrap_rate=scrap,
+                )
+
+    # 3. Load BOM-List.csv
+    bom: Dict[str, List[Tuple[str, float]]] = {}
+    bom_file = os.path.join(data_dir, "BOM-List.csv")
+    if os.path.exists(bom_file):
+        with open(bom_file, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                if not row or (row.get("Site") or "").strip() != site_filter:
+                    continue
+                fg = (row.get("SAP总成") or row.get("成品物料号") or row.get("FG Part No") or "").strip()
+                sf = (row.get("半成品号") or row.get("半成品物料号") or row.get("SF Part No") or "").strip()
+                ratio = _to_float(row.get("BOM比例") or row.get("Ratio"), 1.0)
+                if fg and sf:
+                    bom.setdefault(fg, []).append((sf, ratio))
+
+    # 4. Load Initial-Stock.csv
+    initial_stock: Dict[str, float] = {}
+    stock_file = os.path.join(data_dir, "Initial-Stock.csv")
+    if os.path.exists(stock_file):
+        with open(stock_file, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                if not row or (row.get("Site") or "").strip() != site_filter:
+                    continue
+                pn = (row.get("PN") or row.get("Part No") or row.get("物料号") or "").strip()
+                stock_val = 0.0
+                for k, v in row.items():
+                    if "Stock" in k or "库存" in k:
+                        stock_val = _to_float(v)
+                        break
+                if pn:
+                    initial_stock[pn] = stock_val
+
+    # 5. Load Customer-Demand.csv
+    orders: List[CustomerOrder] = []
+    demand_dates: List[str] = []
+    dem_file = os.path.join(data_dir, "Customer-Demand.csv")
+    if os.path.exists(dem_file):
+        with open(dem_file, encoding="utf-8-sig") as f:
+            raw_reader = csv.reader(f)
+            header_row = None
+            date_indices = []
+            for row in raw_reader:
+                if not row or not any(row):
+                    continue
+                if header_row is None and any("/" in c for c in row):
+                    header_row = [c.strip() for c in row]
+                    for idx, c in enumerate(header_row):
+                        if "/" in c and any(ch.isdigit() for ch in c):
+                            date_indices.append((idx, c))
+                            demand_dates.append(c)
+                    continue
+                if header_row is None:
+                    continue
+                row_site = row[0].strip() if len(row) > 0 else ""
+                if row_site != site_filter:
+                    continue
+                pn = row[1].strip() if len(row) > 1 else ""
+                if not pn:
+                    continue
+                desc = row[2].strip() if len(row) > 2 else ""
+                due_hour = 15 if site_filter == "WL" else 20
+                for idx, date_str in date_indices:
+                    if idx < len(row):
+                        qty = _to_float(row[idx])
+                        if qty > 0:
+                            try:
+                                month, day = (int(p) for p in date_str.split("/"))
+                                dt = datetime(2026, month, day, due_hour, 0)
+                                o_id = f"ORD_{site_filter}_{pn}_{month:02d}{day:02d}"
+                                orders.append(CustomerOrder(
+                                    order_id=o_id,
+                                    part_no=pn,
+                                    description=desc,
+                                    due_date=date_str,
+                                    due_datetime=dt,
+                                    demand_quantity=qty,
+                                ))
+                            except Exception:
+                                pass
+
+    # 6. Load Tooling-Molds.csv
+    tooling_molds: List[ToolingMold] = []
+    tm_file = os.path.join(data_dir, "Tooling-Molds.csv")
+    if os.path.exists(tm_file):
+        with open(tm_file, encoding="utf-8-sig") as f:
+            for row in csv.reader(f):
+                if not row or row[0].strip() in ("Site", "基地 (Site)"):
+                    continue
+                if row[0].strip() and row[0].strip() != site_filter:
+                    continue
+                m_id = row[1].strip() if len(row) > 1 else ""
+                if not m_id:
+                    continue
+                lines = [l.strip() for l in (row[3] if len(row) > 3 else "").split(",") if l.strip()]
+                parts = [p.strip() for p in (row[4] if len(row) > 4 else "").split(",") if p.strip()]
+                tooling_molds.append(ToolingMold(
+                    site=row[0].strip() or site_filter,
+                    mold_id=m_id,
+                    mold_name=row[2].strip() if len(row) > 2 else "",
+                    applicable_lines=lines,
+                    applicable_parts=parts,
+                    available_qty=int(_to_float(row[5] if len(row) > 5 else 1, 1)),
+                    changeover_time_min=_to_float(row[6] if len(row) > 6 else 30.0, 30.0),
+                    max_life_strokes=int(_to_float(row[7] if len(row) > 7 else 500000, 500000)),
+                    current_strokes=int(_to_float(row[8] if len(row) > 8 else 0, 0)),
+                    maintenance_cycle_strokes=int(_to_float(row[9] if len(row) > 9 else 50000, 50000)),
+                    status=(row[10] if len(row) > 10 else "可用 (Available)").strip(),
+                ))
+
+    # 7. Load PM-Schedules.csv
+    pm_schedules: List[PreventiveMaintenance] = []
+    pm_file = os.path.join(data_dir, "PM-Schedules.csv")
+    if os.path.exists(pm_file):
+        with open(pm_file, encoding="utf-8-sig") as f:
+            for row in csv.reader(f):
+                if not row or row[0].strip() in ("Site", "基地 (Site)"):
+                    continue
+                if row[0].strip() and row[0].strip() != site_filter:
+                    continue
+                plan_no = row[1].strip() if len(row) > 1 else ""
+                if not plan_no:
+                    continue
+                pm_schedules.append(PreventiveMaintenance(
+                    site=row[0].strip() or site_filter,
+                    pm_plan_no=plan_no,
+                    line=(row[2] if len(row) > 2 else "").strip(),
+                    equipment_name=(row[3] if len(row) > 3 else "").strip(),
+                    pm_type=(row[4] if len(row) > 4 else "").strip(),
+                    start_date=(row[5] if len(row) > 5 else "").strip()[:10],
+                    start_shift=(row[6] if len(row) > 6 else "").strip(),
+                    end_date=(row[7] if len(row) > 7 else "").strip()[:10],
+                    end_shift=(row[8] if len(row) > 8 else "").strip(),
+                    downtime_hours=_to_float(row[9] if len(row) > 9 else 8.0, 8.0),
+                    capacity_rate=_to_float(row[10] if len(row) > 10 else 0.0, 0.0),
+                    handling_strategy=(row[11] if len(row) > 11 else "避让顺延 (Shift_Delay)").strip(),
+                    responsible_team=(row[12] if len(row) > 12 else "").strip(),
+                    status=(row[13] if len(row) > 13 else "已排定 (Planned)").strip(),
+                ))
+
+    # 8. Load Material-Arrivals.csv
+    material_arrivals: List[MaterialArrival] = []
+    ma_file = os.path.join(data_dir, "Material-Arrivals.csv")
+    if os.path.exists(ma_file):
+        with open(ma_file, encoding="utf-8-sig") as f:
+            for row in csv.reader(f):
+                if not row or row[0].strip() in ("Site", "基地 (Site)"):
+                    continue
+                if row[0].strip() and row[0].strip() != site_filter:
+                    continue
+                po_no = row[1].strip() if len(row) > 1 else ""
+                if not po_no:
+                    continue
+                material_arrivals.append(MaterialArrival(
+                    site=row[0].strip() or site_filter,
+                    po_number=po_no,
+                    supplier=(row[2] if len(row) > 2 else "").strip(),
+                    part_no=(row[3] if len(row) > 3 else "").strip(),
+                    description=(row[4] if len(row) > 4 else "").strip(),
+                    eta_date=(row[5] if len(row) > 5 else "").strip()[:10],
+                    eta_shift=(row[6] if len(row) > 6 else "").strip(),
+                    quantity=_to_float(row[7] if len(row) > 7 else 0.0, 0.0),
+                    qc_release_hours=_to_float(row[8] if len(row) > 8 else 2.0, 2.0),
+                    associated_part=(row[9] if len(row) > 9 else "").strip(),
+                    status=(row[10] if len(row) > 10 else "质检合格 (Released)").strip(),
+                ))
+
+    # 9. Load Customer-Tiers.csv
+    customer_tiers: List[CustomerTier] = []
+    ct_file = os.path.join(data_dir, "Customer-Tiers.csv")
+    if os.path.exists(ct_file):
+        with open(ct_file, encoding="utf-8-sig") as f:
+            for row in csv.reader(f):
+                if not row or row[0].strip() in ("Site", "基地 (Site)"):
+                    continue
+                if row[0].strip() and row[0].strip() != site_filter:
+                    continue
+                c_code = row[1].strip() if len(row) > 1 else ""
+                if not c_code:
+                    continue
+                prods = [p.strip() for p in (row[8] if len(row) > 8 else "").split(",") if p.strip()]
+                customer_tiers.append(CustomerTier(
+                    site=row[0].strip() or site_filter,
+                    customer_code=c_code,
+                    customer_name=(row[2] if len(row) > 2 else "").strip(),
+                    tier=(row[3] if len(row) > 3 else "TIER_A").strip(),
+                    priority_weight=int(_to_float(row[4] if len(row) > 4 else 3, 3)),
+                    otd_target_rate=_to_float(row[5] if len(row) > 5 else 98.0, 98.0),
+                    delivery_window=(row[6] if len(row) > 6 else "0天严格保供").strip(),
+                    subcontract_allowed=(row[7] if len(row) > 7 else "协商外协 (Negotiable)").strip(),
+                    associated_products=prods,
+                ))
+
+    snapshot = ProductionInputSnapshot(
+        fg_params=fg_params,
+        sf_params=sf_params,
+        bom=bom,
+        initial_stock=initial_stock,
+        orders=orders,
+        planning_dates=demand_dates,
+        tooling_molds=tooling_molds,
+        pm_schedules=pm_schedules,
+        material_arrivals=material_arrivals,
+        customer_tiers=customer_tiers,
+    )
+
+    try:
+        json_path = os.path.join(data_dir, f"snapshot_{site_filter}.json")
+        save_snapshot_json(snapshot, json_path)
+    except Exception:
+        pass
+
+    return snapshot
+
+
+def _load_aps_excel(excel_path: str, site_filter: str = "WL") -> ProductionInputSnapshot:
     wb = openpyxl.load_workbook(excel_path, data_only=True)
 
     ct_map: Dict[str, float] = {}
@@ -366,6 +741,26 @@ def load_aps_database(excel_path: str, site_filter: str = "WL") -> ProductionInp
     )
 
 
+def load_aps_database(source_path: str = "data", site_filter: str = "WL") -> ProductionInputSnapshot:
+    """Unified entry point to load APS dataset.
+    Prioritizes loading from CSV in data/ directory. Falls back to Excel if explicitly pointing to an existing .xlsx file.
+    """
+    if os.path.isdir(source_path) or source_path == "data" or os.path.basename(source_path).startswith("data"):
+        return load_aps_csv(source_path, site_filter=site_filter)
+
+    # If source_path is an existing xlsx file
+    if os.path.isfile(source_path) and source_path.endswith(".xlsx"):
+        return _load_aps_excel(source_path, site_filter=site_filter)
+
+    # Check candidate data dir
+    candidate_data = os.path.join(os.path.dirname(os.path.abspath(source_path)), "data")
+    if os.path.exists(candidate_data):
+        return load_aps_csv(candidate_data, site_filter=site_filter)
+
+    # Default fallback to 'data'
+    return load_aps_csv("data", site_filter=site_filter)
+
+
 def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: float,
                  default_trp: float, default_mpq: float, semi_finished: bool = False) -> Dict[str, ProductParam]:
     params: Dict[str, ProductParam] = {}
@@ -416,6 +811,9 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
     has to clear the MPQ start quantity, so an order of 120 pieces costs 120 pieces
     instead of two batches of 100.
     """
+    site = next((p.site for p in snapshot.fg_params.values()), "WL")
+    topology = get_topology(site)
+
     fg_tasks: List[ProductionTask] = []
     sf_tasks: List[ProductionTask] = []
     covered_by_stock: List[str] = []
@@ -446,7 +844,6 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
         for p in ct.associated_products:
             cust_tier_map[p] = tier_code
 
-    shift_offset_map = {"早班": 0, "中班": 1, "晚班": 2}
     mat_arrival_map: Dict[str, int] = {}
     for ma in snapshot.material_arrivals:
         if ma.eta_date:
@@ -456,8 +853,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
                     if pdate in ma.eta_date or ma.eta_date.endswith(pdate.replace("/", "-")) or pdate.replace("/", "-") in ma.eta_date:
                         d_idx = idx
                         break
-                s_offset = shift_offset_map.get(ma.eta_shift, 0)
-                target_shift = d_idx * 3 + s_offset
+                target_shift = topology.slot_index(d_idx, ma.eta_shift)
                 part_target = ma.associated_part or ma.part_no
                 mat_arrival_map[part_target] = max(mat_arrival_map.get(part_target, 0), target_shift)
             except Exception:
@@ -477,8 +873,8 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
                     if pdate in pm.end_date or pm.end_date.endswith(pdate.replace("/", "-")) or pdate.replace("/", "-") in pm.end_date:
                         d_end = idx
                         break
-                s_start = d_start * 3 + shift_offset_map.get(pm.start_shift, 0)
-                s_end = d_end * 3 + shift_offset_map.get(pm.end_shift, 0)
+                s_start = topology.slot_index(d_start, pm.start_shift)
+                s_end = topology.slot_index(d_end, pm.end_shift)
                 for s in range(s_start, s_end + 1):
                     if s not in line_pm_slots[pm.line]:
                         line_pm_slots[pm.line].append(s)
@@ -523,6 +919,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
             quantity=float(qty),
             lot_millis=lot_millis(lot_size, param.ct_seconds, param.trp),
             order_id=order.order_id,
+            site=site,
             due_datetime=order.due_datetime,
             mold_id=mold_map.get(order.part_no),
             material_arrival_shift=mat_arrival_map.get(order.part_no, 0),
@@ -565,6 +962,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
                 quantity=float(sf_qty),
                 lot_millis=lot_millis(1, sf_param.ct_seconds, sf_param.trp),
                 order_id=order.order_id,
+                site=site,
                 bom_ratio=ratio,
                 stock_covered=int(round(sf_usable)),
                 due_datetime=order.due_datetime,
@@ -607,4 +1005,5 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
         stock_movements=movements,
         covered_by_stock=covered_by_stock,
         warnings=warnings,
+        site=site,
     )

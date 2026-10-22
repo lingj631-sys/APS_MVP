@@ -62,8 +62,8 @@ def precheck_capacity(
         )
 
     # 1. Total capacity per line
-    total_calendar_seconds = len(shifts) * SHIFT_SECONDS
-    total_calendar_hours = total_calendar_seconds / 3600.0
+    total_calendar_seconds = sum(s.duration_seconds for s in shifts)
+    total_calendar_hours = sum(s.duration_hours for s in shifts)
 
     line_stage = {}
     line_work_seconds = {}
@@ -108,12 +108,13 @@ def precheck_capacity(
 
             # Max shifts available up to this due_datetime
             available_shifts = [s for s in shifts if s.end_dt <= task.due_datetime]
-            cum_avail_sec = len(available_shifts) * SHIFT_SECONDS
+            cum_avail_sec = sum(s.duration_seconds for s in available_shifts)
 
             if cum_required_sec > cum_avail_sec + 1e-3:
                 deficit_sec = cum_required_sec - cum_avail_sec
                 deficit_h = deficit_sec / 3600.0
-                needed_shifts = int(-(-deficit_sec // SHIFT_SECONDS))
+                unit_shift_sec = available_shifts[0].duration_seconds if available_shifts else (shifts[0].duration_seconds if shifts else 28800)
+                needed_shifts = int(-(-deficit_sec // unit_shift_sec))
                 # Find earliest subsequent shift that could absorb deficit
                 last_idx = available_shifts[-1].index if available_shifts else 0
                 target_idx = min(len(shifts) - 1, last_idx + needed_shifts)

@@ -1,0 +1,1809 @@
+{
+  "fg_params": {
+    "WA14208": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WA14208",
+      "description": "DX11电机连杆总成",
+      "ct_seconds": 38.0,
+      "trp": 0.71,
+      "mpq": 48.0,
+      "output_per_shift": 539.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WAB6404": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "ct_seconds": 46.0,
+      "trp": 0.71,
+      "mpq": 72.0,
+      "output_per_shift": 445.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WB35356": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WB35356",
+      "description": "930B传动杆总成",
+      "ct_seconds": 43.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 476.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WB80510": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "ct_seconds": 44.0,
+      "trp": 0.71,
+      "mpq": 48.0,
+      "output_per_shift": 465.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WC07674": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WC07674",
+      "description": "CM2E 电机及连杆机构",
+      "ct_seconds": 38.0,
+      "trp": 0.71,
+      "mpq": 72.0,
+      "output_per_shift": 539.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WD48696": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "ct_seconds": 42.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 487.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WD59238": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "ct_seconds": 42.0,
+      "trp": 0.71,
+      "mpq": 48.0,
+      "output_per_shift": 487.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "W144813S": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "W144813S",
+      "description": "Geely DCY11前雨刮电机传动杆总成 (备件)",
+      "ct_seconds": 127.0,
+      "trp": 0.71,
+      "mpq": 72.0,
+      "output_per_shift": 162.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "W000076959VA": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "W000076959VA",
+      "description": "领克 01&03 前雨刮电机传动杆",
+      "ct_seconds": 127.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 162.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "W243255S": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "W243255S",
+      "description": "宝马欧洲G38前雨刮电机传动杆成品 (备件)",
+      "ct_seconds": 127.0,
+      "trp": 0.71,
+      "mpq": 48.0,
+      "output_per_shift": 162.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WA14208S": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WA14208S",
+      "description": "吉利DX11左驾前雨刮电机传动杆 (备件)",
+      "ct_seconds": 300.0,
+      "trp": 0.71,
+      "mpq": 72.0,
+      "output_per_shift": 69.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WD48696S": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WD48696S",
+      "description": "领克L743左驾前雨刮电机传动杆总成 (备件)",
+      "ct_seconds": 300.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 69.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WBC9317": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "ct_seconds": 46.0,
+      "trp": 0.71,
+      "mpq": 48.0,
+      "output_per_shift": 445.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WBC9317C": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "ct_seconds": 32.0,
+      "trp": 0.71,
+      "mpq": 72.0,
+      "output_per_shift": 639.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WCF8126": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "ct_seconds": 38.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 539.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WCB8574": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WCB8574",
+      "description": "Chery KP31 RHD 传动杆",
+      "ct_seconds": 46.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 445.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    },
+    "WCA1894": {
+      "site": "WL",
+      "line": "PGLINKAGE",
+      "part_no": "WCA1894",
+      "description": "Chery KP31 LHD 传动杆",
+      "ct_seconds": 46.0,
+      "trp": 0.71,
+      "mpq": 60.0,
+      "output_per_shift": 445.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 0.0,
+      "lead_time_days": 0.0,
+      "scrap_rate": 0.0
+    }
+  },
+  "sf_params": {
+    "W000061536": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "W000061536",
+      "description": "G38 DS轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "W000061541": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "W000061541",
+      "description": "G38 PS轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WA14222": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WA14222",
+      "description": "DX11 DS 轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WA14229": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WA14229",
+      "description": "DX11 PS 轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WAB6407": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WAB6407",
+      "description": "E371 A1 DS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WAB6412": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WAB6412",
+      "description": "E371 A1 PS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WC84833": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WC84833",
+      "description": "930B DS 轴套分总成",
+      "ct_seconds": 29.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 844.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WC52036": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WC52036",
+      "description": "930B PS 轴套分总成",
+      "ct_seconds": 29.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 844.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WC07786": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WC07786",
+      "description": "CM2E DS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WC08355": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WC08355",
+      "description": "CM2E PS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WD48699": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WD48699",
+      "description": "L743 DS轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WD48700": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WD48700",
+      "description": "L743 PS轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WD59243": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WD59243",
+      "description": "E371 DS轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WD59260": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WD59260",
+      "description": "E371 PS轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WBC9318": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WBC9318",
+      "description": "LEAP CU1207&CU1307 DS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WBC9324": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WBC9324",
+      "description": "LEAP CU1207&CU1307 PS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WCF8333": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WCF8333",
+      "description": "DX11 DS 轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WCF8335": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WCF8335",
+      "description": "DX11 PS 轴套分总成",
+      "ct_seconds": 23.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 1064.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WCA1903": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WCA1903",
+      "description": "KP31 DS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    },
+    "WCA1927": {
+      "site": "WL",
+      "line": "轴套6",
+      "part_no": "WCA1927",
+      "description": "KP31 PS 轴套分总成",
+      "ct_seconds": 27.0,
+      "trp": 0.85,
+      "mpq": 100.0,
+      "output_per_shift": 907.0,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "target_stock": 0.0,
+      "target_stock_days": 1.0,
+      "lead_time_days": 1.0,
+      "scrap_rate": 0.03
+    }
+  },
+  "bom": {
+    "W000014477SKR": [
+      [
+        "W000042905",
+        1.0
+      ],
+      [
+        "W000042906",
+        1.0
+      ]
+    ],
+    "W000031992": [
+      [
+        "W000031998",
+        1.0
+      ],
+      [
+        "W000031997",
+        1.0
+      ]
+    ],
+    "W000031992VA": [
+      [
+        "W000031998",
+        1.0
+      ],
+      [
+        "W000031997",
+        1.0
+      ]
+    ],
+    "W000042015AM": [
+      [
+        "W000042905",
+        1.0
+      ],
+      [
+        "W000042906",
+        1.0
+      ]
+    ],
+    "W000045955": [
+      [
+        "W000042906",
+        1.0
+      ],
+      [
+        "W000042905",
+        1.0
+      ]
+    ],
+    "W000045956": [
+      [
+        "W000042905",
+        1.0
+      ],
+      [
+        "W000042906",
+        1.0
+      ]
+    ],
+    "W000046617": [
+      [
+        "W000045744",
+        1.0
+      ],
+      [
+        "W000045782",
+        1.0
+      ]
+    ],
+    "W000047858KR": [
+      [
+        "W000033143",
+        1.0
+      ],
+      [
+        "W000033212",
+        1.0
+      ]
+    ],
+    "W000076959A": [
+      [
+        "W268001",
+        1.0
+      ],
+      [
+        "W268002",
+        1.0
+      ]
+    ],
+    "W000076959S": [
+      [
+        "W268001",
+        1.0
+      ],
+      [
+        "W268002",
+        1.0
+      ]
+    ],
+    "W144813": [
+      [
+        "W268001",
+        1.0
+      ],
+      [
+        "W268002",
+        1.0
+      ]
+    ],
+    "W144813PL": [
+      [
+        "W268001",
+        1.0
+      ],
+      [
+        "W268002",
+        1.0
+      ]
+    ],
+    "W144813S": [
+      [
+        "W268001",
+        1.0
+      ],
+      [
+        "W268002",
+        1.0
+      ]
+    ],
+    "W243255": [
+      [
+        "W000061536",
+        1.0
+      ],
+      [
+        "W000061541",
+        1.0
+      ]
+    ],
+    "W243255S": [
+      [
+        "W000061536",
+        1.0
+      ],
+      [
+        "W000061541",
+        1.0
+      ]
+    ],
+    "WAB6404": [
+      [
+        "WAB6407",
+        1.0
+      ],
+      [
+        "WAB6412",
+        1.0
+      ]
+    ],
+    "WB35356": [
+      [
+        "WC84833",
+        1.0
+      ],
+      [
+        "WC52036",
+        1.0
+      ]
+    ],
+    "WB80510": [
+      [
+        "W268001",
+        1.0
+      ],
+      [
+        "W268002",
+        1.0
+      ]
+    ],
+    "WC07674": [
+      [
+        "WC07786",
+        1.0
+      ],
+      [
+        "WC08355",
+        1.0
+      ]
+    ],
+    "WC07674S": [
+      [
+        "WC07786",
+        1.0
+      ],
+      [
+        "WC08355",
+        1.0
+      ]
+    ],
+    "WD48696": [
+      [
+        "WD48699",
+        1.0
+      ],
+      [
+        "WD48700",
+        1.0
+      ]
+    ],
+    "WD48696S": [
+      [
+        "WD48699",
+        1.0
+      ],
+      [
+        "WD48700",
+        1.0
+      ]
+    ],
+    "WD59238": [
+      [
+        "WD59243",
+        1.0
+      ],
+      [
+        "WD59260",
+        1.0
+      ]
+    ],
+    "WBC9317": [
+      [
+        "WBC9318",
+        1.0
+      ],
+      [
+        "WBC9324",
+        1.0
+      ]
+    ],
+    "WCA1894": [
+      [
+        "WCA1903",
+        1.0
+      ],
+      [
+        "WCA1927",
+        1.0
+      ]
+    ],
+    "WCB8574": [
+      [
+        "WCA1903",
+        1.0
+      ],
+      [
+        "WCA1927",
+        1.0
+      ]
+    ],
+    "WBC9317C": [
+      [
+        "WBC9318",
+        1.0
+      ],
+      [
+        "WBC9324",
+        1.0
+      ]
+    ],
+    "WCF8126": [
+      [
+        "WCF8333",
+        1.0
+      ],
+      [
+        "WCF8335",
+        1.0
+      ]
+    ]
+  },
+  "initial_stock": {
+    "WA14208": 0.0,
+    "WAB6404": 838.0,
+    "WB35356": 1860.0,
+    "WB80510": 528.0,
+    "WC07674": 360.0,
+    "WD48696": 1152.0,
+    "WD59238": 1024.0,
+    "W144813S": 0.0,
+    "W000076959VA": 0.0,
+    "W243255S": 0.0,
+    "WA14208S": 0.0,
+    "WD48696S": 0.0,
+    "WBC9317": 0.0,
+    "WBC9317C": 0.0,
+    "WCF8126": 1680.0,
+    "WCB8574": 95.0,
+    "WCA1894": 60.0,
+    "W000061536": 6.0,
+    "W000061541": 6.0,
+    "WA14222": 17.0,
+    "WAB6407": 96.0,
+    "WAB6412": 92.0,
+    "WBC9318": 514.0,
+    "WBC9324": 926.0,
+    "WC07786": 345.0,
+    "WC08355": 359.0,
+    "WC52036": 176.0,
+    "WC84833": 186.0,
+    "WCA1903": 233.0,
+    "WCA1927": 234.0,
+    "WCF8333": 72.0,
+    "WCF8335": 72.0,
+    "WD48699": 74.0,
+    "WD59243": 175.0,
+    "WD59260": 97.0
+  },
+  "orders": [
+    {
+      "order_id": "ORD_WL_WAB6404_1021",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "due_date": "10/21",
+      "due_datetime": "2026-10-21T15:00:00",
+      "demand_quantity": 122.0
+    },
+    {
+      "order_id": "ORD_WL_WAB6404_1028",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "due_date": "10/28",
+      "due_datetime": "2026-10-28T15:00:00",
+      "demand_quantity": 90.0
+    },
+    {
+      "order_id": "ORD_WL_WAB6404_1102",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "due_date": "11/2",
+      "due_datetime": "2026-11-02T15:00:00",
+      "demand_quantity": 256.0
+    },
+    {
+      "order_id": "ORD_WL_WAB6404_1105",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "due_date": "11/5",
+      "due_datetime": "2026-11-05T15:00:00",
+      "demand_quantity": 320.0
+    },
+    {
+      "order_id": "ORD_WL_WAB6404_1109",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T15:00:00",
+      "demand_quantity": 320.0
+    },
+    {
+      "order_id": "ORD_WL_WAB6404_1112",
+      "part_no": "WAB6404",
+      "description": "E371 A1 传动杆总成",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T15:00:00",
+      "demand_quantity": 320.0
+    },
+    {
+      "order_id": "ORD_WL_WB35356_1015",
+      "part_no": "WB35356",
+      "description": "930B传动杆总成",
+      "due_date": "10/15",
+      "due_datetime": "2026-10-15T15:00:00",
+      "demand_quantity": 1500.0
+    },
+    {
+      "order_id": "ORD_WL_WB35356_1020",
+      "part_no": "WB35356",
+      "description": "930B传动杆总成",
+      "due_date": "10/20",
+      "due_datetime": "2026-10-20T15:00:00",
+      "demand_quantity": 6720.0
+    },
+    {
+      "order_id": "ORD_WL_WB35356_1103",
+      "part_no": "WB35356",
+      "description": "930B传动杆总成",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T15:00:00",
+      "demand_quantity": 3360.0
+    },
+    {
+      "order_id": "ORD_WL_WB35356_1110",
+      "part_no": "WB35356",
+      "description": "930B传动杆总成",
+      "due_date": "11/10",
+      "due_datetime": "2026-11-10T15:00:00",
+      "demand_quantity": 3360.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1014",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "10/14",
+      "due_datetime": "2026-10-14T15:00:00",
+      "demand_quantity": 144.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1016",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "10/16",
+      "due_datetime": "2026-10-16T15:00:00",
+      "demand_quantity": 144.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1019",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T15:00:00",
+      "demand_quantity": 144.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1026",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T15:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1029",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "10/29",
+      "due_datetime": "2026-10-29T15:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1031",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T15:00:00",
+      "demand_quantity": 144.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1103",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T15:00:00",
+      "demand_quantity": 216.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1106",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "11/6",
+      "due_datetime": "2026-11-06T15:00:00",
+      "demand_quantity": 216.0
+    },
+    {
+      "order_id": "ORD_WL_WB80510_1109",
+      "part_no": "WB80510",
+      "description": "CX11 LHD传动杆总成（新）",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T15:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1019",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T15:00:00",
+      "demand_quantity": 180.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1022",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T15:00:00",
+      "demand_quantity": 360.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1023",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T15:00:00",
+      "demand_quantity": 360.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1024",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T15:00:00",
+      "demand_quantity": 360.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1026",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T15:00:00",
+      "demand_quantity": 252.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1031",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T15:00:00",
+      "demand_quantity": 252.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1103",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T15:00:00",
+      "demand_quantity": 252.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1106",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "11/6",
+      "due_datetime": "2026-11-06T15:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1109",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T15:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_WL_WD48696_1112",
+      "part_no": "WD48696",
+      "description": "L743 传动杆总成",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T15:00:00",
+      "demand_quantity": 288.0
+    },
+    {
+      "order_id": "ORD_WL_WD59238_1019",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T15:00:00",
+      "demand_quantity": 192.0
+    },
+    {
+      "order_id": "ORD_WL_WD59238_1028",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "due_date": "10/28",
+      "due_datetime": "2026-10-28T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WD59238_1102",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "due_date": "11/2",
+      "due_datetime": "2026-11-02T15:00:00",
+      "demand_quantity": 416.0
+    },
+    {
+      "order_id": "ORD_WL_WD59238_1105",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "due_date": "11/5",
+      "due_datetime": "2026-11-05T15:00:00",
+      "demand_quantity": 320.0
+    },
+    {
+      "order_id": "ORD_WL_WD59238_1109",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T15:00:00",
+      "demand_quantity": 416.0
+    },
+    {
+      "order_id": "ORD_WL_WD59238_1112",
+      "part_no": "WD59238",
+      "description": "E371传动杆总成",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T15:00:00",
+      "demand_quantity": 416.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1020",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "10/20",
+      "due_datetime": "2026-10-20T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1022",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1023",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1024",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1026",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1029",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "10/29",
+      "due_datetime": "2026-10-29T15:00:00",
+      "demand_quantity": 900.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1103",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1105",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "11/5",
+      "due_datetime": "2026-11-05T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317_1107",
+      "part_no": "WBC9317",
+      "description": "LEAP CU1207&1307 传动杆总成",
+      "due_date": "11/7",
+      "due_datetime": "2026-11-07T15:00:00",
+      "demand_quantity": 1200.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1013",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "10/13",
+      "due_datetime": "2026-10-13T15:00:00",
+      "demand_quantity": 960.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1019",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T15:00:00",
+      "demand_quantity": 1020.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1021",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "10/21",
+      "due_datetime": "2026-10-21T15:00:00",
+      "demand_quantity": 840.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1022",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1023",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1024",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WBC9317C_1114",
+      "part_no": "WBC9317C",
+      "description": "LEAP CU1207&1307 传动杆总成-三厂",
+      "due_date": "11/14",
+      "due_datetime": "2026-11-14T15:00:00",
+      "demand_quantity": 840.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1019",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/19",
+      "due_datetime": "2026-10-19T15:00:00",
+      "demand_quantity": 576.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1022",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/22",
+      "due_datetime": "2026-10-22T15:00:00",
+      "demand_quantity": 576.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1023",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/23",
+      "due_datetime": "2026-10-23T15:00:00",
+      "demand_quantity": 576.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1024",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/24",
+      "due_datetime": "2026-10-24T15:00:00",
+      "demand_quantity": 576.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1026",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/26",
+      "due_datetime": "2026-10-26T15:00:00",
+      "demand_quantity": 528.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1028",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/28",
+      "due_datetime": "2026-10-28T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1031",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "10/31",
+      "due_datetime": "2026-10-31T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1103",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "11/3",
+      "due_datetime": "2026-11-03T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1109",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "11/9",
+      "due_datetime": "2026-11-09T15:00:00",
+      "demand_quantity": 480.0
+    },
+    {
+      "order_id": "ORD_WL_WCF8126_1112",
+      "part_no": "WCF8126",
+      "description": "DX11电机连杆总成(新）",
+      "due_date": "11/12",
+      "due_datetime": "2026-11-12T15:00:00",
+      "demand_quantity": 432.0
+    },
+    {
+      "order_id": "ORD_WL_WCB8574_1017",
+      "part_no": "WCB8574",
+      "description": "Chery KP31 RHD 传动杆",
+      "due_date": "10/17",
+      "due_datetime": "2026-10-17T15:00:00",
+      "demand_quantity": 745.0
+    },
+    {
+      "order_id": "ORD_WL_WCB8574_1115",
+      "part_no": "WCB8574",
+      "description": "Chery KP31 RHD 传动杆",
+      "due_date": "11/15",
+      "due_datetime": "2026-11-15T15:00:00",
+      "demand_quantity": 1680.0
+    },
+    {
+      "order_id": "ORD_WL_WCA1894_1017",
+      "part_no": "WCA1894",
+      "description": "Chery KP31 LHD 传动杆",
+      "due_date": "10/17",
+      "due_datetime": "2026-10-17T15:00:00",
+      "demand_quantity": 180.0
+    },
+    {
+      "order_id": "ORD_WL_WCA1894_1115",
+      "part_no": "WCA1894",
+      "description": "Chery KP31 LHD 传动杆",
+      "due_date": "11/15",
+      "due_datetime": "2026-11-15T15:00:00",
+      "demand_quantity": 240.0
+    }
+  ],
+  "planning_dates": [
+    "10/13",
+    "10/14",
+    "10/15",
+    "10/16",
+    "10/17",
+    "10/18",
+    "10/19",
+    "10/20",
+    "10/21",
+    "10/22",
+    "10/23",
+    "10/24",
+    "10/25",
+    "10/26",
+    "10/27",
+    "10/28",
+    "10/29",
+    "10/30",
+    "10/31",
+    "11/1",
+    "11/2",
+    "11/3",
+    "11/4",
+    "11/5",
+    "11/6",
+    "11/7",
+    "11/8",
+    "11/9",
+    "11/10",
+    "11/11",
+    "11/12",
+    "11/13",
+    "11/14",
+    "11/15"
+  ],
+  "tooling_molds": [
+    {
+      "site": "WL",
+      "mold_id": "MOLD_WL_AXLE_01",
+      "mold_name": "G38系列轴套冷挤压冲压成型模",
+      "applicable_lines": [
+        "轴套6",
+        "轴套7"
+      ],
+      "applicable_parts": [
+        "W000061536",
+        "W000061541"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 45.0,
+      "max_life_strokes": 500000,
+      "current_strokes": 142500,
+      "maintenance_cycle_strokes": 50000,
+      "status": "可用 (Available)"
+    },
+    {
+      "site": "WL",
+      "mold_id": "MOLD_WL_AXLE_02",
+      "mold_name": "DX11系列精密多工位轴套挤压模",
+      "applicable_lines": [
+        "轴套6",
+        "轴套7"
+      ],
+      "applicable_parts": [
+        "WA14222",
+        "WA14229"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 50.0,
+      "max_life_strokes": 500000,
+      "current_strokes": 218000,
+      "maintenance_cycle_strokes": 50000,
+      "status": "可用 (Available)"
+    },
+    {
+      "site": "WL",
+      "mold_id": "MOLD_WL_AXLE_03",
+      "mold_name": "E371 A1系列高精度轴套拉延模",
+      "applicable_lines": [
+        "轴套6",
+        "轴套7"
+      ],
+      "applicable_parts": [
+        "WAB6407",
+        "WAB6412"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 45.0,
+      "max_life_strokes": 450000,
+      "current_strokes": 89000,
+      "maintenance_cycle_strokes": 40000,
+      "status": "可用 (Available)"
+    },
+    {
+      "site": "WL",
+      "mold_id": "MOLD_WL_AXLE_04",
+      "mold_name": "930B系列高强度耐磨轴套冷冲模",
+      "applicable_lines": [
+        "轴套6",
+        "轴套7"
+      ],
+      "applicable_parts": [
+        "WC84833",
+        "WC52036"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 60.0,
+      "max_life_strokes": 500000,
+      "current_strokes": 334000,
+      "maintenance_cycle_strokes": 50000,
+      "status": "可用 (Available)"
+    },
+    {
+      "site": "WL",
+      "mold_id": "MOLD_WL_LINK_01",
+      "mold_name": "PGLINKAGE 传动杆多工位总装定位夹具",
+      "applicable_lines": [
+        "PGLINKAGE"
+      ],
+      "applicable_parts": [
+        "WA14208",
+        "WAB6404",
+        "WB35356",
+        "WB80510"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 30.0,
+      "max_life_strokes": 1000000,
+      "current_strokes": 420000,
+      "maintenance_cycle_strokes": 100000,
+      "status": "可用 (Available)"
+    },
+    {
+      "site": "WL",
+      "mold_id": "MOLD_WL_LINK_02",
+      "mold_name": "PGLINKAGE 柔性压装与超声铆接模组",
+      "applicable_lines": [
+        "PGLINKAGE"
+      ],
+      "applicable_parts": [
+        "WD48696",
+        "WD59238",
+        "WBC9317",
+        "W000014477SKR"
+      ],
+      "available_qty": 1,
+      "changeover_time_min": 35.0,
+      "max_life_strokes": 800000,
+      "current_strokes": 156000,
+      "maintenance_cycle_strokes": 80000,
+      "status": "可用 (Available)"
+    }
+  ],
+  "pm_schedules": [
+    {
+      "site": "WL",
+      "pm_plan_no": "PM-WL-202610-01",
+      "line": "PGLINKAGE",
+      "equipment_name": "PGLINKAGE 雨刮传动杆总装线",
+      "pm_type": "Level-2 周度气电与伺服定检",
+      "start_date": "2026-10-15",
+      "start_shift": "晚班",
+      "end_date": "2026-10-15",
+      "end_shift": "晚班",
+      "downtime_hours": 8.0,
+      "capacity_rate": 0.0,
+      "handling_strategy": "避让顺延 (Shift_Delay)",
+      "responsible_team": "机修自动化一组",
+      "status": "已排定 (Planned)"
+    },
+    {
+      "site": "WL",
+      "pm_plan_no": "PM-WL-202610-02",
+      "line": "轴套6",
+      "equipment_name": "轴套6 高速精密冷冲床",
+      "pm_type": "Level-1 导柱润滑与气路定检",
+      "start_date": "2026-10-18",
+      "start_shift": "晚班",
+      "end_date": "2026-10-18",
+      "end_shift": "晚班",
+      "downtime_hours": 8.0,
+      "capacity_rate": 0.0,
+      "handling_strategy": "跨班切分 (Batch_Split)",
+      "responsible_team": "冲压维修二班",
+      "status": "已排定 (Planned)"
+    },
+    {
+      "site": "WL",
+      "pm_plan_no": "PM-WL-202610-03",
+      "line": "轴套7",
+      "equipment_name": "轴套7 备用冷冲压机床",
+      "pm_type": "Level-3 季度几何精度大修标定",
+      "start_date": "2026-10-13",
+      "start_shift": "早班",
+      "end_date": "2026-10-14",
+      "end_shift": "晚班",
+      "downtime_hours": 48.0,
+      "capacity_rate": 0.0,
+      "handling_strategy": "暂停挂起 (Suspend)",
+      "responsible_team": "设备厂家常驻维保组",
+      "status": "执行中 (In Progress)"
+    }
+  ],
+  "material_arrivals": [
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0881",
+      "supplier": "博世微电子(苏州)",
+      "part_no": "WA14208-CHIP",
+      "description": "雨刮主控微型驱动芯片",
+      "eta_date": "2026-10-13",
+      "eta_shift": "早班",
+      "quantity": 5000.0,
+      "qc_release_hours": 2.0,
+      "associated_part": "WA14208",
+      "status": "质检合格 (Released)"
+    },
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0882",
+      "supplier": "宝武特钢管业",
+      "part_no": "W000061536-RAW",
+      "description": "20#精密冷拔无缝钢管φ16",
+      "eta_date": "2026-10-12",
+      "eta_shift": "早班",
+      "quantity": 8000.0,
+      "qc_release_hours": 1.0,
+      "associated_part": "W000061536",
+      "status": "已入库 (Stocked)"
+    },
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0883",
+      "supplier": "宁波敏实汽车零部件",
+      "part_no": "WAB6404-PIN",
+      "description": "E371传动杆高强耐磨球铰轴",
+      "eta_date": "2026-10-14",
+      "eta_shift": "中班",
+      "quantity": 6500.0,
+      "qc_release_hours": 2.0,
+      "associated_part": "WAB6404",
+      "status": "在途运输 (In Transit)"
+    },
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0884",
+      "supplier": "江苏新联精密铜套",
+      "part_no": "WB35356-SUB",
+      "description": "930B低摩擦含油双金属衬套",
+      "eta_date": "2026-10-13",
+      "eta_shift": "中班",
+      "quantity": 9200.0,
+      "qc_release_hours": 1.5,
+      "associated_part": "WB35356",
+      "status": "质检合格 (Released)"
+    },
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0885",
+      "supplier": "芜湖宏达橡胶密封",
+      "part_no": "WB80510-SEAL",
+      "description": "CX11防水防尘硅胶密封圈",
+      "eta_date": "2026-10-14",
+      "eta_shift": "早班",
+      "quantity": 12000.0,
+      "qc_release_hours": 1.0,
+      "associated_part": "WB80510",
+      "status": "在途运输 (In Transit)"
+    },
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0886",
+      "supplier": "上海森信电子传感",
+      "part_no": "WD48696-SENSOR",
+      "description": "L743电子霍尔位置传感器",
+      "eta_date": "2026-10-15",
+      "eta_shift": "早班",
+      "quantity": 4500.0,
+      "qc_release_hours": 2.5,
+      "associated_part": "WD48696",
+      "status": "在途运输 (In Transit)"
+    },
+    {
+      "site": "WL",
+      "po_number": "PO-202610-WL-0887",
+      "supplier": "昆山科森精密五金",
+      "part_no": "WBC9317-BRKT",
+      "description": "LEAP电机固定加固冲压支架",
+      "eta_date": "2026-10-14",
+      "eta_shift": "晚班",
+      "quantity": 7000.0,
+      "qc_release_hours": 1.0,
+      "associated_part": "WBC9317",
+      "status": "在途运输 (In Transit)"
+    }
+  ],
+  "customer_tiers": [
+    {
+      "site": "WL",
+      "customer_code": "CUST-GEELY",
+      "customer_name": "浙江吉利控股集团制造总装",
+      "tier": "STRATEGIC (战略级)",
+      "priority_weight": 10,
+      "otd_target_rate": 100.0,
+      "delivery_window": "0天严格保供",
+      "subcontract_allowed": "严禁外协 (No)",
+      "associated_products": [
+        "WA14208",
+        "WAB6404",
+        "W144813S"
+      ]
+    },
+    {
+      "site": "WL",
+      "customer_code": "CUST-SGM",
+      "customer_name": "上汽通用汽车有限公司",
+      "tier": "TIER_A (核心A级)",
+      "priority_weight": 3,
+      "otd_target_rate": 98.0,
+      "delivery_window": "±1天窗口协商",
+      "subcontract_allowed": "协商外协 (Negotiable)",
+      "associated_products": [
+        "WB35356",
+        "WB80510"
+      ]
+    },
+    {
+      "site": "WL",
+      "customer_code": "CUST-BYD",
+      "customer_name": "比亚迪乘用车弗迪动力",
+      "tier": "STRATEGIC (战略级)",
+      "priority_weight": 10,
+      "otd_target_rate": 100.0,
+      "delivery_window": "0天严格保供",
+      "subcontract_allowed": "严禁外协 (No)",
+      "associated_products": [
+        "WBC9317",
+        "WBC9324"
+      ]
+    },
+    {
+      "site": "WL",
+      "customer_code": "CUST-CHERY",
+      "customer_name": "奇瑞汽车新能源总装基地",
+      "tier": "TIER_A (核心A级)",
+      "priority_weight": 3,
+      "otd_target_rate": 98.0,
+      "delivery_window": "±1天窗口协商",
+      "subcontract_allowed": "协商外协 (Negotiable)",
+      "associated_products": [
+        "WD48696",
+        "WD59238"
+      ]
+    },
+    {
+      "site": "WL",
+      "customer_code": "CUST-AFTERMARKET",
+      "customer_name": "华东后市场备件流通中心",
+      "tier": "TIER_B (灵活B级)",
+      "priority_weight": 1,
+      "otd_target_rate": 95.0,
+      "delivery_window": "+3天或顺延次月",
+      "subcontract_allowed": "允许外协 (Yes)",
+      "associated_products": [
+        "W000014477SKR",
+        "W000014478SKR"
+      ]
+    }
+  ]
+}

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.data_loader import ProductionInputSnapshot, RequirementPlan
 from src.scheduler import ScheduledTask, ScheduleResult
-from src.shift_manager import SHIFT_HOURS, SHIFT_SECONDS, ShiftBucket
+from src.shift_manager import SHIFT_HOURS, SHIFT_SECONDS, ShiftBucket, get_topology
 
 
 @dataclass
@@ -60,6 +60,7 @@ def build_validation_matrix(
     result: ScheduleResult,
     site: str = "WL",
 ) -> ValidationMatrix:
+    topology = get_topology(site)
     shifts = result.shifts
     # Ordered shift list
     shift_columns = []
@@ -120,8 +121,8 @@ def build_validation_matrix(
                     if f"{date_str} {shift_name}" == s_key:
                         pure_sec += qty * t.ct_seconds
             hours = pure_sec / 3600.0
-            # Loading rate = Loading Hours / (8.0 * TRP)
-            avail_hours = SHIFT_HOURS * trp
+            # Loading rate = Loading Hours / (Shift_Hours * TRP)
+            avail_hours = topology.shift_hours * trp
             rate = (hours / avail_hours * 100.0) if avail_hours > 0 else 0.0
             
             hours_by_shift[s_key] = round(hours, 2)

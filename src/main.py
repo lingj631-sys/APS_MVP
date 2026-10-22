@@ -10,7 +10,7 @@ import os
 import shutil
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
@@ -40,14 +40,21 @@ TIME_LIMIT_SECONDS = 90.0
 
 
 def main():
+    data_dir = os.path.join(BASE_DIR, "data")
     excel_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
     backup_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.backup.xlsx")
-    if not os.path.exists(backup_path):
+    if os.path.exists(excel_path) and not os.path.exists(backup_path):
         shutil.copyfile(excel_path, backup_path)
         print(f"Created backup at {backup_path}")
 
-    print(f"Loading data from {excel_path} for Site {SITE}...")
-    snapshot = load_aps_database(excel_path, site_filter=SITE)
+    source = data_dir if os.path.exists(data_dir) else excel_path
+    print(f"Loading data from {source} for Site {SITE}...")
+    snapshot = load_aps_database(source, site_filter=SITE)
+
+    # 10-day standard horizon for deterministic scheduling
+    horizon_days = 10
+    horizon_end = START_DT + timedelta(days=horizon_days)
+    snapshot.orders = [o for o in snapshot.orders if o.due_datetime <= horizon_end]
     plan = build_requirement_plan(snapshot)
     print(
         f"Loaded {len(snapshot.orders)} demand lines -> {len(plan.fg_tasks)} FG tasks "
@@ -58,7 +65,7 @@ def main():
     for warning in plan.warnings:
         print(f"  [warn]  {warning}")
 
-    planning_days = (max(t.due_datetime for t in plan.fg_tasks) - START_DT).days + 1 + SLACK_DAYS
+    planning_days = horizon_days
 
     # 1. Macro capacity precheck & 3-tier calendar decision (R-CL-01..03, R-EX-04, D-08)
     initial_calendar_shifts = generate_shift_calendar(

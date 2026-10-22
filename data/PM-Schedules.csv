@@ -1,0 +1,6 @@
+﻿Site,PM Plan No,Production Line,Equipment Name,PM Type,Start Date,Start Shift,End Date,End Shift,Downtime Hours,Capacity Rate (%),Handling Strategy,Responsible Team,Status
+WL,PM-WL-202610-01,PGLINKAGE,PGLINKAGE 雨刮传动杆总装线,Level-2 周度气电与伺服定检,2026-10-15,晚班,2026-10-15,晚班,8,0,避让顺延 (Shift_Delay),机修自动化一组,已排定 (Planned)
+WL,PM-WL-202610-02,轴套6,轴套6 高速精密冷冲床,Level-1 导柱润滑与气路定检,2026-10-18,晚班,2026-10-18,晚班,8,0,跨班切分 (Batch_Split),冲压维修二班,已排定 (Planned)
+WL,PM-WL-202610-03,轴套7,轴套7 备用冷冲压机床,Level-3 季度几何精度大修标定,2026-10-13,早班,2026-10-14,晚班,48,0,暂停挂起 (Suspend),设备厂家常驻维保组,执行中 (In Progress)
+SY38,PM-SY-202610-01,1400T-6,1400T 注塑机 6号机,Level-2 液压阀组与温控保养,2026-10-16,早班,2026-10-16,早班,8,0,避让顺延 (Shift_Delay),注塑保全班,已排定 (Planned)
+SY38,PM-SY-202610-02,PU07,PU07 自动化涂装线,Level-1 喷房水帘与废气过滤换芯,2026-10-17,晚班,2026-10-17,晚班,8,0,避让顺延 (Shift_Delay),涂装环保工务段,已排定 (Planned)

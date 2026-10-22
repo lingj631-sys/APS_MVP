@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 from src.data_loader import RequirementPlan
 from src.rules import REGISTRY, RuleStatus, get_rules_for_site
 from src.scheduler import ScheduledTask, ScheduleResult
-from src.shift_manager import MIN_SHIFT_UTILIZATION, SHIFT_SECONDS
+from src.shift_manager import MIN_SHIFT_UTILIZATION, SHIFT_SECONDS, get_topology
 
 MAX_PARALLEL_MODELS_PER_SHIFT = 3
 
@@ -83,6 +83,7 @@ def _check_capacity(
     allow_105_fg: bool = False,
     allow_105_sf: bool = False,
 ) -> Check:
+    topology = get_topology("WL")
     violations = []
     line_stage = {}
     for t in tasks:
@@ -91,7 +92,7 @@ def _check_capacity(
     for (line, idx), seconds in sorted(_loads(tasks, index_of).items()):
         is_fg = line_stage.get(line) == 'FG'
         allow_105 = allow_105_fg if is_fg else allow_105_sf
-        limit_seconds = (SHIFT_SECONDS * 1.05) if allow_105 else SHIFT_SECONDS
+        limit_seconds = (topology.shift_seconds * 1.05) if allow_105 else topology.shift_seconds
         if seconds > limit_seconds + 1e-6:
             limit_str = '8.4h (105%上限)' if allow_105 else '8h (100%上限)'
             violations.append(f'{line} shift#{idx} 投入 {seconds / 3600:.2f}h 超过 {limit_str}')
@@ -102,6 +103,7 @@ def _check_capacity(
 
 def _check_utilization(tasks, index_of) -> Check:
     """R-WL-26: Shift utilization in [95%, 105%] (tail exempt)."""
+    topology = get_topology("WL")
     label_of = {idx: f"{date_str} {shift_name}" for (date_str, shift_name), idx in index_of.items()}
     loads = _loads(tasks, index_of)
     by_line: Dict[str, List[Tuple[int, float]]] = {}
@@ -112,7 +114,7 @@ def _check_utilization(tasks, index_of) -> Check:
     for line, entries in by_line.items():
         entries.sort()
         for position, (idx, seconds) in enumerate(entries):
-            utilization = seconds / SHIFT_SECONDS
+            utilization = seconds / topology.shift_seconds
             if utilization >= MIN_SHIFT_UTILIZATION - 1e-9:
                 continue
             if position == len(entries) - 1:
@@ -427,8 +429,9 @@ def _validate_schedule_sy38(
 
 def _check_capacity_sy(tasks, index_of, allow_105: bool = False) -> Check:
     """R-SY-08: Shift capacity within rated limit (12h standard, 105% elastic)."""
+    topology = get_topology("SY38")
     violations = []
-    limit_seconds = (SHIFT_SECONDS * 1.05) if allow_105 else SHIFT_SECONDS
+    limit_seconds = (topology.shift_seconds * 1.05) if allow_105 else topology.shift_seconds
     for (line, idx), seconds in sorted(_loads(tasks, index_of).items()):
         if seconds > limit_seconds + 1e-6:
             limit_str = '12.6h (105%上限)' if allow_105 else '12h (100%上限)'
@@ -439,6 +442,7 @@ def _check_capacity_sy(tasks, index_of, allow_105: bool = False) -> Check:
 
 def _check_utilization_sy(tasks, index_of) -> Check:
     """R-SY-08: Shift utilization within 95%~105% target interval (tail exempt)."""
+    topology = get_topology("SY38")
     label_of = {idx: f"{date_str} {shift_name}" for (date_str, shift_name), idx in index_of.items()}
     loads = _loads(tasks, index_of)
     by_line: Dict[str, List[Tuple[int, float]]] = {}
@@ -449,7 +453,7 @@ def _check_utilization_sy(tasks, index_of) -> Check:
     for line, entries in by_line.items():
         entries.sort()
         for position, (idx, seconds) in enumerate(entries):
-            utilization = seconds / SHIFT_SECONDS
+            utilization = seconds / topology.shift_seconds
             if utilization >= MIN_SHIFT_UTILIZATION - 1e-9:
                 continue
             if position == len(entries) - 1:

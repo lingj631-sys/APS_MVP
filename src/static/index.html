@@ -431,8 +431,8 @@
                   </td>
                   <td class="py-1 px-3 text-right border-r-2 border-slate-300 sync-col-4 bg-white z-40 text-[10px] text-slate-500 font-mono whitespace-nowrap">
                     <span v-if="row.metric === 'Loading Rate'" class="font-bold text-emerald-700">门槛 ≥95%</span>
-                    <span v-else-if="row.metric === 'TRP'">标准: {{ row.line === 'PGLINKAGE' ? '0.71' : '0.85' }}</span>
-                    <span v-else>单班定额: 8.0h</span>
+                    <span v-else-if="row.metric === 'TRP'">标准: {{ row.line === 'PGLINKAGE' ? '0.71' : (row.line === 'PU07' ? '0.60' : (row.line === 'PU22' ? '0.70' : '0.85')) }}</span>
+                    <span v-else>{{ selectedSite === 'SY38' ? '单班定额: 12.0h' : '单班定额: 8.0h' }}</span>
                   </td>
                   <td v-for="col in shiftColumns" :key="'ll-v-'+col.key"
                       @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
@@ -1880,13 +1880,13 @@
               <div class="flex items-center space-x-2">
                 <span class="text-slate-500 font-medium">典型工作制模板一键应用:</span>
                 <button @click="applyCalendarTemplate('SEVEN_ZERO')" :class="calendarMode === 'SEVEN_ZERO' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
-                  7×3 连续生产 (默认含周六日)
+                  7×{{ selectedSite === 'SY38' ? '2' : '3' }} 连续生产 (全周24h连产)
                 </button>
                 <button @click="applyCalendarTemplate('FIVE_TWO')" :class="calendarMode === 'FIVE_TWO' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
-                  5×3 做五休二 (周六日双休)
+                  5×{{ selectedSite === 'SY38' ? '2' : '3' }} 做五休二 (周一至五24h / 周末双休)
                 </button>
                 <button @click="applyCalendarTemplate('FOUR_THREE')" :class="calendarMode === 'FOUR_THREE' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
-                  4×3 做四休三 (周五六日休)
+                  4×{{ selectedSite === 'SY38' ? '2' : '3' }} 做四休三 (周一至四24h / 周五六日休)
                 </button>
               </div>
 
@@ -1949,40 +1949,23 @@
                     </button>
                   </div>
 
-                  <!-- 3 Shifts Granular Switches -->
+                  <!-- Shifts Granular Switches -->
                   <div class="bg-slate-50 rounded-lg p-2 border border-slate-200/80 space-y-1.5 text-xs">
                     <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                      <span>三班制作息控制</span>
+                      <span>{{ selectedSite === 'SY38' ? '两班制作息控制 (12h/班)' : '三班制作息控制 (8h/班)' }}</span>
                       <span class="font-mono text-indigo-600 font-bold">{{ day.capacity_hours }}h</span>
                     </div>
 
-                    <div class="grid grid-cols-3 gap-1">
-                      <!-- 早班 -->
+                    <div :class="selectedSite === 'SY38' ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-3 gap-1'">
                       <button
-                        @click="toggleShiftWork(day, '早班')"
-                        :class="day.shifts['早班'] ? 'bg-amber-500 text-white font-bold shadow-xs' : 'bg-slate-200 text-slate-400 line-through'"
-                        class="py-1 rounded text-[10px] transition text-center"
-                        title="早班 07:00~15:00 (客户交付截单)"
+                        v-for="(isWork, shiftName) in day.shifts"
+                        :key="shiftName"
+                        @click="toggleShiftWork(day, shiftName)"
+                        :class="isWork ? (shiftName === '早班' || shiftName === '白班' ? 'bg-amber-500 text-white font-bold shadow-xs' : (shiftName === '中班' ? 'bg-blue-500 text-white font-bold shadow-xs' : 'bg-indigo-600 text-white font-bold shadow-xs')) : 'bg-slate-200 text-slate-400 line-through'"
+                        class="py-1 rounded text-[10px] transition text-center font-medium"
+                        :title="selectedSite === 'SY38' ? (shiftName === '早班' ? '早班 08:00~20:00 (12h 交付截单)' : '晚班 20:00~08:00 (12h)') : (shiftName === '早班' ? '早班 07:00~15:00 (8h 交付截单)' : (shiftName === '中班' ? '中班 15:00~23:00 (8h)' : '晚班 23:00~07:00 (8h)'))"
                       >
-                        早班
-                      </button>
-                      <!-- 中班 -->
-                      <button
-                        @click="toggleShiftWork(day, '中班')"
-                        :class="day.shifts['中班'] ? 'bg-blue-500 text-white font-bold shadow-xs' : 'bg-slate-200 text-slate-400 line-through'"
-                        class="py-1 rounded text-[10px] transition text-center"
-                        title="中班 15:00~23:00 (标准生产)"
-                      >
-                        中班
-                      </button>
-                      <!-- 晚班 -->
-                      <button
-                        @click="toggleShiftWork(day, '晚班')"
-                        :class="day.shifts['晚班'] ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'bg-slate-200 text-slate-400 line-through'"
-                        class="py-1 rounded text-[10px] transition text-center"
-                        title="晚班 23:00~07:00 (连产储备 / 可停机TPM)"
-                      >
-                        晚班
+                        {{ shiftName }}
                       </button>
                     </div>
                   </div>
@@ -1990,7 +1973,7 @@
                   <!-- Card Footer: Tag -->
                   <div class="pt-1 border-t border-slate-100 flex items-center justify-between text-[10px]">
                     <span :class="day.is_work ? 'text-slate-500' : 'text-rose-500 font-medium'">{{ day.tag }}</span>
-                    <span class="text-slate-400 font-mono">{{ day.open_shifts_count }}/3 班开工</span>
+                    <span class="text-slate-400 font-mono">{{ day.open_shifts_count }}/{{ selectedSite === 'SY38' ? '2' : '3' }} 班开工</span>
                   </div>
                 </div>
               </div>
@@ -2790,9 +2773,9 @@
               <div class="space-y-2">
                 <label class="block text-xs font-medium text-slate-700">工作制模式选择:</label>
                 <select v-model="calendarMode" @change="applyCalendarTemplate(calendarMode)" class="w-full bg-slate-50 border border-slate-300 text-slate-800 font-bold rounded-xl py-2 px-3 text-xs shadow-xs focus:ring-2 focus:ring-indigo-500">
-                  <option value="SEVEN_ZERO">连续生产 (7天×3班 - 240h 极限产能)</option>
-                  <option value="FIVE_TWO">做五休二 (5天×3班 - 120h 法定工时)</option>
-                  <option value="FOUR_THREE">做四休三 (4天×3班 - 96h 节能模式)</option>
+                  <option value="SEVEN_ZERO">连续生产 (7天×{{ selectedSite === 'SY38' ? '2' : '3' }}班 - 开工日全天24h / 极限产能)</option>
+                  <option value="FIVE_TWO">做五休二 (5天×{{ selectedSite === 'SY38' ? '2' : '3' }}班 - 开工日全天24h / 周末双休)</option>
+                  <option value="FOUR_THREE">做四休三 (4天×{{ selectedSite === 'SY38' ? '2' : '3' }}班 - 开工日全天24h / 周五六日休)</option>
                 </select>
               </div>
 
@@ -3251,9 +3234,10 @@
         });
 
         const calendarModeDisplay = computed(() => {
-          if (calendarMode.value === 'SEVEN_ZERO') return '连续生产 (7×3)';
-          if (calendarMode.value === 'FIVE_TWO') return '做五休二 (5×3)';
-          if (calendarMode.value === 'FOUR_THREE') return '做四休三 (4×3)';
+          const sLabel = (selectedSite.value === 'SY38' ? '2' : '3');
+          if (calendarMode.value === 'SEVEN_ZERO') return `连续生产 (7×${sLabel})`;
+          if (calendarMode.value === 'FIVE_TWO') return `做五休二 (5×${sLabel})`;
+          if (calendarMode.value === 'FOUR_THREE') return `做四休三 (4×${sLabel})`;
           return calendarMode.value;
         });
         const materialView = ref("FG");

@@ -1698,8 +1698,19 @@ async def audit_manual_schedule(
         for r in range(3, ws.max_row + 1):
             metric = str(ws.cell(r, 3).value or "").strip()
             if "Production plan" in metric or "排产计划" in metric:
-                pn = str(ws.cell(r, 1).value or "").strip()
-                line = str(ws.cell(r, 2).value or "").strip()
+                # 准确解析料号与产线：
+                # 在导出的 PSI 矩阵中，第 r-1 行（Customer demand）的第 1 列是料号 PN；
+                # 第 r 行（Production plan）的第 1 列是产线 Line · Site，第 2 列是 MPQ/TRP 参数规格。
+                raw_c1 = str(ws.cell(r, 1).value or "").strip()
+                raw_pn = str(ws.cell(r - 1, 1).value or "").strip()
+                pn = raw_pn if raw_pn and not raw_pn.startswith("Site") and not raw_pn.startswith("料号") and not raw_pn.startswith("站点") else raw_c1
+                line = raw_c1.split("·")[0].strip() if "·" in raw_c1 else raw_c1
+
+                # 优先根据主数据校准产线名称，防止取到 MPQ/TRP 或规格说明
+                param = snap.fg_params.get(pn) or snap.sf_params.get(pn)
+                if param:
+                    line = param.line
+
                 breakdown = {}
                 for c, sk in shift_cols.items():
                     v = ws.cell(r, c).value
@@ -1749,6 +1760,7 @@ async def audit_manual_schedule(
     # Reconstruct ScheduledTask objects
     manual_tasks: List[ScheduledTask] = []
     task_idx = 1
+    assigned_task_ids: set = set()
     for item in tasks_raw:
         pn = item["part_no"]
         line = item["line"]
@@ -1758,60 +1770,104 @@ async def audit_manual_schedule(
         param = snap.fg_params.get(pn) if is_fg else snap.sf_params.get(pn)
         stage = "FG" if is_fg else "SF"
         default_line = "PGLINKAGE" if is_fg else "轴套6"
-        task_line = line if (line and line != "None") else (param.line if param else default_line)
+        task_line = param.line if param else (line if (line and not line.startswith("MPQ") and line != "None") else default_line)
         ct = param.ct_seconds if param else (40.0 if is_fg else 25.0)
         trp = param.trp if param else (0.71 if is_fg else 0.85)
         mpq = int(param.mpq) if param else 1
         desc = param.description if param else pn
 
+        # Map breakdown keys to (date_str, shift_name)
         mapped_breakdown = {}
-        shift_secs = {}
-        active_indices = []
         for sk, qty in breakdown.items():
-            parts = sk.split()
-            tuple_key = (parts[0], parts[1]) if len(parts) >= 2 else (sk, "早班")
-            mapped_breakdown[tuple_key] = int(round(qty))
-            sec = qty * (ct / trp)
-            shift_secs[tuple_key] = sec
-            if tuple_key in index_of:
-                active_indices.append(index_of[tuple_key])
-            elif sk in index_of:
-                active_indices.append(index_of[sk])
+            if isinstance(sk, tuple):
+                mapped_breakdown[sk] = int(round(qty))
+            else:
+                parts = str(sk).split()
+                tuple_key = (parts[0], parts[1]) if len(parts) >= 2 else (str(sk), "早班")
+                mapped_breakdown[tuple_key] = int(round(qty))
 
-        if not active_indices:
-            continue
+        matching = sorted([t for t in plan.tasks if t.part_no == pn], key=lambda t: t.due_datetime or datetime.max)
+        if not matching or len(matching) == 1:
+            matched_t = matching[0] if matching else None
+            tot_qty = sum(mapped_breakdown.values())
+            active_indices = [index_of[k] for k in mapped_breakdown if k in index_of]
+            if not active_indices:
+                continue
+            min_s, max_s = min(active_indices), max(active_indices)
+            shift_secs = {k: v * (ct / trp) for k, v in mapped_breakdown.items()}
+            manual_tasks.append(ScheduledTask(
+                task_id=matched_t.task_id if matched_t else f"MANUAL_{stage}_{pn}_{task_idx:02d}",
+                stage=stage,
+                line=task_line,
+                part_no=pn,
+                description=desc,
+                quantity=float(tot_qty),
+                ct_seconds=ct,
+                trp=trp,
+                mpq=mpq,
+                lot_size=mpq if is_fg else 1,
+                lots=int(tot_qty // mpq) if is_fg else int(tot_qty),
+                order_id=matched_t.order_id if matched_t else f"ORD_MANUAL_{pn}",
+                due_datetime=matched_t.due_datetime if matched_t else (shift_by_index[min_s].start_dt + timedelta(days=7)),
+                start_dt=shift_by_index[min_s].start_dt,
+                end_dt=shift_by_index[max_s].end_dt,
+                duration_hours=sum(shift_secs.values()) / 3600.0,
+                shift_breakdown=mapped_breakdown,
+                shift_seconds=shift_secs,
+            ))
+            task_idx += 1
+        else:
+            # Multiple orders for same part_no: FIFO chronological distribution
+            rem_needs = {t.task_id: t.quantity for t in matching}
+            task_breakdowns = defaultdict(dict)
+            sorted_shifts = sorted(mapped_breakdown.keys(), key=lambda k: index_of.get(k, 0))
+            for sk in sorted_shifts:
+                avail = mapped_breakdown[sk]
+                for t in matching:
+                    if avail <= 0:
+                        break
+                    rem = rem_needs[t.task_id]
+                    if rem <= 0:
+                        continue
+                    take = min(avail, rem)
+                    task_breakdowns[t.task_id][sk] = take
+                    rem_needs[t.task_id] -= take
+                    avail -= take
+            if avail > 0:
+                last_t = matching[-1]
+                last_sk = sorted_shifts[-1]
+                task_breakdowns[last_t.task_id][last_sk] = task_breakdowns[last_t.task_id].get(last_sk, 0) + avail
 
-        min_s_idx = min(active_indices)
-        max_s_idx = max(active_indices)
-        start_time = shift_by_index[min_s_idx].start_dt
-        end_time = shift_by_index[max_s_idx].end_dt
-        tot_qty = sum(mapped_breakdown.values())
-        tot_hours = sum(shift_secs.values()) / 3600.0
-
-        matched_order = next((o for o in snap.orders if o.part_no == pn), None)
-        due_dt = matched_order.due_datetime if matched_order else (start_time + timedelta(days=7))
-
-        manual_tasks.append(ScheduledTask(
-            task_id=f"MANUAL_{stage}_{pn}_{task_idx:02d}",
-            stage=stage,
-            line=task_line,
-            part_no=pn,
-            description=desc,
-            quantity=float(tot_qty),
-            ct_seconds=ct,
-            trp=trp,
-            mpq=mpq,
-            lot_size=mpq if is_fg else 1,
-            lots=int(tot_qty // mpq) if is_fg else int(tot_qty),
-            order_id=matched_order.order_id if matched_order else f"ORD_MANUAL_{pn}",
-            due_datetime=due_dt,
-            start_dt=start_time,
-            end_dt=end_time,
-            duration_hours=tot_hours,
-            shift_breakdown=mapped_breakdown,
-            shift_seconds=shift_secs,
-        ))
-        task_idx += 1
+            for t in matching:
+                tb = task_breakdowns.get(t.task_id, {})
+                tot_qty = sum(tb.values())
+                if tot_qty <= 0:
+                    continue
+                active_indices = [index_of[k] for k in tb if k in index_of]
+                if not active_indices:
+                    continue
+                min_s, max_s = min(active_indices), max(active_indices)
+                shift_secs = {k: v * (ct / trp) for k, v in tb.items()}
+                manual_tasks.append(ScheduledTask(
+                    task_id=t.task_id,
+                    stage=stage,
+                    line=task_line,
+                    part_no=pn,
+                    description=desc,
+                    quantity=float(tot_qty),
+                    ct_seconds=ct,
+                    trp=trp,
+                    mpq=mpq,
+                    lot_size=mpq if is_fg else 1,
+                    lots=int(tot_qty // mpq) if is_fg else int(tot_qty),
+                    order_id=t.order_id,
+                    due_datetime=t.due_datetime,
+                    start_dt=shift_by_index[min_s].start_dt,
+                    end_dt=shift_by_index[max_s].end_dt,
+                    duration_hours=sum(shift_secs.values()) / 3600.0,
+                    shift_breakdown=tb,
+                    shift_seconds=shift_secs,
+                ))
 
     manual_result = ScheduleResult(
         tasks=manual_tasks,

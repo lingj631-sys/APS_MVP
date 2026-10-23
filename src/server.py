@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import io
+import openpyxl
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
@@ -41,7 +42,7 @@ from src.data_loader import (
 from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.prechecker import precheck_capacity
 from src.rules import REGISTRY, RuleCategory, RuleStatus, get_rules_for_site
-from src.scheduler import APSScheduler, ScheduleResult
+from src.scheduler import APSScheduler, ScheduleResult, ScheduledTask
 from src.shift_manager import CalendarMode, evaluate_calendar_recommendation, get_topology
 from src.validator import validate_schedule, diagnose_empty_shifts
 

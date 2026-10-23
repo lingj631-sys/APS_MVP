@@ -169,6 +169,27 @@ class TestApsPipeline(unittest.TestCase):
         self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
         self.assertGreater(len(res.tasks), 0)
 
+    def test_08_manual_schedule_excel_audit(self):
+        """Test POST /api/audit_manual_schedule endpoint logic with real Excel upload."""
+        import asyncio
+        from fastapi import UploadFile
+        from src.server import audit_manual_schedule
+        import io
+
+        excel_path = os.path.join(BASE_DIR, "dataSource.xlsx")
+        self.assertTrue(os.path.exists(excel_path))
+        with open(excel_path, "rb") as f:
+            content = f.read()
+
+        async def run_audit():
+            file_obj = UploadFile(filename="dataSource.xlsx", file=io.BytesIO(content))
+            return await audit_manual_schedule(file=file_obj, site="WL")
+
+        result = asyncio.run(run_audit())
+        self.assertEqual(result.get("status"), "success")
+        self.assertGreater(len(result.get("compliance_matrix", [])), 0)
+        self.assertGreater(len(result.get("checks", [])), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

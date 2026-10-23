@@ -118,6 +118,12 @@
 * **表现**：当 BOM 存在非整数比例（如 0.5、1.5 等辅料/共模件）时，原逻辑 `ratio = int(round(component.bom_ratio))` 直接四舍五入截断，导致 0.5 变为 0 或 1，约束完全失效或虚增领料需求。
 * **解决**：引入 `fractions.Fraction` 对 `bom_ratio` 进行有理数分数化（`Fraction(str(ratio)).limit_denominator(1000)`），提取分子 `num` 与分母 `denom`，通过严格等价的交叉乘法等式 `denom * available >= num * assembled` 建立线性整数不等式，100% 精确表达任意非整数比例，且在 CP-SAT 内部保持纯整型标度，杜绝浮点精度丢失。新增自动化测试 `test_07_fractional_bom_ratio_handling` 闭环验证通过。
 
+### 2.11 手工排产 Excel 上传独立审计闪退（openpyxl 与 ScheduledTask 未导入）
+* **定位**：`src/server.py`（`/api/audit_manual_schedule`）
+* **表现**：用户在前端上传排产 Excel 执行二次合规审计时，接口抛出 400 异常：`无法打开上传的 Excel 文件: name 'openpyxl' is not defined`；同时提取任务时缺失 `ScheduledTask` 符号。
+* **根因**：合并远程新增的独立手工审计接口时，顶部缺少 `import openpyxl` 以及从 `src.scheduler` 导入 `ScheduledTask`。
+* **解决**：补齐顶部 `openpyxl` 与 `ScheduledTask` 导入；新增 `test_08_manual_schedule_excel_audit` 自动化测试闭环覆盖真实文件流上传与 27 条/9 条双工厂审计。
+
 ---
 
 ## 三、当前仍存留的核心算法模型与工艺缺陷 (Remaining P1 Issues)

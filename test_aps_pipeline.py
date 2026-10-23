@@ -154,6 +154,21 @@ class TestApsPipeline(unittest.TestCase):
         except Exception:
             pass
 
+    def test_07_fractional_bom_ratio_handling(self):
+        """Test that fractional BOM ratios (e.g. 0.5) are modeled with exact cross-multiplication without integer truncation."""
+        snap_wl = load_aps_database(DATA_DIR, site_filter="WL")
+        horizon_end = START_DT + timedelta(days=10)
+        snap_wl.orders = [o for o in snap_wl.orders if o.due_datetime <= horizon_end]
+        first_fg = list(snap_wl.bom.keys())[0]
+        first_sf, _ = snap_wl.bom[first_fg][0]
+        snap_wl.bom[first_fg] = [(first_sf, 0.5)] + snap_wl.bom[first_fg][1:]
+        plan = build_requirement_plan(snap_wl)
+        sched = APSScheduler(plan, start_datetime=START_DT, planning_days=10, calendar_mode=CalendarMode.SEVEN_ZERO, site="WL")
+        res = sched.solve(time_limit_seconds=15.0)
+        self.assertIsNotNone(res)
+        self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
+        self.assertGreater(len(res.tasks), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

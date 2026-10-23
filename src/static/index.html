@@ -785,25 +785,31 @@
             </div>
           </div>
 
-          <!-- Active Hover / Selected Task Live Preview Banner -->
-          <div v-if="hoveredTask || selectedTask" class="mt-3 p-2.5 rounded-lg bg-indigo-50/80 border border-indigo-200 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in">
-            <div class="flex items-center space-x-3">
-              <span :class="(hoveredTask || selectedTask).stage === 'FG' ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'" class="px-2 py-0.5 rounded text-[10px] font-bold">
+          <!-- Active Hover / Selected Task Live Preview Banner (Fixed Height - Zero Layout Shift) -->
+          <div class="mt-3 p-2.5 rounded-lg border text-xs min-h-[46px] flex flex-wrap items-center justify-between gap-3 transition-colors duration-150"
+               :class="(hoveredTask || selectedTask) ? 'bg-indigo-50/90 border-indigo-200 shadow-xs' : 'bg-slate-50/60 border-slate-200/80 text-slate-400'">
+            <div v-if="hoveredTask || selectedTask" class="flex flex-wrap items-center space-x-3">
+              <span :class="(hoveredTask || selectedTask).stage === 'FG' ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'" class="px-2 py-0.5 rounded text-[10px] font-bold shadow-xs">
                 {{ (hoveredTask || selectedTask).stage === 'FG' ? '产成品 FG' : '半成品 SF' }}
               </span>
               <span class="font-mono font-bold text-slate-900 text-sm">{{ (hoveredTask || selectedTask).part_no }}</span>
               <span class="text-slate-700 font-medium">{{ (hoveredTask || selectedTask).description }}</span>
-              <span class="text-slate-400">|</span>
+              <span class="text-slate-300">|</span>
               <span>计划排产: <b class="text-indigo-800 font-mono">{{ (hoveredTask || selectedTask).quantity.toLocaleString() }}</b> 件</span>
-              <span class="text-slate-400">|</span>
+              <span class="text-slate-300">|</span>
               <span>时间: <b class="text-slate-800 font-mono">{{ (hoveredTask || selectedTask).start_dt }}</b> 至 <b class="text-slate-800 font-mono">{{ (hoveredTask || selectedTask).end_dt }}</b> ({{ (hoveredTask || selectedTask).duration_hours }}h)</span>
-              <span class="text-slate-400">|</span>
+              <span class="text-slate-300">|</span>
               <span v-if="(hoveredTask || selectedTask).due_dt !== '-'">
                 交期: <b class="text-slate-800 font-mono">{{ (hoveredTask || selectedTask).due_dt }}</b>
                 <span class="text-emerald-700 font-bold ml-1">提前 {{ (hoveredTask || selectedTask).slack_hours }}h 交付</span>
               </span>
             </div>
-            <button @click="openTaskDetail(hoveredTask || selectedTask)" class="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center space-x-1">
+            <div v-else class="flex items-center space-x-2 text-slate-400 py-0.5 select-none">
+              <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+              <span>鼠标悬停任意工单色块可即时查看全要素明细与 BOM 穿透联动，点击可锁定详情</span>
+            </div>
+
+            <button v-if="hoveredTask || selectedTask" @click="openTaskDetail(hoveredTask || selectedTask)" class="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center space-x-1 shrink-0">
               <span>查看全要素工单详情</span>
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
             </button>
@@ -901,7 +907,7 @@
                              @mouseleave="onTaskLeave()"
                              @click="openTaskDetail(task)"
                              :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
-                             class="absolute top-1.5 bottom-1.5 rounded-lg px-2 py-0.5 flex flex-col justify-between cursor-pointer transition-all duration-150 transform hover:scale-[1.01] hover:z-30 select-none shadow-md overflow-hidden"
+                             class="absolute top-1.5 bottom-1.5 rounded-lg px-2 py-0.5 flex flex-col justify-between cursor-pointer transition-all duration-150 hover:brightness-105 hover:ring-2 hover:ring-indigo-400 hover:z-30 select-none shadow-md overflow-hidden"
                              :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400 z-20' : '']">
                           
                           <div class="flex items-center justify-between overflow-hidden">
@@ -986,7 +992,7 @@
                            @mouseleave="onTaskLeave()"
                            @click="openTaskDetail(task)"
                            :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
-                           class="absolute top-3.5 bottom-3.5 rounded-lg px-2.5 py-1 flex flex-col justify-between cursor-pointer transition-all duration-150 transform hover:scale-[1.01] hover:z-30 select-none shadow-md overflow-hidden"
+                           class="absolute top-3.5 bottom-3.5 rounded-lg px-2.5 py-1 flex flex-col justify-between cursor-pointer transition-all duration-150 hover:brightness-105 hover:ring-2 hover:ring-indigo-400 hover:z-30 select-none shadow-md overflow-hidden"
                            :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400 z-20' : '']">
                         <div class="flex items-center justify-between overflow-hidden">
                           <span class="font-mono font-black text-xs tracking-tight text-white drop-shadow-xs truncate">{{ task.part_no }}</span>
@@ -2874,12 +2880,25 @@
 
                         <!-- 1. Calculation Details & Formulas -->
                         <div v-if="r.calculation_details && r.calculation_details.length" class="space-y-1.5 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
-                          <div v-for="(detail, dIdx) in r.calculation_details" :key="dIdx" class="text-slate-700 leading-relaxed">
+                          <div class="font-bold text-slate-800 flex items-center space-x-1.5 mb-1 text-[11px]">
+                            <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                            <span>算法动态核算判据与计算结果</span>
+                          </div>
+                          <div v-for="(detail, dIdx) in r.calculation_details" :key="dIdx" class="text-slate-700 leading-relaxed font-sans">
                             {{ detail }}
                           </div>
                         </div>
-                        <div v-else-if="r.ai_logic" class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 font-mono whitespace-pre-wrap leading-relaxed">
-                          {{ r.ai_logic }}
+
+                        <!-- 2. AI Scheduling Logic & Mathematical Formulation (Col G) -->
+                        <div v-if="r.ai_logic" class="bg-slate-900 text-slate-100 p-3 rounded-lg border border-slate-700 text-xs shadow-inner space-y-1.5">
+                          <div class="flex items-center justify-between border-b border-slate-700 pb-1 text-[11px]">
+                            <span class="text-amber-400 font-bold flex items-center space-x-1">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                              <span>AI排产逻辑规范化解析与示例 (Excel Col G)</span>
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-mono">{{ r.rule_id }} · 完整规范</span>
+                          </div>
+                          <pre class="whitespace-pre-wrap font-mono text-[11px] text-slate-200 leading-relaxed bg-slate-950/60 p-2.5 rounded border border-slate-800 selection:bg-indigo-500 selection:text-white">{{ r.ai_logic }}</pre>
                         </div>
 
                         <!-- 2. Core Quantitative KPI Metric Badges -->

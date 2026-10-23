@@ -100,6 +100,14 @@ def load_rules_from_excel(excel_path: Optional[str] = None) -> Dict[str, Dict[st
                 sy_idx += 1
             else:
                 continue
+
+            # 防御性兜底：若 Excel 中的逻辑描述被截断（以 ... 结尾）或缺失，优先使用内置全量规范文本
+            fallback_dict = REGISTRY_WE34_FALLBACK if target_site == "WL" else REGISTRY_SY38_FALLBACK
+            fallback_rule = fallback_dict.get(rule_id) if "REGISTRY_WE34_FALLBACK" in globals() else None
+            if fallback_rule and fallback_rule.ai_logic:
+                if not logic or logic.endswith("...") or len(logic) < len(fallback_rule.ai_logic):
+                    logic = fallback_rule.ai_logic
+
             rules_by_site[target_site][rule_id] = Rule(
                 rule_id=rule_id,
                 row_index=r,

@@ -28,6 +28,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from fractions import Fraction
 from typing import Any, Dict, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
@@ -630,15 +631,17 @@ class APSScheduler:
                 assembled = cumulative[fg_task.task_id][s] * fg_task.lot_size
                 for component in components:
                     comp_lo, comp_hi = self.windows[component.task_id]
-                    ratio = int(round(component.bom_ratio))
+                    frac = Fraction(str(component.bom_ratio)).limit_denominator(1000)
+                    num = frac.numerator
+                    denom = frac.denominator
                     if s - 1 < comp_lo:
                         model.Add(cumulative[fg_task.task_id][s] == 0)
                     else:
-                        model.Add(
+                        avail = (
                             cumulative[component.task_id][min(s - 1, comp_hi)] * component.lot_size
-                            + component.stock_covered
-                            >= assembled * ratio
+                            + int(round(component.stock_covered))
                         )
+                        model.Add(denom * avail >= num * assembled)
 
     def _add_line_capacity(self, model, x, utilization_mode: str, gap_cap=None):
         """Per line-shift load, rated ceiling, and 95% floor based on plant topology."""
@@ -752,7 +755,7 @@ class APSScheduler:
         clock: Dict[Tuple[str, int], Tuple[datetime, datetime]] = {}
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
-            order = sorted(line_tasks, key=lambda t: (self._first_shift(solver, x, t), t.task_id))
+            order = sorted(line_tasks, key=lambda t: (self._first_shift(solver, x, t), t.due_datetime or datetime.max, t.task_id))
             for s, shift in enumerate(self.shifts):
                 cursor = 0.0
                 for task in order:

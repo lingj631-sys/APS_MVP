@@ -14,6 +14,7 @@ import shutil
 import sys
 import tempfile
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -51,7 +52,14 @@ if not os.path.exists(DEFAULT_EXCEL):
 EXCEL_PATH = DEFAULT_EXCEL
 SITE = "WL"
 
-app = FastAPI(title="APS MVP 智能高级排产系统", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_app_state()
+    yield
+
+
+app = FastAPI(title="APS MVP 智能高级排产系统", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -351,14 +359,18 @@ def generate_calendar_view(
     }
 
 
-# Initialize snapshot on startup
-@app.on_event("startup")
-def startup_event():
+# Initialize snapshot state
+def init_app_state():
     try:
         session_state["snapshot"] = get_fresh_snapshot(SITE)
         session_state["plan"] = build_requirement_plan(session_state["snapshot"])
     except Exception as e:
         print(f"Error loading initial database: {e}")
+
+
+def startup_event():
+    """Backward-compatible callable for test suites and offline harnesses."""
+    init_app_state()
 
 
 # ---------------- API Models ----------------

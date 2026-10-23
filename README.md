@@ -25,13 +25,13 @@
 
 ```text
 APS_MVP/
-├── APS Database- Simulation draft.xlsx  # 主数据与排产输入/输出表格 (共14张Sheet，含39条原则、模具、PM维保、物料ETA及客户分级)
-├── requirements.txt                     # Python 依赖项 (openpyxl, ortools, fastapi, uvicorn)
+├── dataSource.xlsx                      # 标准主数据源与排产输入/输出工作簿 (规范化12张标准Sheet，含排产规则、模具、PM、物料ETA及客户分级)
+├── requirements.txt                     # Python 依赖项 (openpyxl, ortools, fastapi, uvicorn, python-multipart)
 ├── run_web.py                           # Web 服务一键启动入口 (支持代码热重载)
 ├── Specification/                       # 业务功能规格与调研文档
-│   ├── aps_project_progress.md          # 项目研发进度与里程碑台账 (M1..M9 收官全记录)
+│   ├── aps_project_progress.md          # 项目研发进度与里程碑台账 (M1..M10 收官全记录)
 │   ├── aps_rules_registry.md            # 39条排产规则全景台账、规范化解析与五大架构共识
-│   ├── aps_functional_spec.md           # 功能规格设计说明书 (v0.5 全要素规则演进版)
+│   ├── aps_functional_spec.md           # 功能规格设计说明书 (v0.7 全要素规则穿透审计版)
 │   ├── aps_ipo_overview.md              # Input - Process - Output 概览与组织层级架构
 │   └── aps_checkList.md                 # 物流专家访谈提纲
 └── src/                                 # 排产系统源代码
@@ -41,8 +41,8 @@ APS_MVP/
     ├── prechecker.py                    # 排产前粗能力宏观可行性预检与《交期调整建议表》
     ├── scheduler.py                     # Google OR-Tools CP-SAT 班次槽位优化模型 (顺位前拉/模具独占/维保避让/客户分级保供)
     ├── exporter.py                      # 自动格式化回写 Production plan-Done 工作表
-    ├── validator.py                     # 排产结果 17 项独立硬指标验证器与 39 条规则全景合规矩阵
-    └── server.py                        # FastAPI 高性能 RESTful 接口与静态站点托管服务
+    ├── validator.py                     # 排产结果 17 项独立硬指标验证器、数据穿透审计底表与空班诊断引擎
+    └── server.py                        # FastAPI 高性能 RESTful 接口、手工 Excel 审计接口与静态站点托管服务
 ```
 
 ## 3. 环境准备与运行
@@ -61,9 +61,12 @@ python run_web.py
 Web 界面主要特性：
 - **工厂站点一键切换 (WL / SY38)**：支持多基地无缝切换，日历（8h×3班 vs 12h×2班）、产线设备、订单、BOM、专属规则及生产策略全要素联动；
 - **① 生产平衡与负荷总览 (参考 `Production Plan Validation.xlsx`)**：
-  - 顶部产线负荷概览：按班次展示 `Loading Hours`、`TRP`、`Loading Rate`（利用率 95%~105% 达标高亮显示）；
+  - 顶部产线负荷概览：按班次展示 `Loading Hours`、`TRP`、`Loading Rate`（利用率 95%~105% 达标高亮显示，空班带 `ℹ️` 算法决策考量诊断气泡）；
+  - 标题栏产品状态过滤器：一键切换“只看排产计划的产品”与“看所有”，精准聚焦在产料号；
   - 底部物料动态平衡表 (PSI)：按物料展开 4 行（`Customer demand`、`Production plan`、`Stock Balance`、`Coverage days`），支持产成品 (FG) 与半成品 (SFIN) 分页或同屏展示；
-- **② 排产工单甘特明细**：查看各工序工单的起止时间、计划数量、交期达成状态及跨班流水排布；
+- **② 排产工单甘特明细 (防重叠多轨重构)**：
+  - 支持 **「分料号独立时间轨 (防重叠)」** 与 **「产线聚合单轨」** 双视图切换；
+  - 独立时间轨模式下各料号拥有专属子泳道，工单绝对零重叠，清晰呈现时序瀑布流与 BOM 协同高亮；
 - **③ 规则与约束配置 (工厂专属规则体系)**：
   - WL 工厂呈现 27 条全要素排产规则，SY38 呈现 9 条注塑涂装专属规则；
   - 支持 **9 大业务类型**与 **5 级可行性约束**双维极速筛选；
@@ -72,7 +75,9 @@ Web 界面主要特性：
 - **④ 输入与排产主数据工作台 (工业级浏览·变更·分析)**：
   - 在网页中直接维护订单需求数量、交期、期初库存；
   - 包含模具工装约束看板、设备 PM 维保看板、关键物料到货看板与客户战略评级看板；
-- **⑤ 规则合规审计矩阵**：全景独立复核工厂规则在当前排产方案下的遵循状态（PASS / FAIL / SKIPPED）；
+- **⑤ 规则合规审计矩阵与手工 Excel 上传闭环**：
+  - **核心计算数据穿透**：无论 PASS 还是 FAIL，17 项独立硬指标验证器与规则均支持展开查看公式算式、核心 KPI 徽章及 step-by-step 逐班验算底表（如 R-WL-11 跨班连续生产继承免换模计算）；
+  - **手工调整排产 Excel 上传独立二次审计**：支持将导出的排产文件在本地手工调整后重新上传，一键执行独立合规审计并即时标红违规，支持与算法原方案自由比对；
 - **⑥ ⚙️ 生产策略与系统设置 (全新专属工作台)**：
   - 灵活启闭 **30 天需求前瞻平准合批**，自定义前瞻拉单天数与上限；
   - 调节计划周期（5/10/15天）、工作制模式（连续生产/做五休二/做四休三）；

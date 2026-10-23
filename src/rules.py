@@ -63,7 +63,9 @@ class Rule:
 def load_rules_from_excel(excel_path: Optional[str] = None) -> Dict[str, Dict[str, Rule]]:
     if not excel_path or not os.path.exists(excel_path):
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        excel_path = os.path.join(base_dir, "APS Database- Simulation draft.xlsx")
+        excel_path = os.path.join(base_dir, "dataSource.xlsx")
+        if not os.path.exists(excel_path):
+            excel_path = os.path.join(base_dir, "APS Database- Simulation draft.xlsx")
     if not os.path.exists(excel_path):
         return {"WL": REGISTRY_WE34_FALLBACK, "SY38": REGISTRY_SY38_FALLBACK}
 

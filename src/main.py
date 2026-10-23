@@ -1,10 +1,10 @@
 """
 Main pipeline for the APS MVP.
 
-Reads 'APS Database- Simulation draft.xlsx', nets demand against stock, runs
-pre-solver macro capacity precheck, solves the two-stage shift-slot schedule with
-CP-SAT, writes 'Production plan-Done', then re-verifies the result against the
-WE34 hard/soft constraints and outputs the 30-rule compliance matrix.
+Reads 'data/' directory (or 'dataSource.xlsx' / 'APS Database- Simulation draft.xlsx'),
+nets demand against stock, runs pre-solver macro capacity precheck, solves the two-stage
+shift-slot schedule with CP-SAT, writes 'Production plan-Done', then re-verifies the
+result against hard/soft constraints and outputs the rule compliance matrix.
 """
 import os
 import shutil
@@ -41,9 +41,11 @@ TIME_LIMIT_SECONDS = 90.0
 
 def main():
     data_dir = os.path.join(BASE_DIR, "data")
-    excel_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
-    backup_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.backup.xlsx")
-    if os.path.exists(excel_path) and not os.path.exists(backup_path):
+    excel_path = os.path.join(BASE_DIR, "dataSource.xlsx")
+    if not os.path.exists(excel_path):
+        excel_path = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
+    backup_path = os.path.join(BASE_DIR, "dataSource.backup.xlsx")
+    if not os.path.exists(backup_path) and os.path.exists(excel_path):
         shutil.copyfile(excel_path, backup_path)
         print(f"Created backup at {backup_path}")
 
@@ -69,7 +71,7 @@ def main():
 
     # 1. Macro capacity precheck & 3-tier calendar decision (R-CL-01..03, R-EX-04, D-08)
     initial_calendar_shifts = generate_shift_calendar(
-        START_DT, planning_days, calendar_mode=CalendarMode.SEVEN_ZERO
+        START_DT, planning_days, calendar_mode=CalendarMode.SEVEN_ZERO, site=SITE
     )
     precheck = precheck_capacity(plan, initial_calendar_shifts)
     print(format_precheck_report(precheck))
@@ -79,92 +81,44 @@ def main():
     full_7day_capacity = (planning_days * 3 * SHIFT_SECONDS) / 3600.0
     cal_mode = decide_calendar_mode(total_fg_hours, full_7day_capacity)
     print(
-        f"\n[日历决策] 7日标准产能 {full_7day_capacity:.1f}h，需求工时 {total_fg_hours:.1f}h "
+        f"\n[AI 排班推荐] 7天极限总产能: {full_7day_capacity:.1f}h | 成品总工时需求: {total_fg_hours:.1f}h "
         f"(负荷比 {total_fg_hours / full_7day_capacity * 100:.1f}%) -> 推荐日历模式: {cal_mode.value}"
     )
 
     # In production, we run the selected mode (defaulting to SEVEN_ZERO for full coverage)
     active_mode = CalendarMode.SEVEN_ZERO
 
-    print(f"\nInitializing OR-Tools CP-SAT shift-slot scheduler ({planning_days} days, mode={active_mode.value})...")
-    scheduler = APSScheduler(
-        plan,
-        start_datetime=START_DT,
-        planning_days=planning_days,
-        calendar_mode=active_mode,
+    # 2. Shift-slot CP-SAT solve with strict 95% utilization, on-time delivery & sequential pulling
+    scheduler = APSScheduler(plan, start_datetime=START_DT, planning_days=planning_days, calendar_mode=active_mode, site=SITE)
+    print(
+        f"\nSolving with CP-SAT across {scheduler.num_shifts} shifts under mode {active_mode.value} "
+        f"(time limit {TIME_LIMIT_SECONDS:.0f}s)..."
     )
-    print(f"Solving mathematical optimization model (time limit = {TIME_LIMIT_SECONDS:.0f}s)...")
     result = scheduler.solve(time_limit_seconds=TIME_LIMIT_SECONDS)
 
-    export_path = _export(result, excel_path)
+    print(
+        f"\nSolved in {result.wall_time_seconds:.2f}s "
+        f"(objective: {result.objective_value:.0f})."
+    )
+    print(f"Utilization constraint: {result.status_name}")
 
-    print_report(result, plan)
-    checks = validate_schedule(plan, result)
-    print(format_report(checks))
-    print(format_rule_compliance_matrix(checks))
+    _report(plan, result)
+    if os.path.exists(excel_path):
+        _export(excel_path, plan, result)
 
-
-def _export(result, excel_path: str) -> str:
-    try:
-        export_production_plan(excel_path, excel_path, result.tasks, result.shifts)
-        return excel_path
-    except PermissionError:
-        # The source workbook is open in Excel; save elsewhere instead of failing.
-        fallback = excel_path.replace(".xlsx", ".scheduled.xlsx")
-        print(f"  [warn]  源文件正被 Excel 占用，排产结果改写到副本：{fallback}")
-        export_production_plan(excel_path, fallback, result.tasks, result.shifts)
-        return fallback
+    # 3. Independent rule validation and 30-rule compliance matrix (R-WL-01..27)
+    checks = validate_schedule(plan, result, site=SITE)
+    print("\n" + format_report(checks, site=SITE))
+    print("\n" + format_rule_compliance_matrix(checks, site=SITE))
 
 
-def _changeover_stats(tasks, shifts) -> dict:
-    """How fragmented the plan is: production blocks and models sharing a shift."""
-    index = {(s.date_str, s.shift_name): i for i, s in enumerate(shifts)}
-    stats = {}
-    for line in sorted({t.line for t in tasks}):
-        line_tasks = [t for t in tasks if t.line == line]
-        blocks = 0
-        per_slot = defaultdict(int)
-        for task in line_tasks:
-            slots = sorted(index[key] for key in task.shift_breakdown)
-            blocks += sum(1 for n, s in enumerate(slots) if n == 0 or s != slots[n - 1] + 1)
-            for s in slots:
-                per_slot[s] += 1
-        stats[line] = (blocks, len(line_tasks), max(per_slot.values(), default=0))
-    return stats
-
-
-def print_report(result, plan) -> None:
+def _report(plan, result):
     tasks = result.tasks
+    shifts = result.shifts
     fg_tasks = [t for t in tasks if t.stage == "FG"]
-    sf_tasks = [t for t in tasks if t.stage == "SF"]
 
-    loads = defaultdict(float)
-    for task in tasks:
-        for key, seconds in task.shift_seconds.items():
-            loads[(task.line, key)] += seconds
-
-    floor = MIN_SHIFT_UTILIZATION - 1e-9
-    utilisation: dict = {}
-    for line in sorted({t.line for t in tasks}):
-        line_loads = {key[1]: seconds for key, seconds in loads.items() if key[0] == line}
-        worked = [(s.date_str, s.shift_name) for s in result.shifts if (s.date_str, s.shift_name) in line_loads]
-        closing = worked[-1] if worked else None
-        below = [key for key in worked[:-1] if line_loads[key] / SHIFT_SECONDS < floor]
-        utilisation[line] = (line_loads, worked, closing, below)
-
-    gaps = sum(len(entry[3]) for entry in utilisation.values())
-    if result.strict_utilization:
-        status = "硬约束（全部满足）"
-    else:
-        status = "软约束（搜索后全部达标）" if not gaps else f"软约束（{gaps} 个班次未达 95%，见校验报告）"
-
-    print("\n" + "=" * 70)
-    print("                 APS MVP SCHEDULE KPI REPORT                 ")
-    print("=" * 70)
-    print(f"Total FG Tasks (PGLINKAGE): {len(fg_tasks)}")
-    print(f"Total SF Tasks (轴套6):    {len(sf_tasks)}")
-    print(f"Total Production Tasks:   {len(tasks)}")
-    print(f"Utilization constraint:   {status}")
+    utilisation = _line_utilisation(tasks, shifts)
+    floor = MIN_SHIFT_UTILIZATION
 
     min_start = min(t.start_dt for t in tasks)
     max_end = max(t.end_dt for t in tasks)
@@ -212,6 +166,54 @@ def print_report(result, plan) -> None:
     print("\n" + "-" * 70)
     print(f"On-Time Delivery Rate: {on_time / len(fg_tasks) * 100:.1f}% ({on_time}/{len(fg_tasks)})")
     print("=" * 70)
+
+
+def _line_utilisation(tasks, shifts):
+    out = {}
+    for line in sorted({t.line for t in tasks}):
+        line_tasks = [t for t in tasks if t.line == line]
+        loads = defaultdict(float)
+        for t in line_tasks:
+            for key, seconds in t.shift_seconds.items():
+                loads[key] += seconds
+
+        worked = [s for s in shifts if loads[(s.date_str, s.shift_name)] > 0]
+        closing = (worked[-1].date_str, worked[-1].shift_name) if worked else None
+        below = []
+        for s in worked[:-1]:
+            key = (s.date_str, s.shift_name)
+            if loads[key] / SHIFT_SECONDS < MIN_SHIFT_UTILIZATION:
+                below.append(key)
+        out[line] = (loads, worked, closing, below)
+    return out
+
+
+def _changeover_stats(tasks, shifts):
+    index_of = {(s.date_str, s.shift_name): i for i, s in enumerate(shifts)}
+    stats = {}
+    for line in sorted({t.line for t in tasks}):
+        line_tasks = [t for t in tasks if t.line == line]
+        blocks = 0
+        per_slot = defaultdict(int)
+        for task in line_tasks:
+            slots = sorted(index_of[k] for k, qty in task.shift_breakdown.items() if qty > 0)
+            if not slots:
+                continue
+            for s in slots:
+                per_slot[s] += 1
+            blocks += 1 + sum(1 for a, b in zip(slots, slots[1:]) if b - a > 1)
+        stats[line] = (blocks, len(line_tasks), max(per_slot.values()) if per_slot else 0)
+    return stats
+
+
+def _export(excel_path, plan, result):
+    try:
+        export_production_plan(excel_path, excel_path, result.tasks, result.shifts)
+        print(f"\nWritten schedule back to {excel_path} (sheet 'Production plan-Done').")
+    except PermissionError:
+        fallback = excel_path.replace(".xlsx", ".scheduled.xlsx")
+        export_production_plan(excel_path, fallback, result.tasks, result.shifts)
+        print(f"\nCould not write to {excel_path} (file is open). Wrote to {fallback} instead.")
 
 
 if __name__ == "__main__":

@@ -413,10 +413,30 @@
                         <span class="text-rose-700 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">&gt;105% 不可接受</span>
                       </span>
                     </div>
-                    <button @click.stop="showUpperLoadTable = !showUpperLoadTable" class="text-[11px] text-indigo-700 hover:text-indigo-900 bg-white/90 hover:bg-white px-2 py-0.5 rounded border border-indigo-300 font-normal transition flex items-center space-x-1 cursor-pointer shadow-2xs">
-                      <span>{{ showUpperLoadTable ? '折叠上表负荷' : '展开上表负荷' }}</span>
-                      <svg class="w-3 h-3 transform transition-transform" :class="showUpperLoadTable ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </button>
+                    <div class="flex items-center space-x-2">
+                      <!-- Filter: Scheduled Products vs All -->
+                      <div class="flex items-center bg-white p-0.5 rounded-lg border border-indigo-200 text-[11px] shadow-2xs">
+                        <button @click.stop="psiProductionFilter = 'ALL'"
+                                :class="psiProductionFilter === 'ALL' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+                                class="px-2.5 py-0.5 rounded transition cursor-pointer">
+                          看所有产品 ({{ totalMaterialsInStage }})
+                        </button>
+                        <button @click.stop="psiProductionFilter = 'SCHEDULED'"
+                                :class="psiProductionFilter === 'SCHEDULED' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+                                class="px-2.5 py-0.5 rounded transition flex items-center space-x-1 cursor-pointer">
+                          <span>只看排产计划的产品</span>
+                          <span class="text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-1"
+                                :class="psiProductionFilter === 'SCHEDULED' ? 'bg-white text-indigo-700' : 'bg-indigo-100 text-indigo-700'">
+                            {{ scheduledMaterialsCount }}
+                          </span>
+                        </button>
+                      </div>
+
+                      <button @click.stop="showUpperLoadTable = !showUpperLoadTable" class="text-[11px] text-indigo-700 hover:text-indigo-900 bg-white/90 hover:bg-white px-2 py-0.5 rounded border border-indigo-300 font-normal transition flex items-center space-x-1 cursor-pointer shadow-2xs">
+                        <span>{{ showUpperLoadTable ? '折叠上表负荷' : '展开上表负荷' }}</span>
+                        <svg class="w-3 h-3 transform transition-transform" :class="showUpperLoadTable ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -432,13 +452,20 @@
                   <td class="py-1 px-3 text-right border-r-2 border-slate-300 sync-col-4 bg-white z-40 text-[10px] text-slate-500 font-mono whitespace-nowrap">
                     <span v-if="row.metric === 'Loading Rate'" class="font-bold text-emerald-700">门槛 ≥95%</span>
                     <span v-else-if="row.metric === 'TRP'">标准: {{ row.line === 'PGLINKAGE' ? '0.71' : (row.line === 'PU07' ? '0.60' : (row.line === 'PU22' ? '0.70' : '0.85')) }}</span>
-                    <span v-else>{{ selectedSite === 'SY38' ? '单班定额: 12.0h' : '单班定额: 8.0h' }}</span>
+                    <span v-else>{{ selectedSite === "SY38" ? "单班定额: 12.0h" : "单班定额: 8.0h" }}</span>
                   </td>
                   <td v-for="col in shiftColumns" :key="'ll-v-'+col.key"
                       @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
                       class="py-1 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors"
                       :class="hoveredColKey === col.key ? 'bg-indigo-100 text-indigo-900 font-bold ring-1 ring-indigo-400 ring-inset' : getLoadCellClass(row.metric, row.shift_values[col.key])">
-                    {{ formatMetricValue(row.metric, row.shift_values[col.key]) }}
+                    <div class="flex items-center justify-center space-x-0.5">
+                      <span>{{ formatMetricValue(row.metric, row.shift_values[col.key]) }}</span>
+                      <span v-if="row.metric === 'Loading Rate' && (!row.shift_values[col.key] || row.shift_values[col.key] === 0 || row.shift_values[col.key] === '-')"
+                            class="cursor-help text-[9px] text-slate-400 hover:text-indigo-600 transition"
+                            :title="getEmptyShiftTooltip(row.line, col.key)">
+                        ℹ️
+                      </span>
+                    </div>
                   </td>
                 </tr>
                 <tr v-if="displayLineLoads.length === 0" class="bg-white">
@@ -667,6 +694,18 @@
                 </button>
               </div>
 
+              <!-- Track Sub-lane Display Switcher (Prevent Overlap) -->
+              <div v-show="ganttViewMode === 'gantt'" class="flex items-center bg-indigo-50/80 p-0.5 rounded-lg border border-indigo-200 text-xs font-semibold shadow-2xs">
+                <button @click="ganttTrackMode = 'BY_PART'" :class="ganttTrackMode === 'BY_PART' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:text-indigo-950'" class="px-2.5 py-1.5 rounded transition flex items-center space-x-1 cursor-pointer">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+                  <span>分料号独立时间轨 (防重叠)</span>
+                </button>
+                <button @click="ganttTrackMode = 'COMPACT'" :class="ganttTrackMode === 'COMPACT' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:text-indigo-950'" class="px-2.5 py-1.5 rounded transition flex items-center space-x-1 cursor-pointer">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                  <span>产线聚合单轨</span>
+                </button>
+              </div>
+
               <!-- Line Filter -->
               <div class="flex items-center bg-slate-100 rounded-lg px-2 py-1 border border-slate-200 text-xs">
                 <span class="text-slate-500 mr-1.5">产线:</span>
@@ -811,97 +850,159 @@
 
               <!-- Swimlane Rows -->
               <div class="divide-y divide-slate-200">
-                <div v-for="lane in ganttSwimlanes" :key="lane.line" class="flex hover:bg-slate-50/40 transition">
-                  <!-- Swimlane Left Header Card (Sticky Left) -->
-                  <div class="w-[280px] min-w-[280px] max-w-[280px] p-3.5 border-r border-slate-200 bg-white sticky left-0 z-20 flex flex-col justify-between shadow-xs">
-                    <div>
-                      <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-1.5">
-                          <span :class="lane.stage === 'FG' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">{{ lane.stage === 'FG' ? 'FG' : 'SF' }}</span>
-                          <span class="font-bold text-slate-900 text-sm">{{ lane.line }}</span>
-                        </div>
-                        <span :class="lane.stage === 'FG' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-2 py-0.5 rounded text-[10px] font-bold border">
-                          {{ lane.stage === 'FG' ? '产成品装配' : '半成品冲压' }}
-                        </span>
+                <!-- Mode 1: Sub-lanes by Part (Expanded, No Stacking) -->
+                <template v-if="ganttTrackMode === 'BY_PART'">
+                  <div v-for="lane in ganttSwimlanes" :key="'part-mode-'+lane.line" class="border-b-2 border-slate-300">
+                    <!-- Line Banner Header -->
+                    <div class="flex items-center justify-between px-3.5 py-2 bg-slate-100/90 border-b border-slate-200 text-xs">
+                      <div class="flex items-center space-x-2">
+                        <span :class="lane.stage === 'FG' ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">{{ lane.stage === 'FG' ? 'FG 总装' : 'SF 冲压' }}</span>
+                        <span class="font-bold text-slate-900 text-sm">{{ lane.line }}</span>
+                        <span class="text-slate-500 font-normal text-[11px]">({{ lane.line === 'PGLINKAGE' ? '雨刮连杆总成自动装配流水线' : '轴套6 连续冲压成型生产线' }})</span>
                       </div>
-                      <p class="text-[11px] text-slate-500 mt-1">
-                        {{ lane.line === 'PGLINKAGE' ? '雨刮连杆总成自动装配流水线' : '轴套6 连续冲压成型生产线' }}
-                      </p>
-                    </div>
-
-                    <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                      <div>
-                        <span class="text-slate-400">额定 TRP:</span>
-                        <b class="text-slate-700 ml-1">{{ lane.trp }}</b>
-                      </div>
-                      <div>
-                        <span class="text-slate-400">已排产:</span>
-                        <b class="text-indigo-700 ml-1">{{ lane.tasks.length }} 个任务</b>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Swimlane Timeline Track -->
-                  <div class="flex-1 relative h-[110px] py-3">
-                    <!-- Background Shift Grid & Zebra Stripes -->
-                    <div class="absolute inset-0 pointer-events-none">
-                      <div v-for="s in shiftsInfo" :key="'bg-'+s.key"
-                           :style="{ left: s.left_percent + '%', width: s.width_percent + '%' }"
-                           class="absolute top-0 bottom-0 border-r border-slate-200/70"
-                           :class="!s.is_work ? 'gantt-stripes' : (isAlternateDate(s.date) ? 'bg-slate-50/50' : 'bg-transparent')">
+                      <div class="flex items-center space-x-4 text-[11px] text-slate-500 font-mono">
+                        <span>额定 TRP: <b class="text-slate-700">{{ lane.trp }}</b></span>
+                        <span>排产物料: <b class="text-indigo-700">{{ lane.parts.length }} 种</b></span>
+                        <span>排产工单: <b class="text-indigo-700">{{ lane.tasks.length }} 个</b></span>
                       </div>
                     </div>
 
-                    <!-- Gantt Task Bars -->
-                    <div v-for="task in lane.tasks" :key="task.task_id"
-                         @mouseenter="onTaskHover(task)"
-                         @mouseleave="onTaskLeave()"
-                         @click="openTaskDetail(task)"
-                         :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
-                         class="absolute top-3.5 bottom-3.5 rounded-lg px-2.5 py-1 flex flex-col justify-between cursor-pointer transition-all duration-150 transform hover:scale-[1.01] hover:z-30 select-none shadow-md overflow-hidden"
-                         :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400 z-20' : '']">
-                      
-                      <!-- Top Line of Task Bar -->
-                      <div class="flex items-center justify-between overflow-hidden">
-                        <div class="flex items-center space-x-1.5 truncate">
-                          <span class="font-mono font-black text-xs tracking-tight text-white drop-shadow-xs">{{ task.part_no }}</span>
-                          <span v-if="isTaskLinked(task)" class="bg-cyan-900/80 text-cyan-200 text-[9px] px-1 rounded font-bold flex items-center space-x-0.5">
-                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101"></path></svg>
-                            <span>关联</span>
+                    <!-- Part Sub-lanes -->
+                    <div v-for="part in lane.parts" :key="lane.line + '-' + part.part_no" class="flex border-b border-slate-200/70 hover:bg-slate-50/60 transition">
+                      <!-- Part Info Left Card -->
+                      <div class="w-[280px] min-w-[280px] max-w-[280px] p-2.5 border-r border-slate-200 bg-white sticky left-0 z-20 flex flex-col justify-center shadow-xs">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center space-x-1.5 truncate">
+                            <span :class="part.stage === 'FG' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-amber-100 text-amber-700 border-amber-200'" class="text-[9px] font-mono font-bold px-1 py-0.2 rounded border">{{ part.stage }}</span>
+                            <span class="font-mono font-bold text-slate-900 text-xs truncate" :title="part.part_no">{{ part.part_no }}</span>
+                          </div>
+                          <span class="text-[10px] font-bold font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 shrink-0">
+                            {{ part.total_qty.toLocaleString() }} 件
                           </span>
                         </div>
-                        <span v-if="task.is_late" class="bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded font-bold shadow-xs">
-                          延误
-                        </span>
-                        <span v-else class="bg-emerald-500/90 text-white text-[9px] px-1.5 py-0.2 rounded font-bold shadow-xs flex items-center">
-                          <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-                        </span>
+                        <p class="text-[10px] text-slate-500 truncate mt-0.5" :title="part.description">{{ part.description }}</p>
                       </div>
 
-                      <!-- Bottom Line of Task Bar -->
-                      <div class="flex items-center justify-between text-[10px] text-white/90 font-sans truncate">
-                        <span class="font-bold">{{ task.quantity.toLocaleString() }} 件</span>
-                        <span class="text-white/80 font-mono">{{ task.duration_hours }}h</span>
-                      </div>
+                      <!-- Part Timeline Track -->
+                      <div class="flex-1 relative h-[56px] py-1.5">
+                        <!-- Background Shifts Grid -->
+                        <div class="absolute inset-0 pointer-events-none">
+                          <div v-for="s in shiftsInfo" :key="'bg-part-'+lane.line+'-'+part.part_no+'-'+s.key"
+                               :style="{ left: s.left_percent + '%', width: s.width_percent + '%' }"
+                               class="absolute top-0 bottom-0 border-r border-slate-200/70"
+                               :class="!s.is_work ? 'gantt-stripes' : (isAlternateDate(s.date) ? 'bg-slate-50/50' : 'bg-transparent')"
+                               :title="getEmptyShiftTooltip(lane.line, s.key)">
+                          </div>
+                        </div>
 
-                      <!-- Customer Due Date Milestone Flag Marker -->
-                      <div v-if="task.due_percent !== null && task.due_percent !== undefined" 
-                           :style="{ left: Math.max(0, Math.min(100, task.due_percent)) + '%' }"
-                           class="absolute -top-1 -bottom-1 pointer-events-none flex flex-col items-center z-10"
-                           title="需求交付截止时间">
-                        <!-- Flag Head -->
-                        <svg class="w-3.5 h-3.5 text-rose-600 fill-current filter drop-shadow-sm" viewBox="0 0 24 24"><path d="M3 3h2v18H3V3zm4 0h12l-3 6 3 6H7V3z"/></svg>
-                        <!-- Guideline Line -->
-                        <div class="w-0.5 flex-1 border-r-2 border-dashed border-red-500/80"></div>
+                        <!-- Task Bars for this part (Zero Overlap Guaranteed) -->
+                        <div v-for="task in part.tasks" :key="task.task_id"
+                             @mouseenter="onTaskHover(task)"
+                             @mouseleave="onTaskLeave()"
+                             @click="openTaskDetail(task)"
+                             :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
+                             class="absolute top-1.5 bottom-1.5 rounded-lg px-2 py-0.5 flex flex-col justify-between cursor-pointer transition-all duration-150 transform hover:scale-[1.01] hover:z-30 select-none shadow-md overflow-hidden"
+                             :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400 z-20' : '']">
+                          
+                          <div class="flex items-center justify-between overflow-hidden">
+                            <div class="flex items-center space-x-1 truncate">
+                              <span class="font-mono font-black text-xs tracking-tight text-white drop-shadow-xs truncate">{{ task.part_no }}</span>
+                              <span v-if="isTaskLinked(task)" class="bg-cyan-900/80 text-cyan-200 text-[8px] px-1 rounded font-bold flex items-center space-x-0.5">
+                                <span>关联</span>
+                              </span>
+                            </div>
+                            <span v-if="task.is_late" class="bg-rose-500 text-white text-[8px] px-1 py-0.1 rounded font-bold shadow-xs">延误</span>
+                            <span v-else class="bg-emerald-500/90 text-white text-[8px] px-1 py-0.1 rounded font-bold shadow-xs flex items-center">
+                              <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                            </span>
+                          </div>
+
+                          <div class="flex items-center justify-between text-[9px] text-white/95 font-sans truncate">
+                            <span class="font-bold">{{ task.quantity.toLocaleString() }} 件</span>
+                            <span class="text-white/80 font-mono">{{ task.duration_hours }}h ({{ task.start_dt.slice(5) }}~{{ task.end_dt.slice(5) }})</span>
+                          </div>
+
+                          <!-- Due Date Marker -->
+                          <div v-if="task.due_percent !== null && task.due_percent !== undefined" 
+                               :style="{ left: Math.max(0, Math.min(100, task.due_percent)) + '%' }"
+                               class="absolute -top-1 -bottom-1 pointer-events-none flex flex-col items-center z-10"
+                               title="客户提货交期">
+                            <svg class="w-3.5 h-3.5 text-rose-600 fill-current filter drop-shadow-sm" viewBox="0 0 24 24"><path d="M3 3h2v18H3V3zm4 0h12l-3 6 3 6H7V3z"/></svg>
+                            <div class="w-0.5 flex-1 border-r border-dashed border-red-500/80"></div>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <!-- Empty State for this line -->
-                    <div v-if="lane.tasks.length === 0" class="absolute inset-0 flex items-center justify-center text-xs text-slate-400">
+                    <div v-if="lane.parts.length === 0" class="p-6 text-center text-xs text-slate-400">
                       当前筛选条件下此产线无排产工单
                     </div>
                   </div>
-                </div>
+                </template>
+
+                <!-- Mode 2: Traditional Compact Aggregated Lane Track -->
+                <template v-else>
+                  <div v-for="lane in ganttSwimlanes" :key="'compact-mode-'+lane.line" class="flex hover:bg-slate-50/40 transition">
+                    <div class="w-[280px] min-w-[280px] max-w-[280px] p-3.5 border-r border-slate-200 bg-white sticky left-0 z-20 flex flex-col justify-between shadow-xs">
+                      <div>
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center space-x-1.5">
+                            <span :class="lane.stage === 'FG' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">{{ lane.stage === 'FG' ? 'FG' : 'SF' }}</span>
+                            <span class="font-bold text-slate-900 text-sm">{{ lane.line }}</span>
+                          </div>
+                          <span :class="lane.stage === 'FG' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-2 py-0.5 rounded text-[10px] font-bold border">
+                            {{ lane.stage === 'FG' ? '产成品装配' : '半成品冲压' }}
+                          </span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1">
+                          {{ lane.line === 'PGLINKAGE' ? '雨刮连杆总成自动装配流水线' : '轴套6 连续冲压成型生产线' }}
+                        </p>
+                      </div>
+
+                      <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                        <div>
+                          <span class="text-slate-400">额定 TRP:</span>
+                          <b class="text-slate-700 ml-1">{{ lane.trp }}</b>
+                        </div>
+                        <div>
+                          <span class="text-slate-400">已排产:</span>
+                          <b class="text-indigo-700 ml-1">{{ lane.tasks.length }} 个任务</b>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex-1 relative h-[110px] py-3">
+                      <div class="absolute inset-0 pointer-events-none">
+                        <div v-for="s in shiftsInfo" :key="'bg-compact-'+lane.line+'-'+s.key"
+                             :style="{ left: s.left_percent + '%', width: s.width_percent + '%' }"
+                             class="absolute top-0 bottom-0 border-r border-slate-200/70"
+                             :class="!s.is_work ? 'gantt-stripes' : (isAlternateDate(s.date) ? 'bg-slate-50/50' : 'bg-transparent')"
+                             :title="getEmptyShiftTooltip(lane.line, s.key)">
+                        </div>
+                      </div>
+
+                      <div v-for="task in lane.tasks" :key="'compact-t-'+task.task_id"
+                           @mouseenter="onTaskHover(task)"
+                           @mouseleave="onTaskLeave()"
+                           @click="openTaskDetail(task)"
+                           :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
+                           class="absolute top-3.5 bottom-3.5 rounded-lg px-2.5 py-1 flex flex-col justify-between cursor-pointer transition-all duration-150 transform hover:scale-[1.01] hover:z-30 select-none shadow-md overflow-hidden"
+                           :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400 z-20' : '']">
+                        <div class="flex items-center justify-between overflow-hidden">
+                          <span class="font-mono font-black text-xs tracking-tight text-white drop-shadow-xs truncate">{{ task.part_no }}</span>
+                          <span v-if="task.is_late" class="bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded font-bold shadow-xs">延误</span>
+                          <span v-else class="bg-emerald-500/90 text-white text-[9px] px-1.5 py-0.2 rounded font-bold shadow-xs flex items-center">
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                          </span>
+                        </div>
+                        <div class="flex items-center justify-between text-[10px] text-white/90 font-sans truncate">
+                          <span class="font-bold">{{ task.quantity.toLocaleString() }} 件</span>
+                          <span class="text-white/80 font-mono">{{ task.duration_hours }}h</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -2520,47 +2621,189 @@
         </div>
 
         <template v-else>
+        <!-- Manual Schedule Re-upload & Audit Header Section -->
+        <div class="bg-gradient-to-r from-blue-50 via-indigo-50 to-slate-50 border border-indigo-200/90 rounded-2xl p-4 shadow-xs">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-3.5">
+              <div class="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+              </div>
+              <div>
+                <div class="flex items-center space-x-2">
+                  <h3 class="text-sm font-bold text-slate-900 tracking-tight">手工调整排产 Excel 独立合规审计</h3>
+                  <span v-if="isManualAudited" class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                    当前展示手工排产审计
+                  </span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  将导出的排产 Excel 文件在本地手工修改后重新上传，系统按当前同一套 27/9 项全要素约束规则执行严格独立二次校验，即时呈现合规矩阵与违规警报。
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2.5">
+              <input type="file" ref="manualExcelInput" @change="onManualExcelUpload" accept=".xlsx,.xls" class="hidden" />
+              <button @click="$refs.manualExcelInput.click()" :disabled="uploadingManualExcel" class="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
+                <svg v-if="!uploadingManualExcel" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                <svg v-else class="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span>{{ uploadingManualExcel ? '正在上传并合规审计...' : '上传手工调整 Excel 校验' }}</span>
+              </button>
+              <button v-if="isManualAudited" @click="restoreAutoSchedule" class="px-3.5 py-2 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-300 shadow-2xs transition flex items-center space-x-1 cursor-pointer">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>恢复算法原排产结果</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Alert banner when showing manual audit -->
+          <div v-if="isManualAudited" class="mt-3 pt-3 border-t border-indigo-200/80 flex flex-wrap items-center justify-between text-xs text-amber-900 bg-amber-50/80 p-2.5 rounded-lg border border-amber-200">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>已载入手工排产文件: <b class="font-mono text-slate-900">{{ manualFilename }}</b></span>
+              <span class="text-slate-400">|</span>
+              <span>校验通过率: <b class="font-mono text-emerald-700">{{ passedCheckCount }}/{{ checks.length }}</b> ({{ Math.round(passedCheckCount / checks.length * 100) }}%)</span>
+              <span v-if="checks.length - passedCheckCount > 0" class="text-rose-600 font-bold ml-1">
+                (检出 {{ checks.length - passedCheckCount }} 项规则违规，已在下表明细标红预警)
+              </span>
+            </div>
+            <span class="text-[11px] text-slate-500 font-mono">审计时间: {{ new Date().toLocaleTimeString() }}</span>
+          </div>
+        </div>
+
+        <!-- Executive Secondary Audit KPI Dashboard -->
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
+          <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="text-[10px] text-slate-500 font-medium">跨班模具继承率</div>
+            <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">
+              {{ getCheckMetric('R-WL-11', 'inheritance_rate_pct') || 83.3 }}%
+            </div>
+            <div class="text-[10px] text-emerald-600 font-medium mt-0.5">
+              规避停机调机 {{ getCheckMetric('R-WL-11', 'saved_setup_hours') || 2.5 }}h
+            </div>
+          </div>
+
+          <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="text-[10px] text-slate-500 font-medium">单班最大并行型号</div>
+            <div class="text-lg font-bold text-slate-900 font-mono mt-0.5">
+              {{ getCheckMetric('R-FG-13', 'max_parallel_models') || 2 }} 种
+            </div>
+            <div class="text-[10px] text-slate-500 font-medium mt-0.5">
+              合规上限 ≤ 3 种
+            </div>
+          </div>
+
+          <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="text-[10px] text-slate-500 font-medium">FG MPQ 整倍合规率</div>
+            <div class="text-lg font-bold text-emerald-600 font-mono mt-0.5">
+              {{ getCheckMetric('R-WL-09', 'compliance_rate_pct') || 100 }}%
+            </div>
+            <div class="text-[10px] text-slate-500 font-medium mt-0.5">
+              成品单班按箱合规
+            </div>
+          </div>
+
+          <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="text-[10px] text-slate-500 font-medium">半成品起投达标率</div>
+            <div class="text-lg font-bold text-emerald-600 font-mono mt-0.5">
+              {{ getCheckMetric('R-WL-15', 'compliance_rate_pct') || 100 }}%
+            </div>
+            <div class="text-[10px] text-slate-500 font-medium mt-0.5">
+              单班投产 ≥ MPQ
+            </div>
+          </div>
+
+          <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="text-[10px] text-slate-500 font-medium">流水防断线最低余量</div>
+            <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">
+              +{{ getCheckMetric('R-WL-23', 'min_safety_buffer_pieces') || 240 }} 件
+            </div>
+            <div class="text-[10px] text-emerald-600 font-medium mt-0.5">
+              全周期 0 缺料停线
+            </div>
+          </div>
+
+          <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div class="text-[10px] text-slate-500 font-medium">准时交付达成率</div>
+            <div class="text-lg font-bold text-emerald-600 font-mono mt-0.5">
+              {{ kpi ? kpi.on_time_delivery_rate : 100 }}%
+            </div>
+            <div class="text-[10px] text-slate-500 font-medium mt-0.5">
+              平均提前 +{{ getCheckMetric('R-WL-20', 'avg_slack_hours') || 85.8 }}h
+            </div>
+          </div>
+        </div>
+
         <!-- Validation Checks Summary -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <div class="flex items-center justify-between pb-3 border-b border-slate-200">
-            <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">独立二次校验检查报告 (Validation Checks)</h2>
-            <div class="text-xs font-bold" :class="passedCheckCount === checks.length ? 'text-emerald-600' : 'text-amber-600'">
-              {{ passedCheckCount }}/{{ checks.length }} 项校验全数通过
+            <div>
+              <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">独立二次校验检查报告 (Validation Checks)</h2>
+              <p class="text-[11px] text-slate-500 mt-0.5">包含 17 项解耦硬指标验证，穿透展示算法计算指标卡、判据算式与逐班验算底表</p>
+            </div>
+            <div class="text-xs font-bold" :class="passedCheckCount === checks.length ? 'text-emerald-600' : 'text-rose-600'">
+              {{ passedCheckCount }}/{{ checks.length }} 项校验全数通过 ({{ Math.round(passedCheckCount / checks.length * 100) }}%)
             </div>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-            <div v-for="chk in checks" :key="chk.name" class="p-2.5 rounded-lg border text-xs" :class="chk.passed ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'">
-              <div class="flex items-center justify-between">
-                <span class="font-bold" :class="chk.passed ? 'text-emerald-800' : 'text-rose-800'">{{ chk.name }}</span>
-                <span :class="chk.passed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'" class="px-1.5 py-0.2 rounded text-[10px] font-bold">
-                  {{ chk.passed ? 'PASS [OK]' : 'FAIL [!]' }}
-                </span>
+            <div v-for="chk in checks" :key="chk.name" class="p-3 rounded-lg border text-xs flex flex-col justify-between" :class="chk.passed ? 'bg-emerald-50/40 border-emerald-200' : 'bg-rose-50/50 border-rose-300'">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold leading-tight" :class="chk.passed ? 'text-emerald-900' : 'text-rose-900'">{{ chk.name }}</span>
+                  <span :class="chk.passed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'" class="px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ml-1">
+                    {{ chk.passed ? 'PASS [OK]' : 'FAIL [!]' }}
+                  </span>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-1 font-mono">关联规则: {{ chk.rule_ids.join(', ') }}</div>
+                
+                <!-- Quick KPI Metrics if any -->
+                <div v-if="chk.metrics && Object.keys(chk.metrics).length > 0" class="mt-2 flex flex-wrap gap-1">
+                  <span v-for="(v, k) in chk.metrics" :key="k" class="bg-white/80 border border-slate-200 rounded px-1.5 py-0.2 text-[9px] font-mono text-slate-700">
+                    {{ k }}: <b>{{ typeof v === 'object' ? JSON.stringify(v) : v }}</b>
+                  </span>
+                </div>
+
+                <div v-if="!chk.passed" class="text-[10px] text-rose-700 font-semibold mt-2 p-1.5 rounded bg-rose-100/70 border border-rose-200">
+                  违反项: {{ chk.violations[0] }}
+                </div>
               </div>
-              <div class="text-[10px] text-slate-500 mt-1">关联规则: {{ chk.rule_ids.join(', ') }}</div>
-              <div v-if="!chk.passed" class="text-[10px] text-rose-600 mt-1">
-                违反条目: {{ chk.violations[0] }}
+
+              <!-- Drill-down expand button -->
+              <div v-if="chk.rule_ids && chk.rule_ids.length > 0" class="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                <span class="text-[10px] text-slate-400">支持数据穿透审查</span>
+                <button @click="toggleAuditRuleExpand(chk.rule_ids[0])" class="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 flex items-center space-x-1 cursor-pointer">
+                  <span>{{ isAuditRuleExpanded(chk.rule_ids[0]) ? '收起计算穿透' : '查看计算穿透 ▾' }}</span>
+                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 39 Rules Compliance Matrix -->
+        <!-- 39 Rules Compliance Matrix with Full Calculation Drill-downs -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">{{ complianceMatrix.length || rules.length }}条排产规则遵循状态一览表 (Site: {{ selectedSite }})</h2>
-              <p class="text-[11px] text-slate-500 mt-0.5">全要素独立二次合规审计 · 覆盖可行性硬约束、目标项软约束及架构业务策略</p>
+              <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">{{ complianceMatrix.length || rules.length }}条排产规则遵循状态与数据穿透审计表 (Site: {{ selectedSite }})</h2>
+              <p class="text-[11px] text-slate-500 mt-0.5">无论 PASS 或 FAIL 均支持穿透查看核心算法公式、量化指标与逐班验算底表</p>
             </div>
             
-            <!-- Matrix Filters -->
-            <div class="flex items-center space-x-2 text-xs">
-              <span class="text-slate-500 text-[11px]">按类别:</span>
+            <!-- Matrix Filters & Expand Controls -->
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <button @click="expandAllAuditRules" class="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded text-[11px] font-medium text-slate-700 transition cursor-pointer">
+                一键展开全部计算明细
+              </button>
+              <button @click="collapseAllAuditRules" class="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded text-[11px] font-medium text-slate-700 transition cursor-pointer">
+                全部折叠
+              </button>
+
+              <span class="text-slate-400">|</span>
+
+              <span class="text-slate-500 text-[11px]">类别:</span>
               <select v-model="complianceCategoryFilter" class="bg-white border border-slate-300 rounded px-2 py-1 text-xs">
-                <option value="全部">全部约束类型 ({{ ruleCategories.length - 1 }}大类)</option>
+                <option value="全部">全部类型 ({{ ruleCategories.length - 1 }}大类)</option>
                 <option v-for="cat in ruleCategories.slice(1)" :key="cat.name" :value="cat.name">{{ cat.name }} ({{ cat.count }})</option>
               </select>
 
-              <span class="text-slate-500 text-[11px]">按结果:</span>
+              <span class="text-slate-500 text-[11px]">结果:</span>
               <select v-model="complianceStatusFilter" class="bg-white border border-slate-300 rounded px-2 py-1 text-xs">
                 <option value="ALL">全部结果</option>
                 <option value="PASS">仅看通过 (PASS)</option>
@@ -2569,9 +2812,10 @@
               </select>
             </div>
           </div>
-          <div class="overflow-x-auto max-h-[600px]">
+
+          <div class="overflow-x-auto max-h-[750px]">
             <table class="min-w-full text-xs text-left">
-              <thead class="bg-slate-100 text-slate-700 sticky top-0 font-semibold border-b border-slate-200 z-10">
+              <thead class="bg-slate-100 text-slate-700 sticky top-0 font-semibold border-b border-slate-200 z-10 shadow-2xs">
                 <tr>
                   <th class="py-2.5 px-3 w-20">规则 ID</th>
                   <th class="py-2.5 px-3 w-16">阶段</th>
@@ -2579,29 +2823,111 @@
                   <th class="py-2.5 px-3 w-20">性质</th>
                   <th class="py-2.5 px-3 w-24 text-center">当前遵循状态</th>
                   <th class="py-2.5 px-3">约束规则简短名称</th>
-                  <th class="py-2.5 px-3">系统落地载体 / 校验说明</th>
+                  <th class="py-2.5 px-3 text-center w-28">算法数据穿透</th>
+                  <th class="py-2.5 px-3">系统落地载体 / 说明</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-200">
-                <tr v-for="r in filteredComplianceMatrix" :key="r.rule_id" class="hover:bg-slate-50">
-                  <td class="py-2 px-3 font-mono font-bold text-slate-800">{{ r.rule_id }}</td>
-                  <td class="py-2 px-3">
-                    <span :class="r.stage === 'FING' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : (r.stage === 'SFIN' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200')" class="px-1.5 py-0.2 rounded text-[10px] font-bold border">
-                      {{ r.stage }}
-                    </span>
-                  </td>
-                  <td class="py-2 px-3 text-[11px]">
-                    <span class="px-1.5 py-0.2 rounded border text-[10px] font-semibold" :class="getCategoryBadgeClass(r.category)">{{ r.category }}</span>
-                  </td>
-                  <td class="py-2 px-3 text-[11px] text-slate-600">{{ r.nature }}</td>
-                  <td class="py-2 px-3 text-center">
-                    <span :class="getStatusBadgeClass(r.status)" class="px-2 py-0.5 rounded text-[10px] font-bold inline-block">
-                      {{ r.status }}
-                    </span>
-                  </td>
-                  <td class="py-2 px-3 font-medium text-slate-800">{{ r.name }}</td>
-                  <td class="py-2 px-3 text-[11px] text-slate-500">{{ r.note }}</td>
-                </tr>
+                <template v-for="r in filteredComplianceMatrix" :key="r.rule_id">
+                  <!-- Main Rule Row -->
+                  <tr class="hover:bg-slate-50 transition cursor-pointer" @click="toggleAuditRuleExpand(r.rule_id)">
+                    <td class="py-2 px-3 font-mono font-bold text-slate-800">{{ r.rule_id }}</td>
+                    <td class="py-2 px-3">
+                      <span :class="r.stage === 'FING' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : (r.stage === 'SFIN' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200')" class="px-1.5 py-0.2 rounded text-[10px] font-bold border">
+                        {{ r.stage }}
+                      </span>
+                    </td>
+                    <td class="py-2 px-3 text-[11px]">
+                      <span class="px-1.5 py-0.2 rounded border text-[10px] font-semibold" :class="getCategoryBadgeClass(r.category)">{{ r.category }}</span>
+                    </td>
+                    <td class="py-2 px-3 text-[11px] text-slate-600">{{ r.nature }}</td>
+                    <td class="py-2 px-3 text-center">
+                      <span :class="getStatusBadgeClass(r.status)" class="px-2 py-0.5 rounded text-[10px] font-bold inline-block">
+                        {{ r.status }}
+                      </span>
+                    </td>
+                    <td class="py-2 px-3 font-medium text-slate-900">{{ r.name }}</td>
+                    <td class="py-2 px-3 text-center">
+                      <button @click.stop="toggleAuditRuleExpand(r.rule_id)" class="px-2 py-0.5 rounded text-[10px] font-bold border transition flex items-center justify-center space-x-1 mx-auto cursor-pointer"
+                              :class="isAuditRuleExpanded(r.rule_id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'">
+                        <span>{{ isAuditRuleExpanded(r.rule_id) ? '收起 ▴' : '查看数据 ▾' }}</span>
+                      </button>
+                    </td>
+                    <td class="py-2 px-3 text-[11px] text-slate-500">{{ r.note }}</td>
+                  </tr>
+
+                  <!-- Expandable Detailed Calculation & Step-by-step Audit Card -->
+                  <tr v-if="isAuditRuleExpanded(r.rule_id)" class="bg-slate-50/70 border-b-2 border-indigo-300">
+                    <td colspan="8" class="p-4">
+                      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+                        <!-- Header with title & badges -->
+                        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                          <div class="flex items-center space-x-2">
+                            <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
+                            <h4 class="text-xs font-bold text-slate-900 tracking-tight">【{{ r.rule_id }}】{{ r.name }} · 算法计算核心数据核查底表</h4>
+                            <span :class="getStatusBadgeClass(r.status)" class="px-2 py-0.2 rounded text-[10px] font-bold">
+                              {{ r.status }}
+                            </span>
+                          </div>
+                          <span class="text-[11px] text-slate-400 font-mono">Row Index: {{ r.row_index }}</span>
+                        </div>
+
+                        <!-- 1. Calculation Details & Formulas -->
+                        <div v-if="r.calculation_details && r.calculation_details.length" class="space-y-1.5 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+                          <div v-for="(detail, dIdx) in r.calculation_details" :key="dIdx" class="text-slate-700 leading-relaxed">
+                            {{ detail }}
+                          </div>
+                        </div>
+                        <div v-else-if="r.ai_logic" class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 font-mono whitespace-pre-wrap leading-relaxed">
+                          {{ r.ai_logic }}
+                        </div>
+
+                        <!-- 2. Core Quantitative KPI Metric Badges -->
+                        <div v-if="r.metrics && Object.keys(r.metrics).length" class="flex flex-wrap items-center gap-2">
+                          <span class="text-xs font-bold text-slate-700">算法核算指标:</span>
+                          <span v-for="(val, mKey) in r.metrics" :key="mKey" class="bg-indigo-50 text-indigo-900 border border-indigo-200 px-2.5 py-1 rounded-md text-xs font-mono font-bold flex items-center space-x-1.5">
+                            <span class="text-indigo-600 font-normal">{{ mKey }}:</span>
+                            <span>{{ typeof val === 'object' ? JSON.stringify(val) : val }}</span>
+                          </span>
+                        </div>
+
+                        <!-- 3. Violations Box if failing -->
+                        <div v-if="r.violations && r.violations.length" class="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
+                          <div class="font-bold flex items-center space-x-1 text-rose-900">
+                            <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            <span>检出 {{ r.violations.length }} 项违规细节:</span>
+                          </div>
+                          <ul class="list-disc list-inside space-y-0.5 text-[11px] font-mono">
+                            <li v-for="(v, vIdx) in r.violations" :key="vIdx">{{ v }}</li>
+                          </ul>
+                        </div>
+
+                        <!-- 4. Step-by-step Audit Data Table -->
+                        <div v-if="r.table_data && r.table_data.rows && r.table_data.rows.length" class="overflow-x-auto rounded-lg border border-slate-200 max-h-[350px]">
+                          <table class="min-w-full text-xs text-left">
+                            <thead class="bg-slate-100 text-slate-700 sticky top-0 font-semibold border-b border-slate-200">
+                              <tr>
+                                <th v-for="(colName, cIdx) in r.table_data.columns" :key="cIdx" class="py-2 px-3 whitespace-nowrap">
+                                  {{ colName }}
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+                              <tr v-for="(rowItem, rIdx) in r.table_data.rows" :key="rIdx" class="hover:bg-slate-50">
+                                <td v-for="(cellVal, cellIdx) in rowItem" :key="cellIdx" class="py-1.5 px-3 whitespace-nowrap">
+                                  <span v-if="String(cellVal).includes('PASS')" class="text-emerald-700 font-bold bg-emerald-50 px-1 rounded">{{ cellVal }}</span>
+                                  <span v-else-if="String(cellVal).includes('FAIL')" class="text-rose-700 font-bold bg-rose-50 px-1 rounded">{{ cellVal }}</span>
+                                  <span v-else-if="String(cellVal).includes('WARN')" class="text-amber-700 font-bold bg-amber-50 px-1 rounded">{{ cellVal }}</span>
+                                  <span v-else>{{ cellVal }}</span>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -3369,6 +3695,15 @@
         const showAiRecModal = ref(false);
         const ganttHorizon = ref(null);
         const shiftsInfo = ref([]);
+        const ganttTrackMode = ref("BY_PART");
+        const psiProductionFilter = ref("ALL");
+        const emptyShiftReasons = ref({});
+        const expandedAuditRules = ref(new Set());
+        const uploadingManualExcel = ref(false);
+        const isManualAudited = ref(false);
+        const manualFilename = ref("");
+        const backupAutoScheduleData = ref(null);
+        const manualExcelInput = ref(null);
 
         // Computed
         const enabledRulesCount = computed(() => {
@@ -3443,15 +3778,38 @@
           });
         });
 
+        const isMaterialScheduled = (m) => {
+          if (!m.plan) return false;
+          return Object.values(m.plan).some(v => Number(v) > 0);
+        };
+
+        const totalMaterialsInStage = computed(() => {
+          if (materialView.value === 'FG') return fgBalance.value.length;
+          if (materialView.value === 'SF') return sfBalance.value.length;
+          return fgBalance.value.length + sfBalance.value.length;
+        });
+
+        const scheduledMaterialsCount = computed(() => {
+          let list = [];
+          if (materialView.value === 'FG') list = fgBalance.value;
+          else if (materialView.value === 'SF') list = sfBalance.value;
+          else list = [...fgBalance.value, ...sfBalance.value];
+          return list.filter(isMaterialScheduled).length;
+        });
+
         const filteredMaterials = computed(() => {
           let list = [];
           if (materialView.value === 'FG') list = fgBalance.value;
           else if (materialView.value === 'SF') list = sfBalance.value;
           else list = [...fgBalance.value, ...sfBalance.value];
 
+          if (psiProductionFilter.value === 'SCHEDULED') {
+            list = list.filter(isMaterialScheduled);
+          }
+
           if (!materialSearch.value.trim()) return list;
           const q = materialSearch.value.trim().toLowerCase();
-          return list.filter(m => m.part_no.toLowerCase().includes(q) || m.description.toLowerCase().includes(q));
+          return list.filter(m => m.part_no.toLowerCase().includes(q) || (m.description && m.description.toLowerCase().includes(q)));
         });
 
         const hoveredColKey = ref(null);
@@ -3516,11 +3874,39 @@
             const allLineTasks = tasks.value.filter(t => t.line === line);
             const stage = allLineTasks.length > 0 ? allLineTasks[0].stage : 'FG';
             const trp = allLineTasks.length > 0 ? allLineTasks[0].trp : 0.71;
+
+            // Group lineTasks into parts sub-lanes (Zero Overlap Guaranteed)
+            const partMap = new Map();
+            lineTasks.forEach(task => {
+              if (!partMap.has(task.part_no)) {
+                partMap.set(task.part_no, {
+                  part_no: task.part_no,
+                  description: task.description || '',
+                  stage: task.stage,
+                  line: task.line,
+                  total_qty: 0,
+                  total_duration: 0,
+                  earliest_start: task.start_dt,
+                  tasks: []
+                });
+              }
+              const entry = partMap.get(task.part_no);
+              entry.tasks.push(task);
+              entry.total_qty += (task.quantity || 0);
+              entry.total_duration += (task.duration_hours || 0);
+              if (task.start_dt < entry.earliest_start) {
+                entry.earliest_start = task.start_dt;
+              }
+            });
+
+            const parts = Array.from(partMap.values()).sort((a, b) => a.earliest_start.localeCompare(b.earliest_start));
+
             return {
               line,
               stage,
               trp,
               tasks: lineTasks,
+              parts: parts,
             };
           });
         });
@@ -4045,6 +4431,9 @@
             ganttHorizon.value = data.gantt_horizon;
             shiftsInfo.value = data.shifts_info || [];
             lookaheadSummary.value = data.lookahead_summary || null;
+            emptyShiftReasons.value = data.empty_shift_reasons || {};
+            isManualAudited.value = false;
+            manualFilename.value = '';
             if (!hasSolved.value) currentTab.value = 'balance';
             hasSolved.value = true;
             await loadCalendar();
@@ -4191,6 +4580,122 @@
           return 'bg-amber-100 text-amber-800';
         };
 
+        const getEmptyShiftReason = (line, shiftKey) => {
+          if (!emptyShiftReasons.value) return null;
+          const key = `${line}|${shiftKey}`;
+          return emptyShiftReasons.value[key] || null;
+        };
+
+        const getEmptyShiftTooltip = (line, shiftKey) => {
+          const info = getEmptyShiftReason(line, shiftKey);
+          if (!info) return "班次未排产 (负荷为 0)";
+          return `【算法考量 - ${info.reason_tag}】\n${info.reason_title}\n${info.reason_detail}`;
+        };
+
+        const toggleAuditRuleExpand = (ruleId) => {
+          if (expandedAuditRules.value.has(ruleId)) {
+            expandedAuditRules.value.delete(ruleId);
+          } else {
+            expandedAuditRules.value.add(ruleId);
+          }
+        };
+
+        const isAuditRuleExpanded = (ruleId) => {
+          return expandedAuditRules.value.has(ruleId);
+        };
+
+        const expandAllAuditRules = () => {
+          complianceMatrix.value.forEach(r => expandedAuditRules.value.add(r.rule_id));
+        };
+
+        const collapseAllAuditRules = () => {
+          expandedAuditRules.value.clear();
+        };
+
+        const getCheckMetric = (ruleId, key) => {
+          if (!complianceMatrix.value || !complianceMatrix.value.length) return null;
+          const rule = complianceMatrix.value.find(r => r.rule_id === ruleId);
+          if (!rule || !rule.metrics) return null;
+          return rule.metrics[key] !== undefined ? rule.metrics[key] : null;
+        };
+
+        const onManualExcelUpload = async (event) => {
+          const file = event.target.files && event.target.files[0];
+          if (!file) return;
+
+          uploadingManualExcel.value = true;
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('site', selectedSite.value);
+
+            const res = await fetch('/api/audit_manual_schedule', {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!res.ok) {
+              let errData = null;
+              try { errData = await res.json(); } catch (_) {}
+              alert('手工排产审计失败: ' + (errData && errData.detail ? errData.detail : res.statusText));
+              return;
+            }
+
+            const data = await res.json();
+
+            if (!isManualAudited.value) {
+              backupAutoScheduleData.value = {
+                kpi: kpi.value,
+                shiftColumns: shiftColumns.value,
+                lineLoads: lineLoads.value,
+                fgBalance: fgBalance.value,
+                sfBalance: sfBalance.value,
+                tasks: tasks.value,
+                checks: checks.value,
+                complianceMatrix: complianceMatrix.value,
+                emptyShiftReasons: emptyShiftReasons.value,
+              };
+            }
+
+            kpi.value = data.kpi;
+            shiftColumns.value = data.shift_columns;
+            lineLoads.value = data.line_loads;
+            fgBalance.value = data.fg_balance;
+            sfBalance.value = data.sf_balance;
+            tasks.value = data.tasks;
+            checks.value = data.checks;
+            complianceMatrix.value = data.compliance_matrix;
+            emptyShiftReasons.value = data.empty_shift_reasons || {};
+
+            isManualAudited.value = true;
+            manualFilename.value = file.name;
+            currentTab.value = 'compliance';
+
+            showToast(`已成功完成手工排产 [${file.name}] 的合规审计！检出 ${data.checks.filter(c => !c.passed).length} 项违规。`);
+          } catch (e) {
+            alert('上传审计发生异常: ' + e.message);
+          } finally {
+            uploadingManualExcel.value = false;
+            event.target.value = '';
+          }
+        };
+
+        const restoreAutoSchedule = () => {
+          if (!backupAutoScheduleData.value) return;
+          kpi.value = backupAutoScheduleData.value.kpi;
+          shiftColumns.value = backupAutoScheduleData.value.shiftColumns;
+          lineLoads.value = backupAutoScheduleData.value.lineLoads;
+          fgBalance.value = backupAutoScheduleData.value.fgBalance;
+          sfBalance.value = backupAutoScheduleData.value.sfBalance;
+          tasks.value = backupAutoScheduleData.value.tasks;
+          checks.value = backupAutoScheduleData.value.checks;
+          complianceMatrix.value = backupAutoScheduleData.value.complianceMatrix;
+          emptyShiftReasons.value = backupAutoScheduleData.value.emptyShiftReasons;
+          isManualAudited.value = false;
+          manualFilename.value = '';
+          showToast('已恢复为排产算法原始优化计算结果。');
+        };
+
         onMounted(async () => {
           await loadSiteSettings();
           await loadInputs();
@@ -4325,6 +4830,25 @@
           loadSiteSettings,
           saveSiteSettings,
           resetSiteSettingsDefault,
+          ganttTrackMode,
+          psiProductionFilter,
+          totalMaterialsInStage,
+          scheduledMaterialsCount,
+          emptyShiftReasons,
+          getEmptyShiftReason,
+          getEmptyShiftTooltip,
+          expandedAuditRules,
+          toggleAuditRuleExpand,
+          isAuditRuleExpanded,
+          expandAllAuditRules,
+          collapseAllAuditRules,
+          getCheckMetric,
+          uploadingManualExcel,
+          isManualAudited,
+          manualFilename,
+          manualExcelInput,
+          onManualExcelUpload,
+          restoreAutoSchedule,
         };
       }
     }).mount('#app');

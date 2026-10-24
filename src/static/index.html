@@ -1,12 +1,61 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <link rel="icon" type="image/png" href="/static/valeo_logo.png">
+  <link rel="shortcut icon" type="image/png" href="/static/valeo_logo.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>APS 智能高级排产系统 MVP</title>
+  <title>Valeo APS 高级排产与负荷平衡系统</title>
   <script src="/static/tailwind.js"></script>
   <script src="/static/vue.global.prod.js"></script>
-  <style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            indigo: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#334155',
+              700: '#1e293b',
+              800: '#0f172a',
+              900: '#020617',
+              950: '#000000',
+            },
+            valeo: {
+              50: '#eaf6f0',
+              100: '#d5eee1',
+              500: '#00a36c',
+              600: '#00875a',
+              700: '#086c4a',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', '"Geist Mono Variable"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+          },
+          borderRadius: {
+            'none': '0',
+            'sm': '2px',
+            DEFAULT: '3px',
+            'md': '4px',
+            'lg': '6px',
+            'xl': '6px',
+            '2xl': '8px',
+            '3xl': '10px',
+          }
+        }
+      }
+    };
+  </script>
+<style>
     [v-cloak] { display: none !important; }
 
     /* Custom scrollbar */
@@ -109,61 +158,201 @@
     .bom-pulse {
       animation: pulse-ring 1.8s infinite;
     }
+  
+    /* =============================================================
+       Industrial Engineering Design System Tokens (Kimi Reference)
+       ============================================================= */
+    :root {
+      --bg: #fbfbfa;
+      --panel: #ffffff;
+      --raised: #f5f5f3;
+      --ink: #111827;
+      --muted: #4b5563;
+      --faint: #9ca3af;
+      --line: #e4e4e0;
+      --line-soft: #f0f0ec;
+      --accent: #00a36c;
+      --accent-ink: #ffffff;
+      --pos: #00a36c;
+      --neg: #dc2626;
+      --warn: #d97706;
+      --r: 3px;
+      --r-sm: 2px;
+      --r-lg: 6px;
+      --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    }
+
+    body {
+      font-family: var(--sans);
+      background-color: var(--bg);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .font-mono, td, th, .num, .kpi-val, .tabular-nums {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: 'tnum', 'zero';
+    }
+
+    /* KPI Strip Layout */
+    .kpis-strip {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      background: #ffffff;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    @media (max-width: 1024px) {
+      .kpis-strip {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    @media (max-width: 640px) {
+      .kpis-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .kpi-cell {
+      padding: 10px 18px;
+      border-right: 1px solid var(--line);
+      position: relative;
+      background: #ffffff;
+    }
+    .kpi-cell:last-child {
+      border-right: none;
+    }
+    .kpi-idx {
+      position: absolute;
+      top: 8px;
+      right: 14px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #9ca3af;
+      letter-spacing: 0.06em;
+    }
+    .kpi-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6b7280;
+    }
+    .kpi-val {
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-top: 2px;
+      line-height: 1.2;
+    }
+    .kpi-sub {
+      font-size: 10.5px;
+      margin-top: 3px;
+      color: #6b7280;
+    }
+
+    /* Segmented Tab Controls */
+    .seg-tabs {
+      display: inline-flex;
+      background: #f1f5f9;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 2px;
+      gap: 2px;
+    }
+    .seg-tab-btn {
+      font-family: var(--sans);
+      font-size: 11.5px;
+      font-weight: 500;
+      color: #64748b;
+      border: 0;
+      border-radius: var(--r-sm);
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .seg-tab-btn:hover {
+      color: #0f172a;
+      background: rgba(255, 255, 255, 0.6);
+    }
+    .seg-tab-btn.active {
+      color: #0f172a;
+      background: #ffffff;
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Hover highlight ONLY for the cell under cursor */
+    .sync-table td.interactive-cell {
+      cursor: pointer;
+      position: relative;
+    }
+    .sync-table td.interactive-cell:hover {
+      outline: 2px solid #2563eb !important;
+      outline-offset: -1px;
+      z-index: 25;
+      background-color: rgba(219, 234, 254, 0.45) !important;
+    }
+
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased font-sans min-h-screen flex flex-col">
   <div id="app" v-cloak class="flex-1 flex flex-col">
-    <!-- Header -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-      <div class="max-w-[98%] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-4">
+    <!-- Header (Industrial Modern Precision Style) -->
+    <header class="bg-white border-b border-[#e4e4e0] sticky top-0 z-40">
+      <div class="max-w-[98%] mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-3">
         <!-- Logo & Title -->
         <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"></path>
-            </svg>
-          </div>
+          <img src="/static/valeo_logo.png" alt="Valeo" class="h-7 w-auto object-contain shrink-0" />
           <div>
-            <div class="flex items-center space-x-2">
-              <h1 class="text-base font-bold text-slate-900 tracking-tight">APS 智能高级排产系统</h1>
-              <span class="text-[11px] bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">MVP 演示版</span>
-            </div>
-            <p class="text-[11px] text-indigo-600 font-medium tracking-tight">精益平准 · 智排未来：面向两阶段协同的高级排产与动态平衡决策中枢</p>
+            <h1 class="text-sm font-bold text-[#111827] tracking-tight">APS 高级排产与负荷平衡系统</h1>
+            <p class="font-mono text-[10.5px] text-slate-500 font-normal tracking-tight">精益平准 · 齐套约束驱动的双阶段协同排产与动态负荷平衡中枢</p>
           </div>
         </div>
 
-        <!-- Clean Right Controls: Site Selector + Active Strategy Pill + Export + Solve -->
-        <div class="flex items-center space-x-3">
-          <!-- Factory Site Selector (Scoped Configuration) -->
-          <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 text-xs">
-            <span class="text-slate-500 px-2 font-medium">工厂站点:</span>
-            <select v-model="selectedSite" @change="onSiteChange" class="bg-white border-0 text-slate-800 font-semibold rounded py-1 px-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer">
-              <option value="WL">WL 工厂 (WE34 车间 - 雨刮/轴套)</option>
-              <option value="SY38">SY38 工厂 (沈阳产线)</option>
+        <!-- Clean Right Controls: Site Selector + Strategy Pill + Video + Export + Solve -->
+        <div class="flex items-center space-x-2.5">
+          <!-- Factory Site Selector (SAP Plant Codes: WE34 / SY38) -->
+          <div class="flex items-center bg-[#f5f5f3] rounded-[3px] p-0.5 border border-[#e4e4e0] text-xs">
+            <span class="text-slate-500 px-2 font-mono text-[11px]">站点:</span>
+            <select v-model="selectedSite" @change="onSiteChange" class="bg-white border-0 text-slate-800 font-semibold rounded-[2px] py-1 px-2.5 shadow-2xs text-xs cursor-pointer focus:ring-1 focus:ring-slate-400">
+              <option value="WL">WE34 (温岭工厂)</option>
+              <option value="SY38">SY38 (沈阳工厂)</option>
             </select>
           </div>
 
-          <!-- Quick Strategy Status Badge (Opens System Settings) -->
-          <button @click="currentTab = 'settings'" class="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 rounded-lg border border-slate-200 text-xs font-medium transition cursor-pointer" title="点击进入当前工厂生产策略与系统设置">
-            <span class="w-2 h-2 rounded-full" :class="siteSettings.lookahead_enabled ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-400'"></span>
-            <span class="font-bold text-slate-700">{{ horizonDays }}天</span>
+          <!-- Quick Strategy Status Badge -->
+          <button @click="currentTab = 'settings'" class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#f5f5f3] hover:bg-slate-200 text-slate-700 rounded-[3px] border border-[#e4e4e0] text-xs font-mono transition cursor-pointer" title="点击进入生产策略与系统设置">
+            <span class="w-1.5 h-1.5 rounded-full" :class="siteSettings.lookahead_enabled ? 'bg-[#00a36c]' : 'bg-slate-400'"></span>
+            <span class="font-bold">{{ horizonDays }}天</span>
             <span class="text-slate-300">|</span>
             <span>{{ calendarModeDisplay }}</span>
             <span class="text-slate-300">|</span>
-            <span :class="siteSettings.lookahead_enabled ? 'text-emerald-700 font-bold' : 'text-slate-500'">前瞻: {{ siteSettings.lookahead_enabled ? '开启(30天)' : '关闭' }}</span>
-            <svg class="w-3.5 h-3.5 text-slate-400 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span :class="siteSettings.lookahead_enabled ? 'text-[#00a36c] font-bold' : 'text-slate-500'">前瞻: {{ siteSettings.lookahead_enabled ? '30天' : '关闭' }}</span>
           </button>
 
+          <!-- Storyboard Video Link -->
+          <a href="/video" target="_blank" class="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium rounded-[3px] text-slate-700 bg-[#f5f5f3] hover:bg-slate-200 border border-[#e4e4e0] transition">
+            <span class="text-xs">🎬</span>
+            <span>业务全景演示</span>
+          </a>
+
           <!-- Export Excel Button -->
-          <button @click="exportExcel" :disabled="!hasSolved" :class="hasSolved ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-400 cursor-not-allowed'" class="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium rounded-lg transition">
+          <button @click="exportExcel" :disabled="!hasSolved" :class="hasSolved ? 'bg-slate-800 hover:bg-slate-900 text-white shadow-2xs' : 'bg-slate-100 text-slate-400 cursor-not-allowed'" class="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium rounded-[3px] transition">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
             </svg>
-            <span>导出结果 Excel</span>
+            <span>导出计划 Excel</span>
           </button>
 
           <!-- Run Solve Button (Primary) -->
-          <button @click="runSolve" :disabled="solving" class="inline-flex items-center space-x-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-200 transition focus:ring-2 focus:ring-indigo-400 cursor-pointer">
+          <button @click="runSolve" :disabled="solving" class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#00a36c] hover:bg-[#00875a] rounded-[3px] shadow-2xs transition focus:ring-1 focus:ring-emerald-400 cursor-pointer">
             <svg v-if="solving" class="animate-spin -ml-1 mr-1 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -172,134 +361,171 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            <span>{{ solving ? '正在计算生产计划...' : '执行智能排产' }}</span>
+            <span>{{ solving ? '正在求解计算...' : '执行排产求解' }}</span>
           </button>
         </div>
       </div>
 
-      <!-- KPI Summary Cards (When Solved) -->
-      <div v-if="kpi" class="bg-slate-900 text-white px-4 py-2 border-t border-slate-800">
-        <div class="max-w-[98%] mx-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs">
-          <div class="flex items-center space-x-2">
-            <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-            <div>
-              <div class="text-slate-400 text-[10px]">计划编制状态 / 计算耗时</div>
-              <div class="font-bold text-emerald-300">{{ kpi.status_name }} ({{ kpi.wall_time_seconds }}s)</div>
-            </div>
+      <!-- KPI Summary Cards (All White Panels, Unified Industrial Style) -->
+      <div v-if="kpi" class="kpis-strip">
+        <!-- 01: Status & Time -->
+        <div class="kpi-cell">
+          <span class="kpi-idx">01</span>
+          <div class="kpi-label flex items-center space-x-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#00a36c]"></span>
+            <span>求解状态 / 耗时</span>
+          </div>
+          <div class="kpi-val text-[#00a36c]">
+            {{ kpi.status_name }}
+          </div>
+          <div class="kpi-sub font-mono">
+            计算耗时 {{ kpi.wall_time_seconds }}s
+          </div>
+        </div>
+
+        <!-- 02: On-Time Delivery -->
+        <div class="kpi-cell">
+          <span class="kpi-idx">02</span>
+          <div class="kpi-label">准时交付率 (OTD)</div>
+          <div class="kpi-val" :class="kpi.on_time_delivery_rate >= 100 ? 'text-[#00a36c]' : 'text-[#d97706]'">
+            {{ kpi.on_time_delivery_rate }}%
+          </div>
+          <div class="kpi-sub font-mono">
+            {{ kpi.total_fg_tasks - kpi.late_task_count }} / {{ kpi.total_fg_tasks }} 批次准时
+          </div>
+        </div>
+
+        <!-- 03: Line Utilization -->
+        <div class="kpi-cell">
+          <span class="kpi-idx">03</span>
+          <div class="kpi-label">综合平均产线负荷</div>
+          <div class="kpi-val" :class="(kpi.avg_line_utilization || 0) >= 95 ? 'text-[#00a36c]' : 'text-[#d97706]'">
+            {{ kpi.avg_line_utilization || '-' }}%
+          </div>
+          <div class="kpi-sub font-mono">
+            基准考核门槛 ≥ 95.0%
+          </div>
+        </div>
+
+        <!-- 04: Compliance Distribution & Popover -->
+        <div class="kpi-cell cursor-pointer" @click.stop="showLineDetailModal = !showLineDetailModal">
+          <span class="kpi-idx">04</span>
+          <div class="kpi-label flex items-center justify-between pr-4">
+            <span>产线开工达标分布</span>
+            <span class="text-[9px] text-slate-500 underline font-sans">明细 &darr;</span>
+          </div>
+          <div class="kpi-val flex items-baseline space-x-1">
+            <span :class="(kpi.unqualified_lines_count || 0) === 0 ? 'text-[#00a36c]' : 'text-[#d97706]'">
+              {{ kpi.qualified_lines_count }}/{{ kpi.total_lines_count }}
+            </span>
+            <span class="text-xs font-normal text-slate-400 font-sans">线达标</span>
+          </div>
+          <div class="kpi-sub font-mono">
+            <span v-if="(kpi.unqualified_lines_count || 0) === 0" class="text-[#00a36c]">全产线负荷达标</span>
+            <span v-else class="text-[#dc2626] font-semibold">{{ kpi.unqualified_lines_count }} 条线负荷预警</span>
           </div>
 
-          <div>
-            <div class="text-slate-400 text-[10px]">准时交付率</div>
-            <div class="font-bold text-white flex items-center space-x-1">
-              <span :class="kpi.on_time_delivery_rate >= 100 ? 'text-emerald-400' : 'text-amber-400'">{{ kpi.on_time_delivery_rate }}%</span>
-              <span class="text-[10px] text-slate-400">({{ kpi.total_fg_tasks - kpi.late_task_count }}/{{ kpi.total_fg_tasks }} 准时)</span>
+          <!-- Popover Dropdown for Line Utilization Details -->
+          <div v-if="showLineDetailModal" class="absolute left-0 top-full mt-1 w-72 bg-[#111827] text-white rounded-[4px] shadow-xl p-3 z-50 border border-slate-700 space-y-2">
+            <div class="flex items-center justify-between pb-1.5 border-b border-slate-700 text-xs">
+              <div class="font-bold text-slate-200 flex items-center space-x-1.5 font-mono">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#00a36c]"></span>
+                <span>产线开工负荷清单</span>
+              </div>
+              <button @click.stop="showLineDetailModal = false" class="text-slate-400 hover:text-white text-sm font-bold leading-none cursor-pointer">&times;</button>
             </div>
-          </div>
-
-          <div>
-            <div class="text-slate-400 text-[10px]">产线综合平均负荷</div>
-            <div class="font-bold text-white flex items-center space-x-1">
-              <span :class="(kpi.avg_line_utilization || 0) >= 95 ? 'text-emerald-400' : 'text-amber-400'">
-                {{ kpi.avg_line_utilization || '-' }}%
-              </span>
-              <span class="text-[10px] text-slate-400 ml-1">(门槛≥95%)</span>
-            </div>
-          </div>
-
-          <div class="relative">
-            <div class="text-slate-400 text-[10px] flex items-center justify-between">
-              <span>负荷达标分布</span>
-              <button @click.stop="showLineDetailModal = !showLineDetailModal" class="text-indigo-300 hover:text-white underline text-[9px] cursor-pointer flex items-center space-x-0.5">
-                <span>查明细</span>
-                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-              </button>
-            </div>
-            <div class="font-bold text-white flex items-center space-x-1 cursor-pointer" @click.stop="showLineDetailModal = !showLineDetailModal">
-              <span v-if="(kpi.unqualified_lines_count || 0) === 0" class="text-emerald-400">
-                全部达标 ({{ kpi.qualified_lines_count }}/{{ kpi.total_lines_count }}线)
-              </span>
-              <span v-else class="flex items-center space-x-1">
-                <span class="text-amber-400">{{ kpi.qualified_lines_count }}/{{ kpi.total_lines_count }} 达标</span>
-                <span class="text-rose-400 text-[10px] ml-1">({{ kpi.unqualified_lines_count }}线预警)</span>
-              </span>
-            </div>
-
-            <!-- Popover Dropdown for Line Utilization Details -->
-            <div v-if="showLineDetailModal" class="absolute left-0 top-full mt-2 w-72 bg-slate-800 text-white rounded-xl shadow-2xl p-3 z-50 border border-slate-700 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
-              <div class="flex items-center justify-between pb-1.5 border-b border-slate-700 text-xs">
-                <div class="font-bold text-slate-200 flex items-center space-x-1.5">
-                  <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
-                  <span>各产线开工负荷明细</span>
+            <div class="space-y-1 max-h-56 overflow-y-auto pr-1">
+              <div v-for="(rate, line) in kpi.line_utilizations" :key="'kpi-line-'+line" class="flex items-center justify-between p-1.5 rounded-[2px] bg-slate-900 border border-slate-800 text-[11px]">
+                <div class="flex items-center space-x-1.5 truncate">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="rate >= 95 ? 'bg-[#00a36c]' : 'bg-[#dc2626]'"></span>
+                  <span class="font-mono text-slate-300 truncate" :title="line">{{ line }}</span>
                 </div>
-                <button @click.stop="showLineDetailModal = false" class="text-slate-400 hover:text-white text-sm font-bold leading-none cursor-pointer">&times;</button>
-              </div>
-              <div class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                <div v-for="(rate, line) in kpi.line_utilizations" :key="'kpi-line-'+line" class="flex items-center justify-between p-2 rounded-lg bg-slate-900/70 border border-slate-700/60 text-[11px] hover:border-slate-600 transition">
-                  <div class="flex items-center space-x-2 truncate">
-                    <span class="w-1.5 h-1.5 rounded-full" :class="rate >= 95 ? 'bg-emerald-400' : 'bg-rose-400'"></span>
-                    <span class="font-semibold text-slate-200 truncate" :title="line">{{ line }}</span>
-                  </div>
-                  <div class="flex items-center space-x-2 font-mono">
-                    <span :class="rate >= 95 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'">{{ rate }}%</span>
-                    <span :class="rate >= 95 ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60' : 'bg-rose-950/70 text-rose-300 border-rose-700/60'" class="text-[9px] px-1.5 py-0.5 rounded border font-sans">
-                      {{ rate >= 95 ? '达标' : '未达标' }}
-                    </span>
-                  </div>
+                <div class="flex items-center space-x-1.5 font-mono">
+                  <span :class="rate >= 95 ? 'text-[#00a36c] font-bold' : 'text-[#dc2626] font-bold'">{{ rate }}%</span>
+                  <span :class="rate >= 95 ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-rose-950 text-rose-300 border-rose-800'" class="text-[9px] px-1 py-0.2 rounded border font-sans">
+                    {{ rate >= 95 ? '达标' : '预警' }}
+                  </span>
                 </div>
               </div>
-              <div class="text-[10px] text-slate-400 pt-1.5 border-t border-slate-700/60 flex items-center justify-between">
-                <span>门槛标准: 单班定额 ≥95%</span>
-                <span class="font-mono text-slate-300">共 {{ kpi.total_lines_count }} 条产线</span>
-              </div>
+            </div>
+            <div class="text-[10px] text-slate-400 pt-1 border-t border-slate-800 flex items-center justify-between font-mono">
+              <span>单班负荷考核 ≥ 95%</span>
+              <span class="text-slate-300">共 {{ kpi.total_lines_count }} 条线</span>
             </div>
           </div>
+        </div>
 
-          <div>
-            <div class="text-slate-400 text-[10px]">任务规模 (FG + SF)</div>
-            <div class="font-bold text-white">{{ kpi.total_fg_tasks }} 成品 + {{ kpi.total_sf_tasks }} 半成品 = {{ kpi.total_tasks }} 任务</div>
+        <!-- 05: Task Scale -->
+        <div class="kpi-cell">
+          <span class="kpi-idx">05</span>
+          <div class="kpi-label">排产工单规模</div>
+          <div class="kpi-val text-[#111827]">
+            {{ kpi.total_tasks }} <span class="text-xs font-normal text-slate-400 font-sans">工单</span>
           </div>
+          <div class="kpi-sub font-mono">
+            {{ kpi.total_fg_tasks }} 成品 + {{ kpi.total_sf_tasks }} 半成品
+          </div>
+        </div>
 
-          <div>
-            <div class="text-slate-400 text-[10px]">排程周期跨度</div>
-            <div class="font-bold text-white text-[11px]">{{ kpi.schedule_start ? kpi.schedule_start.slice(5) : '-' }} ~ {{ kpi.schedule_end ? kpi.schedule_end.slice(5) : '-' }}</div>
+        <!-- 06: Schedule Period -->
+        <div class="kpi-cell">
+          <span class="kpi-idx">06</span>
+          <div class="kpi-label">排产周期与日历</div>
+          <div class="kpi-val text-[#111827]">
+            {{ horizonDays }} <span class="text-xs font-normal text-slate-400 font-sans">天计划期</span>
+          </div>
+          <div class="kpi-sub font-mono">
+            {{ kpi.schedule_start ? kpi.schedule_start.slice(5) : '-' }} ~ {{ kpi.schedule_end ? kpi.schedule_end.slice(5) : '-' }}
           </div>
         </div>
       </div>
 
-      <!-- Navigation Tabs -->
-      <div class="max-w-[98%] mx-auto px-4 flex space-x-6 text-xs font-medium border-t border-slate-100">
-        <button @click="currentTab = 'balance'" :class="currentTab === 'balance' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-          <span>① 生产平衡与负荷总览 (Validation)</span>
-          <span v-if="hasSolved" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-        </button>
+      <!-- Navigation Tabs Bar (Segmented Controls) -->
+      <div class="bg-white border-t border-b border-[#e4e4e0] px-4 py-1.5">
+        <div class="max-w-[98%] mx-auto flex flex-wrap items-center justify-between gap-2">
+          <!-- Segmented Controls -->
+          <div class="seg-tabs">
+            <button @click="currentTab = 'balance'" :class="currentTab === 'balance' ? 'active' : ''" class="seg-tab-btn">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+              <span>① 生产平衡与负荷总览</span>
+              <span v-if="hasSolved" class="w-1.5 h-1.5 rounded-full bg-[#00a36c]"></span>
+            </button>
 
-        <button @click="currentTab = 'tasks'" :class="currentTab === 'tasks' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-          <span>② 车间协同排产甘特图 (交互透视)</span>
-        </button>
+            <button @click="currentTab = 'tasks'" :class="currentTab === 'tasks' ? 'active' : ''" class="seg-tab-btn">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <span>② 车间协同排产甘特图</span>
+            </button>
 
-        <button @click="currentTab = 'rules'" :class="currentTab === 'rules' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          <span>③ 规则与约束配置 (Checkboxes)</span>
-          <span class="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded-full font-bold">{{ enabledRulesCount }}/{{ rules.length }}</span>
-        </button>
+            <button @click="currentTab = 'rules'" :class="currentTab === 'rules' ? 'active' : ''" class="seg-tab-btn">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span>③ 规则与约束配置</span>
+              <span class="font-mono text-[10px] bg-slate-200 text-slate-700 px-1 rounded-[2px]">{{ enabledRulesCount }}/{{ rules.length }}</span>
+            </button>
 
-        <button @click="currentTab = 'inputs'" :class="currentTab === 'inputs' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-          <span>④ 输入与排产主数据菜单 (浏览·变更·分析)</span>
-        </button>
+            <button @click="currentTab = 'inputs'" :class="currentTab === 'inputs' ? 'active' : ''" class="seg-tab-btn">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              <span>④ 输入与主数据管理</span>
+            </button>
 
-        <button @click="currentTab = 'compliance'" :class="currentTab === 'compliance' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-          <span>⑤ 规则合规审计矩阵 ({{ rules.length }}条)</span>
-        </button>
+            <button @click="currentTab = 'compliance'" :class="currentTab === 'compliance' ? 'active' : ''" class="seg-tab-btn">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+              <span>⑤ 规则合规审计矩阵</span>
+            </button>
 
-        <button @click="currentTab = 'settings'" :class="currentTab === 'settings' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'" class="py-2.5 border-b-2 font-semibold flex items-center space-x-1.5 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-          <span>⑥ ⚙️ 生产策略与系统设置</span>
-          <span v-if="siteSettings.lookahead_enabled" class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">30天前瞻</span>
-        </button>
+            <button @click="currentTab = 'settings'" :class="currentTab === 'settings' ? 'active' : ''" class="seg-tab-btn">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              <span>⑥ 生产策略与设置</span>
+              <span v-if="siteSettings.lookahead_enabled" class="font-mono text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded-[2px]">30天前瞻</span>
+            </button>
+          </div>
+
+          <!-- Subtle Engine Status (Engineering metadata) -->
+          <div class="hidden lg:flex items-center space-x-3 text-[11px] font-mono text-slate-500">
+            <span>求解引擎: 双阶段协同混合整数规划 (MIP / CP-SAT)</span>
+            <span class="text-slate-300">|</span>
+            <span>日历模式: {{ calendarModeDisplay }}</span>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -310,10 +536,10 @@
       <div v-show="currentTab === 'balance'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         
         <!-- Lookahead Notification Banner (If active & solved) -->
-        <div v-if="lookaheadSummary && lookaheadSummary.is_enabled" class="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-inner">
+        <div v-if="lookaheadSummary && lookaheadSummary.is_enabled" class="bg-emerald-50 border-b border-emerald-200 text-emerald-950 px-4 py-2 flex items-center justify-between text-xs font-medium">
           <div class="flex items-center space-x-2">
             <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
-            <span>🎯 <b>30天需求前瞻已激活</b>：已智能前拉合批 <b>{{ lookaheadSummary.pulled_orders_count }}</b> 个远期订单（合并生产 <b>{{ lookaheadSummary.pulled_quantity_total }}</b> 件），预估减少产线换型 <b>{{ lookaheadSummary.changeovers_saved_estimate }}</b> 次，为月末储备平准库存！</span>
+            <span><b class="text-emerald-800">30天需求前瞻策略运行中</b>：已前拉合批 <b>{{ lookaheadSummary.pulled_orders_count }}</b> 个远期订单（合并生产 <b>{{ lookaheadSummary.pulled_quantity_total }}</b> 件），预估减少产线换型 <b>{{ lookaheadSummary.changeovers_saved_estimate }}</b> 次，为月末储备平准库存！</span>
           </div>
           <button @click="currentTab = 'settings'" class="text-[11px] underline text-emerald-100 hover:text-white cursor-pointer">
             调整前瞻策略 &rarr;
@@ -443,25 +669,33 @@
 
               <!-- Rows 3-5: Section 1 Data Rows: Line Loads -->
               <template v-if="showUpperLoadTable">
-                <tr v-for="(row, idx) in displayLineLoads" :key="'ll-'+idx" :class="idx % 3 === 2 ? 'border-b-2 border-slate-300' : ''" class="hover:bg-slate-50 bg-white">
-                  <td class="py-1 px-3 font-medium text-slate-600 border-r border-slate-200 sync-col-1 bg-white z-40 whitespace-nowrap">{{ row.site }}</td>
-                  <td class="py-1 px-3 font-semibold text-slate-800 border-r border-slate-200 sync-col-2 bg-white z-40 whitespace-nowrap">{{ row.line }}</td>
-                  <td class="py-1 px-3 font-medium text-slate-700 border-r border-slate-200 sync-col-3 bg-white z-40 whitespace-nowrap">
-                    <span :class="row.metric === 'Loading Rate' ? 'font-bold text-indigo-700' : ''">{{ row.metric }}</span>
+                <tr v-for="(row, idx) in displayLineLoads" :key="'ll-'+idx" :class="idx % 3 === 2 ? 'border-b-2 border-slate-300' : ''"
+                    class="bg-white">
+                  <td class="py-1 px-3 font-medium text-slate-600 border-r border-slate-200 sync-col-1 z-40 whitespace-nowrap"
+                      :class="isCrosshairRow('ll-' + row.site + '-' + row.line + '-' + row.metric) ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">{{ formatSiteCode(row.site) }}</td>
+                  <td class="py-1 px-3 font-semibold text-slate-800 border-r border-slate-200 sync-col-2 z-40 whitespace-nowrap"
+                      :class="isCrosshairRow('ll-' + row.site + '-' + row.line + '-' + row.metric) ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">{{ row.line }}</td>
+                  <td class="py-1 px-3 font-medium text-slate-700 border-r border-slate-200 sync-col-3 z-40 whitespace-nowrap"
+                      :class="isCrosshairRow('ll-' + row.site + '-' + row.line + '-' + row.metric) ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
+                    <span :class="row.metric === 'Loading Rate' ? 'font-bold text-slate-900' : ''">{{ row.metric }}</span>
                   </td>
-                  <td class="py-1 px-3 text-right border-r-2 border-slate-300 sync-col-4 bg-white z-40 text-[10px] text-slate-500 font-mono whitespace-nowrap">
+                  <td class="py-1 px-3 text-right border-r-2 border-slate-300 sync-col-4 z-40 text-[10px] text-slate-500 font-mono whitespace-nowrap"
+                      :class="isCrosshairRow('ll-' + row.site + '-' + row.line + '-' + row.metric) ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
                     <span v-if="row.metric === 'Loading Rate'" class="font-bold text-emerald-700">门槛 ≥95%</span>
                     <span v-else-if="row.metric === 'TRP'">标准: {{ row.line === 'PGLINKAGE' ? '0.71' : (row.line === 'PU07' ? '0.60' : (row.line === 'PU22' ? '0.70' : '0.85')) }}</span>
                     <span v-else>{{ selectedSite === "SY38" ? "单班定额: 12.0h" : "单班定额: 8.0h" }}</span>
                   </td>
                   <td v-for="col in shiftColumns" :key="'ll-v-'+col.key"
-                      @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
-                      class="py-1 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors"
-                      :class="hoveredColKey === col.key ? 'bg-indigo-100 text-indigo-900 font-bold ring-1 ring-indigo-400 ring-inset' : getLoadCellClass(row.metric, row.shift_values[col.key])">
+                      @click="toggleCrosshair('ll-' + row.site + '-' + row.line + '-' + row.metric, col.key)"
+                      class="py-1 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors interactive-cell"
+                      :class="[
+                        getCellCrosshairClass('ll-' + row.site + '-' + row.line + '-' + row.metric, col.key),
+                        !getCellCrosshairClass('ll-' + row.site + '-' + row.line + '-' + row.metric, col.key) && getLoadCellClass(row.metric, row.shift_values[col.key], row.site)
+                      ]">
                     <div class="flex items-center justify-center space-x-0.5">
                       <span>{{ formatMetricValue(row.metric, row.shift_values[col.key]) }}</span>
                       <span v-if="row.metric === 'Loading Rate' && (!row.shift_values[col.key] || row.shift_values[col.key] === 0 || row.shift_values[col.key] === '-')"
-                            class="cursor-help text-[9px] text-slate-400 hover:text-indigo-600 transition"
+                            class="cursor-help text-[9px] text-slate-400 hover:text-slate-600 transition"
                             :title="getEmptyShiftTooltip(row.line, col.key)">
                         ℹ️
                       </span>
@@ -491,11 +725,10 @@
                 <th class="py-1.5 px-3 border-r border-slate-200 sync-col-3 bg-slate-100 z-40 font-bold">指标项 (Des)</th>
                 <th class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 bg-slate-100 z-40 font-bold text-right">基准参数 (Reference)</th>
                 <th v-for="col in shiftColumns" :key="'sub-hdr-'+col.key"
-                    @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
                     class="py-1.5 px-1 text-center border-r border-slate-200 sync-shift-col font-mono text-[10px] cursor-pointer transition-colors"
-                    :class="hoveredColKey === col.key ? 'bg-indigo-200 text-indigo-900 font-bold' : (isAlternateDate(col.date) ? 'bg-indigo-50 text-slate-700' : 'bg-slate-100 text-slate-600')">
-                  <div class="font-bold">{{ col.date }}</div>
-                  <div class="font-bold text-slate-800">{{ col.shift }}</div>
+                    :class="isCrosshairCol(col.key) ? 'bg-blue-200 text-blue-900 font-bold ring-2 ring-blue-500 ring-inset' : (isAlternateDate(col.date) ? 'bg-slate-50 text-slate-700' : 'bg-slate-100 text-slate-600')">
+                  <div class="font-bold" :class="isCrosshairCol(col.key) ? 'text-blue-950 font-extrabold' : ''">{{ col.date }}</div>
+                  <div class="font-bold" :class="isCrosshairCol(col.key) ? 'text-blue-950 font-extrabold' : 'text-slate-800'">{{ col.shift }}</div>
                 </th>
               </tr>
             </thead>
@@ -505,81 +738,111 @@
               <!-- Section 2 Data: Material Rows -->
               <template v-for="mat in filteredMaterials" :key="mat.part_no">
                 <!-- Row 1: Customer Demand -->
-                <tr class="hover:bg-slate-50/70">
-                  <td class="py-1.5 px-3 font-bold font-mono text-slate-900 border-r border-slate-200 sync-col-1 bg-white z-10 whitespace-nowrap truncate" :title="mat.part_no">
+                <tr>
+                  <td class="py-1.5 px-3 font-bold font-mono text-slate-900 border-r border-slate-200 sync-col-1 z-10 whitespace-nowrap truncate"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-demand') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'"
+                      :title="mat.part_no">
                     {{ mat.part_no }}
                   </td>
-                  <td class="py-1.5 px-3 text-slate-800 text-[11px] border-r border-slate-200 sync-col-2 bg-white z-10 truncate" :title="mat.description">
+                  <td class="py-1.5 px-3 text-slate-800 text-[11px] border-r border-slate-200 sync-col-2 z-10 truncate"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-demand') ? 'bg-blue-100 text-blue-950' : 'bg-white'"
+                      :title="mat.description">
                     {{ mat.description }}
                   </td>
-                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 bg-white z-10 text-slate-600 font-medium whitespace-nowrap">
+                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 z-10 text-slate-600 font-medium whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-demand') ? 'bg-blue-100 text-blue-950' : 'bg-white'">
                     Customer demand
                   </td>
-                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 bg-white z-10 text-slate-500 font-mono text-[10px] text-right whitespace-nowrap">
+                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 z-10 text-slate-500 font-mono text-[10px] text-right whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-demand') ? 'bg-blue-100 text-blue-950' : 'bg-white'">
                     总需求: <b class="text-slate-800">{{ mat.total_demand }}</b> 件
                   </td>
                   <td v-for="col in shiftColumns" :key="'dem-'+mat.part_no+'-'+col.key"
-                      @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
-                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors"
-                      :class="hoveredColKey === col.key ? 'bg-indigo-100 text-indigo-900 font-bold ring-1 ring-indigo-400 ring-inset' : (mat.demand[col.key] > 0 ? 'bg-amber-50 font-bold text-amber-700' : 'text-slate-300')">
+                      @click="toggleCrosshair('mat-' + mat.part_no + '-demand', col.key)"
+                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors interactive-cell"
+                      :class="[
+                        getCellCrosshairClass('mat-' + mat.part_no + '-demand', col.key),
+                        !getCellCrosshairClass('mat-' + mat.part_no + '-demand', col.key) && (mat.demand[col.key] > 0 ? 'bg-amber-50 font-bold text-amber-700' : 'text-slate-300')
+                      ]">
                     {{ mat.demand[col.key] > 0 ? mat.demand[col.key] : '-' }}
                   </td>
                 </tr>
 
-                <!-- Row 2: Production Plan -->
-                <tr class="hover:bg-slate-50/70">
-                  <td class="py-1 px-3 text-[10px] text-slate-400 font-sans border-r border-slate-200 sync-col-1 bg-white z-10 whitespace-nowrap">
-                    {{ mat.line }} · {{ mat.site }}
+                <!-- Row 2: Production Plan (Light Blue Background) -->
+                <tr class="bg-[#f0f9ff]">
+                  <td class="py-1 px-3 text-[10px] text-sky-800 font-sans border-r border-slate-200 sync-col-1 z-10 whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-plan') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-[#f0f9ff]'">
+                    {{ mat.line }} · {{ formatSiteCode(mat.site) }}
                   </td>
-                  <td class="py-1 px-3 text-[10px] text-slate-400 border-r border-slate-200 sync-col-2 bg-white z-10 whitespace-nowrap">
+                  <td class="py-1 px-3 text-[10px] text-sky-800 border-r border-slate-200 sync-col-2 z-10 whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-plan') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-[#f0f9ff]'">
                     MPQ: {{ mat.mpq }} · TRP: {{ mat.trp }}
                   </td>
-                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 bg-indigo-50/40 z-10 text-indigo-700 font-bold whitespace-nowrap">
+                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 z-10 text-sky-900 font-bold whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-plan') ? 'bg-blue-200 text-blue-950 font-bold' : 'bg-[#e0f2fe]'">
                     Production plan
                   </td>
-                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 bg-white z-10 text-slate-700 font-medium text-[10px] text-right whitespace-nowrap">
-                    节拍 CT: <b class="text-indigo-700">{{ mat.ct_seconds }}</b> 秒
+                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 z-10 text-sky-900 font-medium text-[10px] text-right whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-plan') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-[#f0f9ff]'">
+                    节拍 CT: <b class="text-sky-900">{{ mat.ct_seconds }}</b> 秒
                   </td>
                   <td v-for="col in shiftColumns" :key="'plan-'+mat.part_no+'-'+col.key"
-                      @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
-                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors"
-                      :class="hoveredColKey === col.key ? 'bg-indigo-200 text-indigo-900 font-bold ring-1 ring-indigo-400 ring-inset' : (mat.plan[col.key] > 0 ? 'bg-indigo-100 font-bold text-indigo-800' : 'text-slate-300')">
+                      @click="toggleCrosshair('mat-' + mat.part_no + '-plan', col.key)"
+                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors interactive-cell"
+                      :class="[
+                        getCellCrosshairClass('mat-' + mat.part_no + '-plan', col.key),
+                        !getCellCrosshairClass('mat-' + mat.part_no + '-plan', col.key) && (mat.plan[col.key] > 0 ? 'bg-[#dbeafe] text-[#1e40af] font-bold border border-blue-200' : 'bg-[#f0f9ff] text-slate-300')
+                      ]">
                     {{ mat.plan[col.key] > 0 ? mat.plan[col.key] : '-' }}
                   </td>
                 </tr>
 
                 <!-- Row 3: Stock Balance -->
-                <tr class="hover:bg-slate-50/70">
-                  <td class="py-1 px-3 border-r border-slate-200 sync-col-1 bg-white z-10"></td>
-                  <td class="py-1 px-3 border-r border-slate-200 sync-col-2 bg-white z-10"></td>
-                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 bg-white z-10 text-slate-800 font-medium whitespace-nowrap">
+                <tr>
+                  <td class="py-1 px-3 border-r border-slate-200 sync-col-1 z-10"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-stock') ? 'bg-blue-100' : 'bg-white'"></td>
+                  <td class="py-1 px-3 border-r border-slate-200 sync-col-2 z-10"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-stock') ? 'bg-blue-100' : 'bg-white'"></td>
+                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 z-10 text-slate-800 font-medium whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-stock') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
                     Stock Balance
                   </td>
-                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 bg-white z-10 text-emerald-700 font-medium text-[10px] text-right whitespace-nowrap">
+                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 z-10 text-emerald-700 font-medium text-[10px] text-right whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-stock') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
                     期初: <b class="font-bold">{{ mat.initial_stock }}</b> 件
                   </td>
                   <td v-for="col in shiftColumns" :key="'stock-'+mat.part_no+'-'+col.key"
-                      @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
-                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors"
-                      :class="hoveredColKey === col.key ? 'bg-indigo-100 text-indigo-900 font-bold ring-1 ring-indigo-400 ring-inset' : (mat.stock[col.key] < 0 ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-700')">
+                      @click="toggleCrosshair('mat-' + mat.part_no + '-stock', col.key)"
+                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors interactive-cell"
+                      :class="[
+                        getCellCrosshairClass('mat-' + mat.part_no + '-stock', col.key),
+                        !getCellCrosshairClass('mat-' + mat.part_no + '-stock', col.key) && (mat.stock[col.key] < 0 ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-700')
+                      ]">
                     {{ mat.stock[col.key] }}
                   </td>
                 </tr>
 
                 <!-- Row 4: Coverage Days -->
-                <tr class="border-b-2 border-slate-300 hover:bg-slate-50/70">
-                  <td class="py-1 px-3 border-r border-slate-200 sync-col-1 bg-white z-10"></td>
-                  <td class="py-1 px-3 border-r border-slate-200 sync-col-2 bg-white z-10"></td>
-                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 bg-white z-10 text-slate-500 whitespace-nowrap">
+                <tr class="border-b-2 border-slate-300">
+                  <td class="py-1 px-3 border-r border-slate-200 sync-col-1 z-10"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-coverage') ? 'bg-blue-100' : 'bg-white'"></td>
+                  <td class="py-1 px-3 border-r border-slate-200 sync-col-2 z-10"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-coverage') ? 'bg-blue-100' : 'bg-white'"></td>
+                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 z-10 text-slate-500 whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-coverage') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
                     Coverage days
                   </td>
-                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 bg-white z-10 text-slate-500 text-[10px] text-right whitespace-nowrap">
+                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 z-10 text-slate-500 text-[10px] text-right whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-coverage') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
                     日均: <b class="text-slate-700">{{ mat.avg_daily_demand }}</b> 件/天
                   </td>
                   <td v-for="col in shiftColumns" :key="'cov-'+mat.part_no+'-'+col.key"
-                      @mouseenter="hoveredColKey = col.key" @mouseleave="hoveredColKey = null"
-                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors"
-                      :class="hoveredColKey === col.key ? 'bg-indigo-100 text-indigo-900 font-bold ring-1 ring-indigo-400 ring-inset' : (mat.coverage[col.key] < 2 && mat.coverage[col.key] !== 999 ? 'bg-rose-50 text-rose-600 font-bold' : 'text-slate-500')">
+                      @click="toggleCrosshair('mat-' + mat.part_no + '-coverage', col.key)"
+                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors interactive-cell"
+                      :class="[
+                        getCellCrosshairClass('mat-' + mat.part_no + '-coverage', col.key),
+                        !getCellCrosshairClass('mat-' + mat.part_no + '-coverage', col.key) && (mat.coverage[col.key] < 2 && mat.coverage[col.key] !== 999 ? 'bg-rose-50 text-rose-600 font-bold' : 'text-slate-500')
+                      ]">
                     {{ mat.coverage[col.key] === 999 ? '999' : mat.coverage[col.key] }}
                   </td>
                 </tr>
@@ -659,7 +922,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            <span>立即执行智能排产</span>
+            <span>执行排产求解计算</span>
           </button>
         </div>
 
@@ -676,7 +939,7 @@
                 </span>
               </div>
               <p class="text-xs text-slate-500 mt-0.5">
-                展示 WL 车间【产成品装配流水线 (PGLINKAGE)】与【半成品冲压线 (轴套6)】协同作业节拍、交期达成与物料拉动关系
+                展示 {{ siteDisplayCode }} ({{ siteFactoryName }}) 产线协同作业节拍、交期达成与物料拉动关系
               </p>
             </div>
 
@@ -1870,13 +2133,13 @@
           <div v-if="inputMenu === 'calendar'" class="space-y-4">
             
             <!-- Workstation Header & Horizon Selection Bar -->
-            <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-4 shadow-sm border border-indigo-900/40">
+            <div class="bg-[#111827] text-white rounded-[4px] p-4 shadow-2xs border border-slate-700">
               <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                   <div class="flex items-center space-x-2">
                     <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     <h2 class="text-sm font-bold tracking-wide">工厂排产日历与滚动视区工作台 (Factory Calendar)</h2>
-                    <span class="bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full">WL 工厂 / WE34 车间</span>
+                    <span class="bg-slate-700 text-slate-200 border border-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full font-mono">{{ siteDisplayCode }} · {{ siteFactoryName }}</span>
                   </div>
                   <p class="text-xs text-slate-300 mt-1">
                     排产基准日：<b class="text-amber-300">{{ calendarConfig.baseline_display || '10/11 (D+0 冻结区)' }}</b>，锁定当日执行现场不调整；排产从次日 <b class="text-emerald-300">{{ calendarConfig.start_display || '10/12 (D+1)' }}</b> 开始计算。
@@ -1944,7 +2207,7 @@
 
             <!-- AI Recommendation Hero Banner in Tab 4 -->
             <div v-if="calendarConfig && calendarConfig.ai_recommendation"
-                 :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'bg-gradient-to-r from-emerald-50/90 via-teal-50/90 to-white border-emerald-300' : 'bg-gradient-to-r from-amber-50/90 via-orange-50/90 to-white border-amber-300'"
+                 :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'bg-slate-50 border-slate-300 text-slate-800' : 'bg-amber-50/60 border-amber-300 text-slate-800'"
                  class="p-3.5 rounded-xl border shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
               <div class="space-y-1">
                 <div class="flex items-center space-x-2">
@@ -1953,7 +2216,7 @@
                     💡 {{ calendarConfig.ai_recommendation.confidence }} ({{ calendarConfig.ai_recommendation.rule_id }})
                   </span>
                   <span class="font-bold text-slate-800 text-sm">
-                    AI 算法推荐工作制：{{ calendarConfig.ai_recommendation.recommended_name }}
+                    排产策略推荐工作制：{{ calendarConfig.ai_recommendation.recommended_name }}
                   </span>
                   <span v-if="calendarConfig.ai_recommendation.is_current_mode_matched" class="text-emerald-700 font-semibold text-[11px] flex items-center space-x-1">
                     <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -2622,13 +2885,13 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            <span>立即执行智能排产</span>
+            <span>执行排产求解计算</span>
           </button>
         </div>
 
         <template v-else>
         <!-- Manual Schedule Re-upload & Audit Header Section -->
-        <div class="bg-gradient-to-r from-blue-50 via-indigo-50 to-slate-50 border border-indigo-200/90 rounded-2xl p-4 shadow-xs">
+        <div class="bg-[#f8f9fa] border border-slate-300 rounded-[4px] p-4 shadow-2xs">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center space-x-3.5">
               <div class="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -2958,14 +3221,14 @@
       <div v-show="currentTab === 'settings'" class="space-y-5">
         
         <!-- Factory Site Banner & Description -->
-        <div class="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-2xl p-5 shadow-lg border border-indigo-800/40 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div class="bg-[#111827] text-white rounded-[4px] p-5 border border-slate-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div class="space-y-1.5">
             <div class="flex items-center space-x-2.5">
-              <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-xs font-bold tracking-wider uppercase font-mono">SITE: {{ selectedSite }}</span>
+              <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-xs font-bold tracking-wider uppercase font-mono">SITE: {{ siteDisplayCode }} ({{ siteFactoryName }})</span>
               <h2 class="text-lg font-bold text-white tracking-tight">工厂生产策略与系统排产设置</h2>
             </div>
             <p class="text-xs text-indigo-200/80 max-w-2xl leading-relaxed">
-              当前配置依托于 <b>{{ selectedSite }} 工厂</b> 独立生效并持久化。包含核心排产周期、工作制日历与 30 天需求前瞻平准合批策略。切换工厂站点时系统将自动载入该工厂专属策略。
+              当前配置依托于 <b>{{ siteDisplayCode }} ({{ siteFactoryName }})</b> 独立生效并持久化。包含核心排产周期、工作制日历与 30 天需求前瞻平准合批策略。切换工厂站点时系统将自动载入该工厂专属策略。
             </p>
           </div>
           <div class="flex items-center space-x-3 shrink-0">
@@ -3246,7 +3509,7 @@
           <p class="text-xs text-slate-500 mt-1">正在校验产线工时负荷、动态平衡前道零部件库存，并优化各班次生产效率</p>
         </div>
         <div class="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 font-mono text-left space-y-1 border border-slate-200">
-          <div>> 站点代码: <b>{{ selectedSite }} (WE34)</b></div>
+          <div>> 站点代码: <b>{{ siteFullName }}</b></div>
           <div>> 日历模式: <b>{{ calendarMode }}</b></div>
           <div>> 已启用约束数: <b>{{ enabledRulesCount }} / {{ rules.length }} 项</b></div>
           <div>> 计划计算耗时: <b class="text-indigo-600">{{ timerSeconds }}s</b></div>
@@ -3257,7 +3520,7 @@
     <!-- Overload Diagnostic Modal -->
     <div v-if="showOverloadModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-150">
-        <div class="bg-gradient-to-r from-rose-700 to-amber-700 text-white p-4">
+        <div class="bg-[#991b1b] text-white p-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
               <svg class="w-5 h-5 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -3347,14 +3610,14 @@
          class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full border border-slate-200 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-150">
         <!-- Header -->
-        <div class="bg-gradient-to-r from-indigo-700 via-indigo-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="bg-[#111827] text-white px-6 py-4 flex items-center justify-between border-b border-slate-700">
           <div class="flex items-center space-x-2.5">
             <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-300">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
             </div>
             <div>
               <h3 class="text-sm font-bold tracking-wide flex items-center space-x-2">
-                <span>AI 智能排班策略与工作制推荐引擎</span>
+                <span>工作制与排班策略诊断推荐</span>
                 <span class="bg-indigo-500/40 text-indigo-200 border border-indigo-400/40 text-[10px] px-2 py-0.5 rounded font-mono">
                   {{ calendarConfig.ai_recommendation.rule_id }}
                 </span>
@@ -3562,6 +3825,65 @@
     createApp({
       setup() {
         const selectedSite = ref("WL");
+
+        // --- Aligned SAP Plant Codes & Names ---
+        const siteDisplayCode = computed(() => {
+          return selectedSite.value === 'SY38' ? 'SY38' : 'WE34';
+        });
+
+        const siteFactoryName = computed(() => {
+          return selectedSite.value === 'SY38' ? '沈阳工厂' : '温岭工厂';
+        });
+
+        const siteFullName = computed(() => {
+          return selectedSite.value === 'SY38' ? 'SY38 (沈阳工厂)' : 'WE34 (温岭工厂)';
+        });
+
+        const formatSiteCode = (code) => {
+          if (!code) return '';
+          if (code === 'WL' || code === 'WE34') return 'WE34';
+          return code;
+        };
+
+        // --- Table Cell & Crosshair Highlighting State ---
+        const activeCrosshair = ref({ rowKey: null, colKey: null });
+
+        const toggleCrosshair = (rowKey, colKey) => {
+          if (activeCrosshair.value.rowKey === rowKey && activeCrosshair.value.colKey === colKey) {
+            activeCrosshair.value = { rowKey: null, colKey: null };
+          } else {
+            activeCrosshair.value = { rowKey, colKey };
+          }
+        };
+
+        const isCrosshairCol = (colKey) => {
+          return activeCrosshair.value.colKey === colKey;
+        };
+
+        const isCrosshairRow = (rowKey) => {
+          return activeCrosshair.value.rowKey === rowKey;
+        };
+
+        const isCrosshairCell = (rowKey, colKey) => {
+          return activeCrosshair.value.rowKey === rowKey && activeCrosshair.value.colKey === colKey;
+        };
+
+        const getCellCrosshairClass = (rowKey, colKey) => {
+          if (isCrosshairCell(rowKey, colKey)) {
+            return '!bg-blue-600 !text-white font-bold ring-2 ring-blue-700 ring-inset z-30 shadow-md';
+          }
+          if (isCrosshairCol(colKey) && isCrosshairRow(rowKey)) {
+            return '!bg-blue-200 !text-blue-900 font-bold ring-1 ring-blue-400 ring-inset';
+          }
+          if (isCrosshairCol(colKey)) {
+            return '!bg-blue-50/90 !text-slate-900 ring-1 ring-blue-200 ring-inset';
+          }
+          if (isCrosshairRow(rowKey)) {
+            return '!bg-blue-50/90 !text-slate-900 ring-1 ring-blue-200 ring-inset';
+          }
+          return '';
+        };
+
         const calendarMode = ref("SEVEN_ZERO");
         const currentTab = ref("balance");
         const lookaheadSummary = ref(null);
@@ -3971,15 +4293,15 @@
 
         const getTaskColorClass = (task) => {
           if (isTaskLinked(task)) {
-            return 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg ring-2 ring-cyan-300 ring-offset-1';
+            return 'bg-[#0f172a] text-white border-2 border-[#00a36c] shadow-sm font-semibold';
           }
           if (task.stage === 'FG') {
-            if (task.part_no.includes('76959') || task.part_no.includes('9317')) return 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-sm';
-            if (task.part_no.includes('76960') || task.part_no.includes('8194') || task.part_no.includes('8574')) return 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-sm';
-            return 'bg-gradient-to-r from-slate-700 to-indigo-800 text-white shadow-sm';
+            if (task.part_no.includes('76959') || task.part_no.includes('9317')) return 'bg-[#1e293b] text-white border border-[#334155]';
+            if (task.part_no.includes('76960') || task.part_no.includes('8194') || task.part_no.includes('8574')) return 'bg-[#27374d] text-white border border-[#526d82]';
+            return 'bg-[#334155] text-white border border-[#475569]';
           } else {
-            if (task.part_no.includes('76958') || task.part_no.includes('9318') || task.part_no.includes('9324')) return 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm';
-            return 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm';
+            if (task.part_no.includes('76958') || task.part_no.includes('9318') || task.part_no.includes('9324')) return 'bg-[#735f32] text-white border border-[#8c7a4b]';
+            return 'bg-[#2d6a4f] text-white border border-[#40916c]';
           }
         };
 
@@ -4559,21 +4881,30 @@
           }
         };
 
-        const getLoadCellClass = (metric, val) => {
+        const getLoadCellClass = (metric, val, site) => {
+          const currentSite = site || selectedSite.value;
+          // 沈阳工厂(SY38)为12小时制班次，温岭工厂(WE34)为8小时制班次
+          const standardHours = currentSite === 'SY38' ? 12.0 : 8.0;
+
           if (metric === 'Loading Rate') {
+            // 超载门槛 > 105%
             if (val > 105.0) return 'bg-rose-100 text-rose-800 font-bold ring-1 ring-rose-400';
-            // 100% ~ 105% (不含100%): 可以接受但谨慎使用，以黄色背景展示
+            // 弹性上浮门槛 100% ~ 105% (黄色谨慎使用)
             if (val > 100.0) return 'bg-yellow-200 text-amber-950 font-bold ring-1 ring-yellow-400 shadow-2xs';
-            // 95% ~ 100% (含100%): 正常满载情况
+            // 正常满载 95% ~ 100% (绿色达标)
             if (val >= 95.0) return 'bg-emerald-50 text-emerald-800 font-bold';
-            // < 95%: 未达开工负荷门槛
+            // 欠载未达开工门槛 < 95%
             if (val > 0) return 'bg-amber-50 text-amber-800 font-medium';
             return 'bg-white text-slate-300';
           }
           if (metric === 'Loading Hours') {
-            if (val > 8.4) return 'bg-rose-100 text-rose-800 font-bold ring-1 ring-rose-400';
-            if (val > 8.0) return 'bg-yellow-200 text-amber-950 font-bold ring-1 ring-yellow-400 shadow-2xs';
-            if (val >= 7.6) return 'bg-emerald-50 text-emerald-800 font-bold';
+            // 超载：实际工时 > 定额 * 105% (例如 SY38 > 12.6h, WE34 > 8.4h)
+            if (val > standardHours * 1.05) return 'bg-rose-100 text-rose-800 font-bold ring-1 ring-rose-400';
+            // 弹性上浮：实际工时 > 定额 * 100% (例如 SY38 > 12.0h, WE34 > 8.0h)
+            if (val > standardHours * 1.0) return 'bg-yellow-200 text-amber-950 font-bold ring-1 ring-yellow-400 shadow-2xs';
+            // 正常满载达标：实际工时 >= 定额 * 95% (例如 SY38 >= 11.4h, WE34 >= 7.6h)
+            if (val >= standardHours * 0.95) return 'bg-emerald-50 text-emerald-800 font-bold';
+            // 正常生产工时 (未超额，显示清晰深色工时)
             if (val > 0) return 'bg-white text-slate-800 font-semibold';
             return 'bg-white text-slate-300';
           }
@@ -4725,6 +5056,16 @@
 
         return {
           selectedSite,
+          siteDisplayCode,
+          siteFactoryName,
+          siteFullName,
+          formatSiteCode,
+          activeCrosshair,
+          toggleCrosshair,
+          isCrosshairCol,
+          isCrosshairRow,
+          isCrosshairCell,
+          getCellCrosshairClass,
           calendarMode,
           horizonDays,
           startDate,

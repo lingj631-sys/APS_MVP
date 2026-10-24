@@ -74,7 +74,9 @@ app.add_middleware(
 DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
     "WL": {
         "site": "WL",
-        "site_name": "WL 工厂 (WE34 车间 - 雨刮/轴套)",
+        "plant_code": "WE34",
+        "site_name": "WE34 (温岭工厂)",
+        "factory_name": "温岭工厂",
         "horizon_days": 10,
         "start_date": "2026-10-12",
         "baseline_date": "2026-10-11",
@@ -87,7 +89,9 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
     },
     "SY38": {
         "site": "SY38",
-        "site_name": "SY38 工厂 (沈阳产线)",
+        "plant_code": "SY38",
+        "site_name": "SY38 (沈阳工厂)",
+        "factory_name": "沈阳工厂",
         "horizon_days": 10,
         "start_date": "2026-10-12",
         "baseline_date": "2026-10-11",
@@ -99,6 +103,8 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "day_shift_overrides": {},
     },
 }
+# Alias WE34 to WL
+DEFAULT_SITE_SETTINGS["WE34"] = DEFAULT_SITE_SETTINGS["WL"]
 
 site_settings_store: Dict[str, Dict[str, Any]] = copy.deepcopy(DEFAULT_SITE_SETTINGS)
 
@@ -167,7 +173,7 @@ def apply_demand_lookahead(
             pulled_o = copy.deepcopy(o)
             pulled_o.order_id = f"PULL_{o.order_id}"
             # Adjust due datetime to the end of the horizon window
-            pulled_o.due_datetime = horizon_end - timedelta(hours=1)
+            pulled_o.due_datetime = horizon_end
             pulled_o.due_date = (horizon_end - timedelta(days=1)).strftime("%m/%d")
             pulled_orders.append(pulled_o)
             merged_by_part[o.part_no] += o.demand_quantity
@@ -472,8 +478,8 @@ def list_sites():
     return {
         "current": session_state["site"],
         "available": [
-            {"code": "WL", "name": "WL 工厂 (WE34 车间 - 雨刮/轴套)", "description": "雨刮传动杆总成装配线 (PGLINKAGE) + 轴套冲压线 (轴套6)"},
-            {"code": "SY38", "name": "SY38 工厂 (沈阳产线 - 涂装/注塑)", "description": "注塑与涂装车间 (PU07/PU22 涂装线 + 1400T-6 注塑机)"},
+            {"code": "WL", "name": "WE34 (温岭工厂)", "description": "雨刮传动杆总成装配线 (PGLINKAGE) + 轴套冲压线 (轴套6)"},
+            {"code": "SY38", "name": "SY38 (沈阳工厂)", "description": "注塑与涂装车间 (PU07/PU22 涂装线 + 1400T-6 注塑机)"},
         ],
     }
 
@@ -525,7 +531,8 @@ def update_site_settings(payload: SiteSettingsPayload):
 
 @app.post("/api/sites/switch")
 def switch_site(site: str = Body(..., embed=True)):
-    session_state["site"] = site
+    site_key = "WL" if site in ["WL", "WE34"] else site
+    session_state["site"] = site_key
     session_state["snapshot"] = get_fresh_snapshot(site)
     session_state["plan"] = build_requirement_plan(session_state["snapshot"])
     session_state["result"] = None
@@ -1878,7 +1885,27 @@ async def audit_manual_schedule(
         wall_time_seconds=0.02,
     )
 
-    checks = validate_schedule(plan, manual_result, site=site_upper)
+    baseline_result = session_state.get("result")
+    # Identify frozen window tasks if baseline exists
+    if baseline_result and getattr(baseline_result, "tasks", None):
+        baseline_task_map = {t.task_id: t for t in baseline_result.tasks}
+        for mt in manual_tasks:
+            bt = baseline_task_map.get(mt.task_id)
+            if bt:
+                bt_min_s = min([index_of[k] for k in bt.shift_breakdown if k in index_of], default=999)
+                if bt_min_s < 3:  # First 3 shifts = 24h freeze fence
+                    setattr(mt, "is_locked", True)
+
+    allow_105_fg = settings.get("allow_105_utilization_fg", True)
+    allow_105_sf = settings.get("allow_105_utilization_sf", True)
+    checks = validate_schedule(
+        plan,
+        manual_result,
+        site=site_upper,
+        allow_105_fg=allow_105_fg,
+        allow_105_sf=allow_105_sf,
+        baseline_result=baseline_result,
+    )
     empty_shift_reasons = diagnose_empty_shifts(manual_tasks, shifts, plan)
     matrix = build_validation_matrix(snap, plan, manual_result, site=site_upper)
 
@@ -2084,3 +2111,21 @@ def index_page():
         with open(index_file, "r", encoding="utf-8") as f:
             return f.read()
     return "<h1>APS MVP Web Interface - Frontend Building...</h1>"
+
+
+@app.get("/video", response_class=HTMLResponse)
+def video_page():
+    video_file = os.path.join(STATIC_DIR, "storyboard.html")
+    if os.path.exists(video_file):
+        with open(video_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>APS Storyboard Video Not Found</h1>"
+
+
+@app.get("/favicon.ico")
+def favicon():
+    fav_file = os.path.join(STATIC_DIR, "valeo_logo.png")
+    if os.path.exists(fav_file):
+        return FileResponse(fav_file, media_type="image/png")
+    return HTMLResponse("", status_code=404)
+

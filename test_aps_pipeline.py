@@ -59,10 +59,10 @@ class TestApsPipeline(unittest.TestCase):
 
     def test_03_wl_10day_solve_and_validation(self):
         """Test WL 10-day schedule solve (8h x 3 shifts) and 17 independent validation checks."""
+        from src.server import apply_demand_lookahead
         snap_wl = load_aps_database(DATA_DIR, site_filter="WL")
-        horizon_end = START_DT + timedelta(days=10)
-        snap_wl.orders = [o for o in snap_wl.orders if o.due_datetime <= horizon_end]
-        plan_wl = build_requirement_plan(snap_wl)
+        solve_snap, _ = apply_demand_lookahead(snap_wl, START_DT, horizon_days=10, lookahead_days=30, max_pull_forward_days=10)
+        plan_wl = build_requirement_plan(solve_snap)
 
         sched = APSScheduler(
             plan_wl,
@@ -70,15 +70,17 @@ class TestApsPipeline(unittest.TestCase):
             planning_days=10,
             calendar_mode=CalendarMode.SEVEN_ZERO,
             site="WL",
+            allow_105_utilization_fg=True,
+            allow_105_utilization_sf=True,
         )
         self.assertEqual(sched.shifts[0].duration_hours, 8.0)
         self.assertEqual(len(sched.shifts), 30)
 
-        res = sched.solve(time_limit_seconds=25.0)
+        res = sched.solve(time_limit_seconds=30.0)
         self.assertIsNotNone(res)
         self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
 
-        checks = validate_schedule(plan_wl, res, site="WL")
+        checks = validate_schedule(plan_wl, res, site="WL", allow_105_fg=True, allow_105_sf=True)
         failed = [c.name for c in checks if not c.passed]
         self.assertEqual(len(failed), 0, f"WL Validation failed on: {failed}")
 

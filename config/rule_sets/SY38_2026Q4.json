@@ -1,0 +1,69 @@
+{
+  "rule_set_id": "SY38_2026Q4",
+  "site": "SY38",
+  "version": 1,
+  "effective_from": "2026-10-01",
+  "effective_to": "2026-12-31",
+  "groups": [
+    {"id": "G0_PHYSICAL", "priority": 0, "mode": "hard"},
+    {"id": "G1_DELIVERY", "priority": 10, "mode": "lexicographic"},
+    {"id": "G2_CAPACITY", "priority": 20, "mode": "lexicographic"},
+    {"id": "G3_CHANGEOVER", "priority": 30, "mode": "weighted"}
+  ],
+  "rules": [
+    {
+      "id": "SY_MPQ_FG",
+      "template": "min_batch",
+      "scope": {"stage": "FG"},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "params": {"unit": "MPQ"}
+    },
+    {
+      "id": "SY_LR_SYNC",
+      "template": "co_product",
+      "scope": {"line": "1400T-6"},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "params": {"ratio": "1:1", "group_code": "LR"}
+    },
+    {
+      "id": "SY_DUE_FG",
+      "template": "due_date",
+      "scope": {"stage": "FG"},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G1_DELIVERY",
+      "params": {"mode": "hard", "cutoff_time": "20:00"}
+    },
+    {
+      "id": "SY_CAP_ALL",
+      "template": "capacity_utilization",
+      "scope": {},
+      "nature": "soft",
+      "weight": 100,
+      "group": "G2_CAPACITY",
+      "params": {"min_util": 0.95, "max_util": 1.05, "tail_exempt": true}
+    },
+    {
+      "id": "SY_CHANGEOVER",
+      "template": "changeover",
+      "scope": {"line": "1400T-6"},
+      "nature": "soft",
+      "weight": 60,
+      "group": "G3_CHANGEOVER",
+      "params": {"setup_minutes": 0, "count_by": "run_start"}
+    },
+    {
+      "id": "SY_LABOR",
+      "template": "labor_capacity",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G2_CAPACITY",
+      "params": {"available_headcount": 20, "crew_source": "part", "allow_overtime": true, "overtime_max_hours": 2}
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "rule_set_id": "WL_PHASE1",
+  "site": "WL",
+  "version": 2,
+  "groups": [
+    {
+      "id": "G0_PHYSICAL",
+      "priority": 0,
+      "mode": "hard"
+    },
+    {
+      "id": "G1_DELIVERY",
+      "priority": 10,
+      "mode": "lexicographic"
+    },
+    {
+      "id": "G2_CAPACITY",
+      "priority": 20,
+      "mode": "lexicographic"
+    },
+    {
+      "id": "G3_CHANGEOVER",
+      "priority": 30,
+      "mode": "weighted"
+    },
+    {
+      "id": "G4_INVENTORY",
+      "priority": 40,
+      "mode": "weighted"
+    }
+  ],
+  "rules": [
+    {
+      "id": "WL_MPQ_FG",
+      "template": "min_batch",
+      "scope": {
+        "stage": "FG"
+      },
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "unit": "MPQ"
+      }
+    },
+    {
+      "id": "WL_MPQ_SF",
+      "template": "min_batch",
+      "scope": {
+        "stage": "SF"
+      },
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "unit": "piece",
+        "min_multiple": 1
+      }
+    },
+    {
+      "id": "WL_SEQ",
+      "template": "sequence",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "order_by": "due"
+      }
+    },
+    {
+      "id": "WL_TOOL",
+      "template": "tooling_exclusivity",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "available_qty": 1
+      }
+    },
+    {
+      "id": "WL_PM",
+      "template": "pm_block",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "handling": "avoid"
+      }
+    },
+    {
+      "id": "WL_READY",
+      "template": "material_ready",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "source": "PO"
+      }
+    },
+    {
+      "id": "WL_MBAL",
+      "template": "material_balance",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "priority": 0,
+      "params": {
+        "buffer_shifts": 0,
+        "include_stock": true
+      }
+    },
+    {
+      "id": "WL_DUE",
+      "template": "due_date",
+      "scope": {
+        "stage": "FG"
+      },
+      "nature": "hard",
+      "weight": 1,
+      "group": "G1_DELIVERY",
+      "priority": 10,
+      "params": {
+        "mode": "hard"
+      }
+    },
+    {
+      "id": "WL_CAP_FG",
+      "template": "capacity_utilization",
+      "scope": {
+        "stage": "FG"
+      },
+      "nature": "soft",
+      "weight": 100,
+      "group": "G2_CAPACITY",
+      "priority": 20,
+      "params": {
+        "min_util": 0.95,
+        "max_util": 1.05,
+        "tail_exempt": true
+      }
+    },
+    {
+      "id": "WL_CAP_SF",
+      "template": "capacity_utilization",
+      "scope": {
+        "stage": "SF"
+      },
+      "nature": "soft",
+      "weight": 100,
+      "group": "G2_CAPACITY",
+      "priority": 20,
+      "params": {
+        "min_util": 0.95,
+        "max_util": 1.0,
+        "tail_exempt": true
+      }
+    },
+    {
+      "id": "WL_CO",
+      "template": "changeover",
+      "scope": {},
+      "nature": "soft",
+      "weight": 100,
+      "group": "G3_CHANGEOVER",
+      "priority": 30,
+      "params": {
+        "setup_minutes": 0,
+        "count_by": "run_start"
+      }
+    },
+    {
+      "id": "WL_CC",
+      "template": "concurrency",
+      "scope": {},
+      "nature": "hard",
+      "weight": 100,
+      "group": "G3_CHANGEOVER",
+      "priority": 30,
+      "params": {
+        "max_models": 3
+      }
+    },
+    {
+      "id": "WL_CUST",
+      "template": "customer_priority",
+      "scope": {
+        "stage": "FG"
+      },
+      "nature": "soft",
+      "weight": 100,
+      "group": "G1_DELIVERY",
+      "priority": 10,
+      "params": {
+        "tier_weights": "STRATEGIC:10,A:3,B:1"
+      }
+    }
+  ]
+}

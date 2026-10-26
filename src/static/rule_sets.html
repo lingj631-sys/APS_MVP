@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APS 规则集编辑器</title>
+  <style>
+    :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --brand:#1d4ed8; --bg:#f8fafc; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; color:var(--ink); background:var(--bg); }
+    header { background:#0f172a; color:#fff; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+    header h1 { font-size:15px; margin:0; letter-spacing:.06em; text-transform:uppercase; }
+    header a { color:#bfdbfe; font-size:12px; text-decoration:none; }
+    main { max-width:1500px; margin:0 auto; padding:20px; display:flex; flex-direction:column; gap:14px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+    .bar { padding:12px 16px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--line); }
+    .bar:last-child { border-bottom:0; }
+    .grow { flex:1; }
+    label { font-size:12px; color:var(--muted); }
+    select, input[type=text], input[type=number], textarea { font:inherit; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; padding:6px 8px; background:#fff; }
+    input[type=number] { width:86px; }
+    textarea { width:100%; min-height:52px; font-family:ui-monospace, SFMono-Regular, Consolas, monospace; }
+    button, .btn { font:inherit; font-size:12px; border-radius:6px; padding:7px 11px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; text-decoration:none; color:var(--ink); display:inline-flex; align-items:center; gap:5px; }
+    button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+    button.green { background:#047857; border-color:#047857; color:#fff; }
+    button.danger { color:#b91c1c; border-color:#fecaca; background:#fef2f2; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th { text-align:left; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); background:#f8fafc; padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+    td { padding:8px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+    tr:hover td { background:#fcfdff; }
+    tr.group-row td { background:#eef2ff; color:#1e3a8a; font-weight:600; font-size:11px; letter-spacing:.04em; }
+    .pill { display:inline-block; font-size:10px; padding:2px 7px; border-radius:99px; border:1px solid; white-space:nowrap; }
+    .pill.hard { color:#9a3412; background:#fff7ed; border-color:#fed7aa; }
+    .pill.soft { color:#1e40af; background:#eff6ff; border-color:#bfdbfe; }
+    .pill.active { color:#065f46; background:#ecfdf5; border-color:#a7f3d0; }
+    .pill.archived { color:#475569; background:#f8fafc; border-color:#e2e8f0; }
+    .mono { font-family:ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .muted { color:var(--muted); }
+    pre { margin:0; padding:12px 16px; background:#0f172a; color:#e2e8f0; font-size:11px; overflow:auto; max-height:320px; border-radius:0 0 10px 10px; }
+    .hidden { display:none; }
+    .errors { color:#b91c1c; }
+    .warn { color:#92400e; }
+    .scope { color:var(--muted); font-size:11px; }
+    .scope input { width:64px; padding:3px 5px; margin:1px 0; font-size:11px; }
+    .params { min-width:240px; }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>APS 规则集编辑器</h1>
+    <div style="font-size:11px;color:#94a3b8;margin-top:4px;">固定算子 · 作用域 / 软硬 / 权重 / 分组 · 版本化落库</div>
+  </div>
+  <a href="/">← 返回排产主界面</a>
+</header>
+
+<main>
+  <section class="card" style="border-color:#fcd34d;background:#fffbeb;">
+    <div class="bar" style="font-size:12px;color:#92400e;">
+      <strong>班次上限说明：</strong>
+      <span>由 <span class="mono">capacity_utilization</span> 规则的 <span class="mono">max_util</span> 决定：1.00 = 95%~100%，1.05 = 95%~105%。启用规则集后，旧规则页的 95%~105% 单选不会覆盖规则集；请在这里修改 max_util 并保存/激活。</span>
+    </div>
+  </section>
+  <section class="card">
+    <div class="bar">
+      <label>工厂</label>
+      <select id="site">
+        <option value="WL">WL (WE34)</option>
+        <option value="SY38">SY38</option>
+      </select>
+      <label>版本</label>
+      <select id="version" style="min-width:220px;"></select>
+      <span id="statusPill" class="pill archived">—</span>
+      <div class="grow"></div>
+      <button id="refresh">刷新</button>
+      <button id="template">下载 Excel 模板</button>
+      <label class="btn" for="importFile">导入 Excel</label>
+      <input id="importFile" type="file" accept=".xlsx" class="hidden" />
+      <button id="export">导出当前版本</button>
+      <button id="activate" class="green">激活当前版本</button>
+      <button id="sensitivity">敏感度 ±20%</button>
+      <button id="diagnose">无解诊断</button>
+      <button id="save" class="primary">保存为新版本</button>
+    </div>
+    <div class="bar" style="font-size:12px;">
+      <span id="meta" class="muted">正在加载…</span>
+      <div class="grow"></div>
+      <label>批量</label>
+      <select id="bulkGroup" style="min-width:170px;"></select>
+      <input id="bulkWeight" type="number" min="0" max="1000" placeholder="权重" style="width:78px;" />
+      <button id="bulkApply">应用到该组</button>
+      <button id="bulkEnable">启用该组</button>
+      <button id="bulkDisable">停用该组</button>
+      <button id="treeToggle">切换平铺</button>
+      <label><input id="activateOnSave" type="checkbox" /> 保存后立即激活</label>
+      <button id="addRule">+ 新增规则</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="bar">
+      <strong style="font-size:12px;">规则实例</strong>
+      <span class="muted" id="ruleCount"></span>
+      <div class="grow"></div>
+      <span class="muted" style="font-size:11px;">空作用域列 = 全部；权重 0~1000；硬约束优先于软权重</span>
+    </div>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>规则 ID</th>
+            <th>模板</th>
+            <th>作用域</th>
+            <th>分组</th>
+            <th>继承</th>
+            <th>软/硬</th>
+            <th>权重</th>
+            <th>启用</th>
+            <th>参数 JSON</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="ruleRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="resultCard" class="card hidden">
+    <div class="bar"><strong style="font-size:12px;">导入 / 保存结果</strong></div>
+    <pre id="result"></pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = { site: "WL", versions: [], current: null, currentId: null, templates: [] };
+let treeView = true;
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { detail: text }; }
+  if (!response.ok) throw new Error((data && (data.detail || data.message)) || response.statusText);
+  return data;
+}
+
+function showResult(data) {
+  $("resultCard").classList.remove("hidden");
+  const lines = [];
+  if (data.ok === true) {
+    lines.push(`OK  version=${data.version}  status=${data.status}  created=${data.created}`);
+    if (data.diff && data.diff.summary) lines.push("diff: " + JSON.stringify(data.diff.summary));
+    if (data.warnings && data.warnings.length) lines.push("warnings:\n" + data.warnings.join("\n"));
+  } else if (data.ok === false) {
+    lines.push("FAILED");
+    (data.errors || []).forEach((e) => lines.push(`${e.sheet || ""}!${e.cell || ""} [${e.rule_id || ""}] ${e.message}`));
+    if (data.warnings && data.warnings.length) lines.push("warnings:\n" + data.warnings.join("\n"));
+  } else {
+    lines.push(JSON.stringify(data, null, 2));
+  }
+  $("result").textContent = lines.join("\n");
+}
+
+async function loadTemplates() {
+  try { state.templates = await api("/api/rule-sets/templates"); } catch (e) { state.templates = []; }
+}
+
+async function loadVersions() {
+  const site = $("site").value;
+  state.site = site;
+  const data = await api(`/api/rule-sets?site=${encodeURIComponent(site)}`);
+  state.versions = data.versions || [];
+  const select = $("version");
+  select.innerHTML = "";
+  state.versions.forEach((v) => {
+    const option = document.createElement("option");
+    option.value = v.id;
+    option.textContent = `v${v.version} · ${v.rule_set_id} · ${v.status}${v.note ? " · " + v.note : ""}`;
+    select.appendChild(option);
+  });
+  if (!state.versions.length) {
+    $("meta").textContent = "该工厂还没有规则集版本。可导入 Excel 或保存当前草稿。";
+    state.current = { rule_set_id: `${site}_RULES`, site, version: 1, groups: [], rules: [] };
+    state.currentId = null;
+    render();
+    return;
+  }
+  const active = state.versions.find((v) => v.status === "active") || state.versions[0];
+  select.value = active.id;
+  await loadVersion(active.id);
+}
+
+async function loadVersion(id) {
+  const record = await api(`/api/rule-sets/${id}`);
+  state.current = record.payload;
+  state.currentId = record.id;
+  $("version").value = id;
+  $("meta").textContent = `${record.rule_set_id} · v${record.version} · ${record.site} · ${record.created_at || ""}`;
+  const pill = $("statusPill");
+  pill.textContent = record.status;
+  pill.className = `pill ${record.status}`;
+  render();
+}
+
+function scopeText(rule) {
+  const scope = rule.scope || {};
+  const parts = ["site", "line", "stage", "part"]
+    .filter((key) => scope[key] && scope[key] !== "*")
+    .map((key) => `${key}=${scope[key]}`);
+  return parts.length ? parts.join(" · ") : "全部";
+}
+
+function scopeSpecificity(rule) {
+  const scope = rule.scope || {};
+  return ["site", "line", "stage", "part"].filter((key) => scope[key] && scope[key] !== "*").length;
+}
+
+function inheritanceLabel(rule) {
+  const rules = (state.current && state.current.rules) || [];
+  const spec = scopeSpecificity(rule);
+  const peers = rules.filter((other) => other !== rule && other.template === rule.template && other.group === rule.group);
+  if (peers.some((other) => scopeSpecificity(other) < spec)) return "覆盖";
+  if (peers.some((other) => scopeSpecificity(other) > spec)) return "基础";
+  return "—";
+}
+
+function scopeValue(rule, key) {
+  const value = rule.scope ? rule.scope[key] : "";
+  return value && value !== "*" ? value : "";
+}
+
+function escapeAttr(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function ruleRow(rule, index) {
+  const tr = document.createElement("tr");
+  tr.dataset.index = index;
+  tr.innerHTML = `
+    <td class="mono">${escapeAttr(rule.id)}</td>
+    <td class="mono">${escapeAttr(rule.template)}</td>
+    <td class="scope">
+      <input class="edit-scope-line" value="${escapeAttr(scopeValue(rule, "line"))}" placeholder="线" />
+      <input class="edit-scope-stage" value="${escapeAttr(scopeValue(rule, "stage"))}" placeholder="阶段" />
+      <input class="edit-scope-part" value="${escapeAttr(scopeValue(rule, "part"))}" placeholder="料号" />
+    </td>
+    <td class="mono">${escapeAttr(rule.group)}</td>
+    <td>
+      <div>${inheritanceLabel(rule)}</div>
+      <select class="edit-inherit">
+        <option value="replace" ${rule.inherit === "add" ? "" : "selected"}>replace</option>
+        <option value="add" ${rule.inherit === "add" ? "selected" : ""}>add</option>
+      </select>
+    </td>
+    <td>
+      <select class="edit-nature">
+        <option value="hard" ${rule.nature === "hard" ? "selected" : ""}>hard</option>
+        <option value="soft" ${rule.nature === "soft" ? "selected" : ""}>soft</option>
+      </select>
+    </td>
+    <td><input class="edit-weight" type="number" min="0" max="1000" step="1" value="${Number(rule.weight || 0)}" /></td>
+    <td><input class="edit-enabled" type="checkbox" ${rule.enabled !== false ? "checked" : ""} /></td>
+    <td class="params"><textarea class="edit-params">${JSON.stringify(rule.params || {}, null, 0)}</textarea></td>
+    <td><button class="danger delete-rule" data-index="${index}">删除</button></td>
+  `;
+  return tr;
+}
+
+function render() {
+  const payload = state.current;
+  const rows = $("ruleRows");
+  rows.innerHTML = "";
+  if (!payload) return;
+  $("ruleCount").textContent = `${(payload.rules || []).length} 条 / ${(payload.groups || []).length} 组`;
+  const bulk = $("bulkGroup");
+  const previousBulk = bulk.value;
+  bulk.innerHTML = "";
+  (payload.groups || []).forEach((group) => {
+    const option = document.createElement("option");
+    option.value = group.id;
+    option.textContent = `${group.id} · ${group.mode} · P${group.priority}`;
+    bulk.appendChild(option);
+  });
+  if ([...bulk.options].some((option) => option.value === previousBulk)) bulk.value = previousBulk;
+  const entries = (payload.rules || []).map((rule, index) => ({ rule, index }));
+  if (treeView) {
+    const scopeKey = (rule) => `${rule.scope?.line || "全部产线"} · ${rule.scope?.stage || "全部阶段"}`;
+    entries.sort((a, b) => scopeKey(a.rule).localeCompare(scopeKey(b.rule), "zh-CN"));
+    let lastKey = "";
+    entries.forEach(({ rule, index }) => {
+      const key = scopeKey(rule);
+      if (key !== lastKey) {
+        const count = entries.filter((entry) => scopeKey(entry.rule) === key).length;
+        const header = document.createElement("tr");
+        header.className = "group-row";
+        header.innerHTML = `<td colspan="10">▾ ${key}（${count} 条）</td>`;
+        rows.appendChild(header);
+        lastKey = key;
+      }
+      rows.appendChild(ruleRow(rule, index));
+    });
+  } else {
+    entries.forEach(({ rule, index }) => rows.appendChild(ruleRow(rule, index)));
+  }
+  document.querySelectorAll(".delete-rule").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.current.rules.splice(Number(button.dataset.index), 1);
+      render();
+    });
+  });
+}
+
+function collectPayload() {
+  const payload = JSON.parse(JSON.stringify(state.current));
+  const rows = [...document.querySelectorAll("#ruleRows tr")].filter((tr) => tr.dataset.index !== undefined);
+  rows.forEach((tr) => {
+    const index = Number(tr.dataset.index);
+    const rule = payload.rules[index];
+    const scopeLine = tr.querySelector(".edit-scope-line").value.trim();
+    const scopeStage = tr.querySelector(".edit-scope-stage").value.trim();
+    const scopePart = tr.querySelector(".edit-scope-part").value.trim();
+    rule.scope = {
+      site: (rule.scope && rule.scope.site) || "*",
+      line: scopeLine || "*",
+      stage: scopeStage || "*",
+      part: scopePart || "*",
+    };
+    rule.inherit = tr.querySelector(".edit-inherit").value;
+    rule.nature = tr.querySelector(".edit-nature").value;
+    rule.weight = Number(tr.querySelector(".edit-weight").value || 0);
+    rule.enabled = tr.querySelector(".edit-enabled").checked;
+    const text = tr.querySelector(".edit-params").value.trim() || "{}";
+    rule.params = JSON.parse(text);
+  });
+  return payload;
+}
+
+async function save() {
+  let payload;
+  try { payload = collectPayload(); } catch (e) { alert("参数 JSON 解析失败: " + e.message); return; }
+  const note = prompt("版本说明（可空）", "UI 编辑") || "";
+  const data = await api("/api/rule-sets/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload, note, activate: $("activateOnSave").checked }),
+  });
+  showResult(data);
+  if (data.ok) await loadVersions();
+}
+
+async function importExcel(file) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("site", $("site").value);
+  form.append("note", "Excel import");
+  form.append("activate", "false");
+  const response = await fetch("/api/rule-sets/import", { method: "POST", body: form });
+  const data = await response.json();
+  showResult(data);
+  if (data.ok) await loadVersions();
+}
+
+async function activateCurrent() {
+  if (!state.currentId) { alert("还没有可激活的版本，请先保存。"); return; }
+  const data = await api(`/api/rule-sets/${state.currentId}/activate`, { method: "POST" });
+  showResult(data);
+  await loadVersions();
+}
+
+function addRule() {
+  if (!state.current) return;
+  const names = state.templates.map((t) => t.template_id).join(", ");
+  const templateId = prompt("模板 ID（19 个算子之一）:\n" + names, "capacity_utilization");
+  if (!templateId) return;
+  const spec = state.templates.find((t) => t.template_id === templateId.trim());
+  if (!spec) { alert("未知模板: " + templateId); return; }
+  const groups = state.current.groups || [];
+  const group = groups.some((g) => g.id === spec.default_group) ? spec.default_group : (groups[0] && groups[0].id);
+  if (!group) { alert("规则集还没有分组，请先导入或添加分组。"); return; }
+  state.current.rules.push({
+    id: `${templateId}_${Date.now()}`,
+    template: templateId,
+    scope: {},
+    nature: spec.default_nature || "soft",
+    weight: 100,
+    group,
+    priority: 0,
+    params: spec.params || {},
+    enabled: true,
+    inherit: "replace",
+    effective_from: null,
+    effective_to: null,
+  });
+  render();
+}
+
+async function runAnalysis(kind) {
+  if (!state.currentId) { alert("请先选择一个规则集版本。"); return; }
+  $("resultCard").classList.remove("hidden");
+  $("result").textContent = "运行中…（敏感度/诊断需要多次真实求解，请稍候）";
+  const data = await api(`/api/rule-sets/${kind}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version_id: state.currentId, site: state.site, budget: 15, pct: 0.2 }),
+  });
+  if (kind === "sensitivity") {
+    if (!data.feasible) {
+      $("result").textContent = "基准方案不可行，无法生成敏感度报告。\n" + JSON.stringify(data.base, null, 2);
+      return;
+    }
+    const lines = [`敏感度 ±20%  base=${JSON.stringify(data.base)}`];
+    (data.rows || []).forEach((row) => lines.push(`${row.target}  ${row.direction}  ${JSON.stringify(row.delta)}`));
+    $("result").textContent = lines.join("\n");
+  } else {
+    $("result").textContent = `${data.message}\n` + JSON.stringify(
+      { feasible: data.feasible, groups: data.conflict_groups, rules: data.conflict_rules, pairs: data.conflict_pairs },
+      null,
+      2,
+    );
+  }
+}
+
+function applyBulk() {
+  const group = $("bulkGroup").value;
+  const weight = Number($("bulkWeight").value);
+  if (!group || !Number.isFinite(weight) || weight < 0 || weight > 1000) {
+    alert("请选择分组并输入 0~1000 的权重");
+    return;
+  }
+  (state.current.rules || []).forEach((rule) => {
+    if (rule.group === group) rule.weight = weight;
+  });
+  render();
+}
+
+function setGroupEnabled(enabled) {
+  const group = $("bulkGroup").value;
+  if (!group) {
+    alert("请先选择分组");
+    return;
+  }
+  (state.current.rules || []).forEach((rule) => {
+    if (rule.group === group) rule.enabled = enabled;
+  });
+  render();
+}
+
+$("refresh").addEventListener("click", () => loadVersions().catch((e) => alert(e.message)));
+$("site").addEventListener("change", () => loadVersions().catch((e) => alert(e.message)));
+$("version").addEventListener("change", (event) => loadVersion(event.target.value).catch((e) => alert(e.message)));
+$("save").addEventListener("click", () => save().catch((e) => alert(e.message)));
+$("activate").addEventListener("click", () => activateCurrent().catch((e) => alert(e.message)));
+$("sensitivity").addEventListener("click", () => runAnalysis("sensitivity").catch((e) => alert(e.message)));
+$("diagnose").addEventListener("click", () => runAnalysis("diagnose").catch((e) => alert(e.message)));
+$("addRule").addEventListener("click", addRule);
+$("bulkApply").addEventListener("click", applyBulk);
+$("bulkEnable").addEventListener("click", () => setGroupEnabled(true));
+$("bulkDisable").addEventListener("click", () => setGroupEnabled(false));
+$("treeToggle").addEventListener("click", () => {
+  treeView = !treeView;
+  $("treeToggle").textContent = treeView ? "切换平铺" : "切换树形";
+  render();
+});
+$("template").addEventListener("click", () => window.open(`/api/rule-sets/template?site=${encodeURIComponent($("site").value)}`, "_blank"));
+$("export").addEventListener("click", () => {
+  if (!state.currentId) { alert("还没有可导出的版本。"); return; }
+  window.open(`/api/rule-sets/${state.currentId}/export`, "_blank");
+});
+$("importFile").addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  if (file) importExcel(file).catch((e) => alert(e.message));
+  event.target.value = "";
+});
+
+loadTemplates().then(loadVersions).catch((e) => { $("meta").textContent = "加载失败: " + e.message; });
+</script>
+</body>
+</html>

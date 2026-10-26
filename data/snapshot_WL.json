@@ -14,7 +14,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WAB6404": {
       "site": "WL",
@@ -30,7 +31,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WB35356": {
       "site": "WL",
@@ -46,7 +48,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WB80510": {
       "site": "WL",
@@ -62,7 +65,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WC07674": {
       "site": "WL",
@@ -78,7 +82,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WD48696": {
       "site": "WL",
@@ -94,7 +99,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WD59238": {
       "site": "WL",
@@ -110,7 +116,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "W144813S": {
       "site": "WL",
@@ -126,7 +133,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "W000076959VA": {
       "site": "WL",
@@ -142,7 +150,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "W243255S": {
       "site": "WL",
@@ -158,7 +167,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WA14208S": {
       "site": "WL",
@@ -174,7 +184,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WD48696S": {
       "site": "WL",
@@ -190,7 +201,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WBC9317": {
       "site": "WL",
@@ -206,7 +218,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WBC9317C": {
       "site": "WL",
@@ -222,7 +235,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WCF8126": {
       "site": "WL",
@@ -238,7 +252,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WCB8574": {
       "site": "WL",
@@ -254,7 +269,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     },
     "WCA1894": {
       "site": "WL",
@@ -270,7 +286,8 @@
       "target_stock": 0.0,
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
-      "scrap_rate": 0.0
+      "scrap_rate": 0.0,
+      "headcount": 3.0
     }
   },
   "sf_params": {
@@ -288,7 +305,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "W000061541": {
       "site": "WL",
@@ -304,7 +322,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WA14222": {
       "site": "WL",
@@ -320,7 +339,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WA14229": {
       "site": "WL",
@@ -336,7 +356,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WAB6407": {
       "site": "WL",
@@ -352,7 +373,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WAB6412": {
       "site": "WL",
@@ -368,7 +390,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WC84833": {
       "site": "WL",
@@ -384,7 +407,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WC52036": {
       "site": "WL",
@@ -400,7 +424,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WC07786": {
       "site": "WL",
@@ -416,7 +441,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WC08355": {
       "site": "WL",
@@ -432,7 +458,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WD48699": {
       "site": "WL",
@@ -448,7 +475,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WD48700": {
       "site": "WL",
@@ -464,7 +492,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WD59243": {
       "site": "WL",
@@ -480,7 +509,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WD59260": {
       "site": "WL",
@@ -496,7 +526,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WBC9318": {
       "site": "WL",
@@ -512,7 +543,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WBC9324": {
       "site": "WL",
@@ -528,7 +560,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WCF8333": {
       "site": "WL",
@@ -544,7 +577,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WCF8335": {
       "site": "WL",
@@ -560,7 +594,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WCA1903": {
       "site": "WL",
@@ -576,7 +611,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     },
     "WCA1927": {
       "site": "WL",
@@ -592,7 +628,8 @@
       "target_stock": 0.0,
       "target_stock_days": 1.0,
       "lead_time_days": 1.0,
-      "scrap_rate": 0.03
+      "scrap_rate": 0.03,
+      "headcount": 0.0
     }
   },
   "bom": {

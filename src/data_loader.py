@@ -37,6 +37,7 @@ class ProductParam:
     target_stock_days: float = 0.0
     lead_time_days: float = 0.0
     scrap_rate: float = 0.0
+    headcount: float = 0.0
 
 
 @dataclass
@@ -148,6 +149,7 @@ class ProductionTask:
     material_arrival_shift: int = 0
     customer_tier: str = "A"
     line_pm_slots: List[int] = field(default_factory=list)
+    crew_required: float = 0.0
 
 
 @dataclass
@@ -297,6 +299,7 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                     hours_per_shift=hours,
                     shifts_per_day=shifts,
                     target_stock=target_stock,
+                    headcount=_to_float(row.get("Headcount")),
                 )
 
     # 2. Load Parameters-SFN.csv
@@ -336,6 +339,7 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                     target_stock_days=target_stock_days,
                     lead_time_days=lead_days,
                     scrap_rate=scrap,
+                    headcount=_to_float(row.get("Head count") or row.get("Headcount")),
                 )
 
     # 3. Load BOM-List.csv
@@ -766,6 +770,7 @@ def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: 
     params: Dict[str, ProductParam] = {}
     hours_col = 11 if semi_finished else 9
     shifts_col = 12 if semi_finished else 10
+    headcount_col = 14 if semi_finished else 12
     for r in range(2, ws.max_row + 1):
         if str(ws.cell(r, 1).value or "").strip() != site_filter:
             continue
@@ -791,6 +796,7 @@ def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: 
             target_stock_days=_to_float(ws.cell(r, 8).value) if semi_finished else 0.0,
             lead_time_days=_to_float(ws.cell(r, 9).value) if semi_finished else 0.0,
             scrap_rate=_to_float(ws.cell(r, 10).value) if semi_finished else 0.0,
+            headcount=_to_float(ws.cell(r, headcount_col).value),
         )
     return params
 
@@ -818,6 +824,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
     sf_tasks: List[ProductionTask] = []
     covered_by_stock: List[str] = []
     warnings: List[str] = []
+    crew_warned: set = set()
 
     fg_avail = {pn: snapshot.initial_stock.get(pn, 0.0) for pn in snapshot.fg_params}
     sf_avail = {pn: snapshot.initial_stock.get(pn, 0.0) for pn in snapshot.sf_params}
@@ -886,6 +893,9 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
         if param is None:
             warnings.append(f"{order.order_id}: 成品 {order.part_no} 无 Parameters-FG 主数据，跳过")
             continue
+        if param.headcount <= 0 and order.part_no not in crew_warned:
+            warnings.append(f"{order.part_no}: 缺少 Headcount 主数据，人力工时按 0 计")
+            crew_warned.add(order.part_no)
 
         usable = max(0.0, fg_avail[order.part_no] - param.target_stock)
         net_need = order.demand_quantity - usable
@@ -925,6 +935,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
             material_arrival_shift=mat_arrival_map.get(order.part_no, 0),
             customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
             line_pm_slots=line_pm_slots.get(param.line, []),
+            crew_required=param.headcount,
         )
         fg_tasks.append(fg_task)
 
@@ -933,6 +944,9 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
             if sf_param is None:
                 warnings.append(f"{fg_task.task_id}: BOM 半成品 {sf_pn} 无 Parameters-SFN 主数据，跳过齐套")
                 continue
+            if sf_param.headcount <= 0 and sf_pn not in crew_warned:
+                warnings.append(f"{sf_pn}: 缺少 Headcount 主数据，人力工时按 0 计")
+                crew_warned.add(sf_pn)
 
             gross_need = qty * ratio
             sf_usable = max(0.0, sf_avail[sf_pn] - sf_param.target_stock)
@@ -971,6 +985,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
                 material_arrival_shift=mat_arrival_map.get(sf_pn, 0),
                 customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
                 line_pm_slots=line_pm_slots.get(sf_param.line, []),
+                crew_required=sf_param.headcount,
             ))
 
     movements = [

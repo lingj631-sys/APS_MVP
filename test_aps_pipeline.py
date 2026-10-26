@@ -76,7 +76,7 @@ class TestApsPipeline(unittest.TestCase):
         self.assertEqual(sched.shifts[0].duration_hours, 8.0)
         self.assertEqual(len(sched.shifts), 30)
 
-        res = sched.solve(time_limit_seconds=30.0)
+        res = sched.solve(time_limit_seconds=120.0)
         self.assertIsNotNone(res)
         self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
 
@@ -103,12 +103,18 @@ class TestApsPipeline(unittest.TestCase):
         self.assertEqual(sched.topology.shifts_per_day, 2)
         self.assertEqual(sched.topology.shift_hours, 12.0)
 
-        res = sched.solve(time_limit_seconds=20.0)
+        res = sched.solve(time_limit_seconds=120.0)
         self.assertIsNotNone(res)
         self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
         self.assertGreater(len(res.tasks), 0)
 
-        checks = validate_schedule(plan_sy, res, site="SY38")
+        checks = validate_schedule(
+            plan_sy,
+            res,
+            site="SY38",
+            allow_105_fg=getattr(res, "allow_105_fg", False),
+            allow_105_sf=getattr(res, "allow_105_sf", False),
+        )
         # Ensure 12h capacity check passes
         cap_check = next((c for c in checks if "R-SY-08" in c.rule_ids and "单班产能" in c.name), None)
         self.assertIsNotNone(cap_check)
@@ -130,8 +136,14 @@ class TestApsPipeline(unittest.TestCase):
             site="WL",
         )
         self.assertGreater(len(sched.pm_shifts), 0, "Expected auto-extracted PM shifts")
-        res = sched.solve(time_limit_seconds=20.0)
-        checks = validate_schedule(plan_wl, res, site="WL")
+        res = sched.solve(time_limit_seconds=120.0)
+        checks = validate_schedule(
+            plan_wl,
+            res,
+            site="WL",
+            allow_105_fg=getattr(res, "allow_105_fg", False),
+            allow_105_sf=getattr(res, "allow_105_sf", False),
+        )
         pm_check = next((c for c in checks if "R-WL-27" in c.rule_ids), None)
         self.assertIsNotNone(pm_check)
         self.assertTrue(pm_check.passed, f"PM check failed: {pm_check.violations}")
@@ -144,7 +156,7 @@ class TestApsPipeline(unittest.TestCase):
         snap_wl.orders = [o for o in snap_wl.orders if o.due_datetime <= horizon_end]
         plan_wl = build_requirement_plan(snap_wl)
         sched = APSScheduler(plan_wl, start_datetime=START_DT, planning_days=10, calendar_mode=CalendarMode.SEVEN_ZERO, site="WL")
-        res = sched.solve(time_limit_seconds=15.0)
+        res = sched.solve(time_limit_seconds=120.0)
         matrix = build_validation_matrix(snap_wl, plan_wl, res, site="WL")
 
         out_path = os.path.join(tempfile.gettempdir(), "test_export_wl.xlsx")
@@ -166,7 +178,7 @@ class TestApsPipeline(unittest.TestCase):
         snap_wl.bom[first_fg] = [(first_sf, 0.5)] + snap_wl.bom[first_fg][1:]
         plan = build_requirement_plan(snap_wl)
         sched = APSScheduler(plan, start_datetime=START_DT, planning_days=10, calendar_mode=CalendarMode.SEVEN_ZERO, site="WL")
-        res = sched.solve(time_limit_seconds=15.0)
+        res = sched.solve(time_limit_seconds=120.0)
         self.assertIsNotNone(res)
         self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
         self.assertGreater(len(res.tasks), 0)

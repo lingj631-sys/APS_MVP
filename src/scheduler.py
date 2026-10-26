@@ -24,18 +24,20 @@ tries the constraints in the order the business ranks them: utilisation and
 delivery both hard, then delivery hard with utilisation penalised, then delivery
 itself penalised. The validator reports whichever violations survive.
 """
+import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from fractions import Fraction
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
 from src.data_loader import TIME_SCALE, ProductionTask, RequirementPlan
 from src.shift_manager import (
     CalendarMode,
+    DEFAULT_CHANGEOVER_MINUTES,
     MIN_SHIFT_SECONDS,
     PlantTopology,
     SHIFT_SECONDS,
@@ -51,9 +53,8 @@ MIN_SHIFT_MS = MIN_SHIFT_SECONDS * TIME_SCALE
 SHORTFALL_WEIGHT = 1
 FG_COMPLETION_WEIGHT = 1
 SF_COMPLETION_WEIGHT = 1
-# A changeover is one model's run starting on a shift. Worth 300 seconds of shift
-# time here: more than finishing a model a few shifts earlier, which is what gathers
-# the model into one block instead of trickling it across the week.
+# A changeover is one model's run starting on a shift. Priced per run start, and
+# now also charged against capacity in _add_line_capacity.
 CHANGEOVER_WEIGHT = 300_000
 CONCURRENCY_WEIGHT = 50_000
 LATENESS_SLACK_SHIFTS = 6
@@ -98,6 +99,8 @@ class ScheduledTask:
     material_arrival_shift: int = 0
     customer_tier: str = "A"
     line_pm_slots: List[int] = field(default_factory=list)
+    crew_required: float = 0.0
+    splittable: bool = False
 
 
 @dataclass
@@ -108,6 +111,148 @@ class ScheduleResult:
     status_name: str
     objective_value: float
     wall_time_seconds: float
+    allow_105_fg: bool = False
+    allow_105_sf: bool = False
+    capacity_note: str = ""
+
+
+class _SchedulerCompileContext:
+    """Adapter from APSScheduler's local model variables to the kernel protocol."""
+
+    def __init__(self, scheduler, model, x, active, started, end_of, opening, tails, loads, cumulative=None):
+        self._scheduler = scheduler
+        self.model = model
+        self.num_shifts = scheduler.num_shifts
+        self._x = x
+        self._active = active
+        self._started = started
+        self._end_of = end_of
+        self._opening = opening
+        self._tails = tails
+        self._loads = loads
+        self._cumulative = cumulative or {}
+
+    def lines(self):
+        return self._scheduler.lines
+
+    def tasks(self):
+        return self._scheduler.tasks
+
+    def window(self, task):
+        return self._scheduler.windows[task.task_id]
+
+    def x(self, task, slot):
+        return self._x[task.task_id, slot]
+
+    def active(self, task, slot):
+        return self._active[task.task_id, slot]
+
+    def started(self, task, slot):
+        return self._started[task.task_id, slot]
+
+    def end_of(self, task):
+        return self._end_of[task.task_id]
+
+    def load(self, line, slot):
+        return self._loads[line, slot]
+
+    def open(self, line, slot):
+        return self._opening[line, slot]
+
+    def tail(self, line, slot):
+        return self._tails[line, slot]
+
+    def capacity_ms(self, line):
+        return self._scheduler.shift_ms
+
+    def min_shift_ms(self, line):
+        return self._scheduler.min_shift_ms
+
+    def load_upper_bound(self, line):
+        return self._scheduler._get_line_max_shift_ms(line)
+
+    def due_slot(self, task):
+        return self._scheduler._due_shift(task)
+
+    def due_key(self, task):
+        return task.due_datetime or datetime.max
+
+    def mold_id(self, task):
+        return getattr(task, "mold_id", None)
+
+    def pm_slots(self, line):
+        return self._scheduler.pm_shifts.get(line, [])
+
+    def material_ready_slot(self, task):
+        return getattr(task, "material_arrival_shift", 0)
+
+    def is_splittable(self, task):
+        return self._scheduler._is_splittable(task)
+
+    def children(self, task):
+        return [t for t in self._scheduler.plan.sf_tasks if t.parent_task_id == task.task_id]
+
+    def bom_ratio(self, task):
+        return getattr(task, "bom_ratio", 1)
+
+    def stock_covered(self, task):
+        return getattr(task, "stock_covered", 0.0)
+
+    def cumulative(self, task, slot):
+        return self._cumulative[task.task_id][slot]
+
+    def unit_pieces(self, task):
+        return self._scheduler._unit_pieces(task)
+
+    def customer_tier(self, task):
+        return getattr(task, "customer_tier", "A")
+
+    def crew_required(self, task):
+        value = float(getattr(task, "crew_required", 0) or 0)
+        if value > 0:
+            return value
+        data = self._scheduler.labor_data
+        if data is not None:
+            return data.crew_required(
+                self._scheduler.site, task.line, getattr(task, "part_no", "")
+            )
+        return None
+
+    def labor_available(self, line, slot):
+        data = self._scheduler.labor_data
+        if data is None:
+            return None
+        shift = self._scheduler.shifts[slot]
+        return data.available(self._scheduler.site, shift.date_str, shift.shift_name)
+
+    def labor_pool(self, line):
+        data = self._scheduler.labor_data
+        if data is None:
+            return f"__line__:{line}"
+        return data.pool(self._scheduler.site, line)
+
+    def shift_weekday(self, slot):
+        return self._scheduler.shifts[slot].weekday
+
+    def shift_name(self, slot):
+        return self._scheduler.shifts[slot].shift_name
+
+    def shifts_per_day(self):
+        return int(getattr(self._scheduler.topology, "shifts_per_day", 3))
+
+    def co_product_partner(self, task):
+        part = str(getattr(task, "part_no", ""))
+        if not (part.endswith("L") or part.endswith("R")):
+            return None
+        partner_part = part[:-1] + ("R" if part.endswith("L") else "L")
+        for other in self._scheduler.tasks:
+            if (
+                other.task_id != task.task_id
+                and other.part_no == partner_part
+                and other.line == task.line
+            ):
+                return other
+        return None
 
 
 class APSScheduler:
@@ -126,16 +271,21 @@ class APSScheduler:
         day_shift_overrides: Optional[Dict[str, Any]] = None,
         enforce_sequential_pulling: bool = True,
         enforce_freeze_window: bool = True,
-        freeze_shifts: int = 0,
         enforce_tooling_exclusivity: bool = True,
         enforce_material_arrival: bool = True,
         enforce_pm_maintenance: bool = True,
         pm_shifts: Optional[Dict[str, List[int]]] = None,
         enforce_customer_priority: bool = True,
         enforce_weekend_penalty: bool = True,
-        enforce_exact_demand: bool = True,
         allow_105_utilization_fg: bool = False,
         allow_105_utilization_sf: bool = False,
+        changeover_minutes: float = DEFAULT_CHANGEOVER_MINUTES,
+        max_blocks_per_task: int = 0,
+        max_blocks_per_task_sf: int = 0,
+        rule_set: Optional[Any] = None,
+        use_kernel_capacity: bool = False,
+        kernel_templates: Optional[Iterable[str]] = None,
+        labor_data: Optional[Any] = None,
         site: Optional[str] = None,
     ):
         self.plan = plan
@@ -157,7 +307,6 @@ class APSScheduler:
         self.day_shift_overrides = day_shift_overrides
         self.enforce_sequential_pulling = enforce_sequential_pulling
         self.enforce_freeze_window = enforce_freeze_window
-        self.freeze_shifts = freeze_shifts
         self.enforce_tooling_exclusivity = enforce_tooling_exclusivity
         self.enforce_material_arrival = enforce_material_arrival
         self.enforce_pm_maintenance = enforce_pm_maintenance
@@ -173,9 +322,48 @@ class APSScheduler:
             self.pm_shifts = dict(self.pm_shifts)
         self.enforce_customer_priority = enforce_customer_priority
         self.enforce_weekend_penalty = enforce_weekend_penalty
-        self.enforce_exact_demand = enforce_exact_demand
         self.allow_105_utilization_fg = allow_105_utilization_fg
         self.allow_105_utilization_sf = allow_105_utilization_sf
+        self.changeover_minutes = changeover_minutes
+        self.setup_ms = max(0, int(round(changeover_minutes * 60 * TIME_SCALE)))
+        self.max_blocks_per_task = max(0, int(max_blocks_per_task))
+        self.max_blocks_per_task_sf = max(0, int(max_blocks_per_task_sf))
+        self.rule_set = rule_set
+        templates = set(kernel_templates or [])
+        if use_kernel_capacity:
+            templates.add("capacity_utilization")
+        self.kernel_templates = templates
+        self.use_kernel_capacity = rule_set is not None and "capacity_utilization" in templates
+        if self.rule_set is not None and self.use_kernel_capacity:
+            # The rule set is the source of truth for the load ceiling. Keeping the
+            # legacy 105% flag here would widen the load domains/hint while the
+            # compiled rule still caps at 100%, which makes the hint invalid and
+            # pushes the hard tier into the soft fallback.
+            capacity_rules = [
+                rule for rule in self.rule_set.rules
+                if rule.enabled and rule.template_id == "capacity_utilization"
+            ]
+            if capacity_rules:
+                def _allow_for(stage: str) -> bool:
+                    values = [
+                        float(rule.params.get("max_util", 1.0))
+                        for rule in capacity_rules
+                        if rule.scope.stage in ("*", stage)
+                    ]
+                    return bool(values) and max(values) > 1.0 + 1e-9
+
+                fg_allow = _allow_for("FG")
+                sf_allow = _allow_for("SF")
+                if fg_allow != self.allow_105_utilization_fg or sf_allow != self.allow_105_utilization_sf:
+                    print(
+                        f"  [rules] capacity 105%: FG={'ON' if fg_allow else 'OFF'}, "
+                        f"SF={'ON' if sf_allow else 'OFF'} (rule set wins over legacy option)"
+                    )
+                self.allow_105_utilization_fg = fg_allow
+                self.allow_105_utilization_sf = sf_allow
+        self.labor_data = labor_data
+        self._hint_infeasible = False
+        self.capacity_note = ""
 
         self.shifts = generate_shift_calendar(
             start_datetime,
@@ -189,49 +377,92 @@ class APSScheduler:
         self.task_by_id = {t.task_id: t for t in self.tasks}
         self.lines = sorted({t.line for t in self.tasks})
         self.windows = self._build_windows()
+        # ACT-06: a single lot that cannot fit in one shift is scheduled in pieces.
+        # The order total is still >= MPQ (netting guarantees it); only the split
+        # parts are exempt from the per-shift MPQ floor.
+        self._splittable = {
+            task.task_id
+            for task in self.tasks
+            if task.lot_size > 0 and task.lot_millis > self.shift_ms
+        }
+
+    def _is_splittable(self, task) -> bool:
+        return task.task_id in self._splittable
+
+    def _unit_pieces(self, task) -> int:
+        return 1 if self._is_splittable(task) else task.lot_size
+
+    def _unit_millis(self, task) -> int:
+        if self._is_splittable(task):
+            return max(1, int(round(task.lot_millis / task.lot_size)))
+        return task.lot_millis
+
+    def _units_total(self, task) -> int:
+        if self._is_splittable(task):
+            return max(1, int(round(task.quantity)))
+        return task.lots
+
+    def _per_shift_units(self, task) -> int:
+        capacity = self._get_line_max_shift_ms(task.line)
+        return max(1, min(self._units_total(task), capacity // self._unit_millis(task)))
 
     def _get_line_max_shift_ms(self, line: str) -> int:
         is_fg = any(t.stage == "FG" for t in self.tasks if t.line == line)
         allow_105 = self.allow_105_utilization_fg if is_fg else self.allow_105_utilization_sf
         return int(round(self.shift_ms * 1.05)) if allow_105 else self.shift_ms
 
+    def _tiers(self):
+        if not self.enforce_utilization_95:
+            return (
+                ("关闭 95% 利用率约束 (" + ("硬约束交付" if self.enforce_on_time_delivery else "交付损失最小化") + ")", "off", self.enforce_on_time_delivery, 1.0),
+            )
+        # Try the fully compliant packing first: when it exists it is both the best
+        # answer and the easiest to explain. The soft tiers are the fallback for
+        # datasets where MPQ granularity and the 95% band genuinely do not add up.
+        tiers = [
+            (
+                "硬约束 95% 利用率 + " + ("硬约束准时交付" if self.enforce_on_time_delivery else "交付损失最小化"),
+                "hard",
+                self.enforce_on_time_delivery,
+                0.70,
+            )
+        ]
+        if self.enforce_on_time_delivery:
+            tiers.append(("软约束 95% 利用率 + 硬约束准时交付", "soft", True, 0.25))
+        tiers.append(("软约束 95% 利用率 + 交付损失最小化", "soft", False, 1.0))
+        return tuple(tiers)
+
+    def _run_tiers(self, tiers, deadline: float, hint) -> Optional[ScheduleResult]:
+        for index, (label, mode, hard_due, share) in enumerate(tiers):
+            if index:
+                print(f"  [warn]  上一口径无解，降级为: {label}")
+            remaining = max(1.0, deadline - time.perf_counter())
+            result = self._solve_tier(mode, hard_due, remaining * share, hint)
+            if result is not None:
+                print(f"  [solver] 排产口径: {label}")
+                left = deadline - time.perf_counter()
+                min_left = 15.0 if mode == "hard" else 5.0
+                if self.enforce_utilization_95 and left > min_left:
+                    result = self._compact(result, hard_due, left)
+                return result
+        return None
+
     def solve(self, time_limit_seconds: float = 90.0) -> ScheduleResult:
         # WE34 ranks the constraints: on-time delivery first, 95% shift utilisation
         # second, whole models per line third.
         start = time.perf_counter()
+        deadline = start + time_limit_seconds
         # A due-date-feasible packing is hard for CP-SAT to *find* and cheap to
         # improve, so one is solved for up front and used to seed every tier;
         # without it the budget goes on search rather than on filling.
-        hint = self._build_hint(time_limit_seconds * 0.06)
+        hint = self._build_hint(min(10.0, time_limit_seconds * 0.08))
 
-        # The tiers below only soften the constraint the business ranks lower, so the
-        # first one that yields a plan wins and keeps whatever time is left for
-        # compacting it.
-        if not self.enforce_utilization_95:
-            tiers = (
-                ("关闭 95% 利用率约束 (" + ("硬约束交付" if self.enforce_on_time_delivery else "交付损失最小化") + ")", "off", self.enforce_on_time_delivery, 1.0),
-            )
-        elif self.enforce_on_time_delivery:
-            tiers = (
-                ("软约束 95% 利用率 + 硬约束准时交付", "soft", True, 0.55),
-                ("软约束 95% 利用率 + 交付损失最小化", "soft", False, 1.0),
-            )
-        else:
-            tiers = (
-                ("软约束 95% 利用率 + 交付损失最小化", "soft", False, 1.0),
-            )
-
-        for index, (label, mode, hard_due, share) in enumerate(tiers):
-            if index:
-                print(f"  [warn]  上一口径无解，降级为: {label}")
-            remaining = max(1.0, time_limit_seconds - (time.perf_counter() - start))
-            result = self._solve_tier(mode, hard_due, remaining * share, hint)
-            if result is not None:
-                print(f"  [solver] 排产口径: {label}")
-                left = time_limit_seconds - (time.perf_counter() - start)
-                if mode == "soft" and left > 5.0 and self.enforce_utilization_95:
-                    result = self._compact(result, hard_due, left)
-                return result
+        # The 95%~100% vs 95%~105% choice belongs to the plant (rule option), so the
+        # engine never escalates the ceiling on its own: it either finds a plan inside
+        # the selected band or reports infeasibility.
+        result = self._run_tiers(self._tiers(), deadline, hint)
+        if result is not None:
+            return result
 
         raise RuntimeError("Solver found no feasible schedule in any tier.")
 
@@ -256,8 +487,11 @@ class APSScheduler:
             left = budget - (time.perf_counter() - started)
             if left < 3.0:
                 break
-            model, x = self._build_model(mode, hard_due, gap_cap=cap)
-            plan, status_name, _ = self._run(model, x, mode, left * share, self._lot_values(result))
+            model, x, _aux = self._build_model(mode, hard_due, gap_cap=cap)
+            plan, status_name, _ = self._run(
+                model, x, mode, left * share, self._lot_values(result),
+                group_terms=_aux.get("group_terms"),
+            )
             if plan is None:
                 print(f"  [solver] 换型集中: {label} 未求得（{status_name}）")
                 continue
@@ -265,7 +499,7 @@ class APSScheduler:
             if on_time > late:
                 print(f"  [solver] 换型集中: {label} 会多延误 {on_time - late} 个成品订单")
                 continue
-            if mode == "soft" and grouped >= blocks:
+            if grouped >= blocks:
                 print(f"  [solver] 换型集中: 已是当前利用率下的最少换型排法（{grouped} 块）")
                 continue
             print(f"  [solver] 换型集中（{label}）: 型号生产块 {blocks} -> {grouped}，交付不降级")
@@ -313,18 +547,20 @@ class APSScheduler:
         """Flip an extracted plan back into per-(task, shift) lot counts for hinting."""
         index_of = {(s.date_str, s.shift_name): s.index for s in self.shifts}
         return {
-            (task.task_id, index_of[key]): qty // task.lot_size
+            (task.task_id, index_of[key]): qty // self._unit_pieces(task)
             for task in result.tasks
             for key, qty in task.shift_breakdown.items()
         }
 
     def _solve_tier(self, mode: str, hard_due: bool, budget: float, hint):
         label = "硬约束" if mode == "hard" else "软约束"
-        model, x = self._build_model(mode, hard_due)
+        model, x, aux = self._build_model(mode, hard_due)
         # 'soft' is the tier that has to *find* a violation-free packing rather
         # than prove one optimal, so it stops the moment it holds one.
-        stopper = None if mode == "hard" else _SolutionStopper(self._clean_filling(x))
-        result, status_name, wall = self._run(model, x, mode, budget, hint, stopper)
+        stopper = None if mode == "hard" else _SolutionStopper(self._clean_filling(aux))
+        result, status_name, wall = self._run(
+            model, x, mode, budget, hint, stopper, group_terms=aux.get("group_terms")
+        )
         if result is None:
             print(f"  [solver] {label}: {status_name}")
             return None
@@ -335,35 +571,34 @@ class APSScheduler:
         print(f"  [solver] 利用率缺口: {gaps[2]} 个班次，合计 {gaps[0] / 1000:.0f}s")
         return result
 
-    def _clean_filling(self, x):
-        """Test used to cut the filling tier short: every worked slot but the tail clears 95%."""
+    def _clean_filling(self, aux):
+        """Test used to cut the filling tier short: every opened slot except the
+        line's closing shift clears the 95% floor, with setup time included."""
 
         def is_clean(callback) -> bool:
-            loads: Dict[Tuple[str, int], int] = {}
-            for (task_id, slot), var in x.items():
-                lots = callback.Value(var)
-                if lots:
-                    spot = (self.task_by_id[task_id].line, slot)
-                    loads[spot] = loads.get(spot, 0) + lots * self.task_by_id[task_id].lot_millis
-            by_line: Dict[str, List[Tuple[int, int]]] = {}
-            for (line, slot), millis in loads.items():
-                by_line.setdefault(line, []).append((slot, millis))
-            return all(
-                millis >= self.min_shift_ms
-                for entries in by_line.values()
-                for _, millis in sorted(entries)[:-1]
-            )
+            for (line, slot), opened in aux["open"].items():
+                if not callback.Value(opened):
+                    continue
+                if callback.Value(aux["tail"][line, slot]):
+                    continue
+                if callback.Value(aux["load"][line, slot]) < self.min_shift_ms:
+                    return False
+            return True
 
         return is_clean
 
     def _build_hint(self, time_limit_seconds: float) -> Optional[Dict[Tuple[str, int], int]]:
         """Capacity, kitting and due dates only: the quickest way to a valid plan."""
-        model, x = self._build_model("off", hard_due=True)
+        # The hint is a relaxation: build it with the legacy path even when the main
+        # model uses the kernel, so the seed is available in seconds rather than
+        # being lost to a different constraint ordering.
+        model, x, _aux = self._build_model("off", hard_due=True, use_kernel=False)
         # Any due-feasible packing is a usable seed, so ask for feasibility rather
         # than optimality; the harder tiers do the improving from here.
         model.Minimize(0)
         solver = self._solver(time_limit_seconds)
         status = solver.Solve(model)
+        self._hint_infeasible = (status == cp_model.INFEASIBLE)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             print(f"  [solver] 初始可行提示: {solver.StatusName(status)}")
             return None
@@ -373,12 +608,22 @@ class APSScheduler:
     def _solver(self, time_limit_seconds: float) -> cp_model.CpSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max(1.0, time_limit_seconds)
-        solver.parameters.num_workers = 8
+        # One worker + a fixed seed makes a plan reproducible; a planning system
+        # cannot answer "why did yesterday work and today not" any other way.
+        solver.parameters.num_workers = 1
         solver.parameters.random_seed = 1
         solver.parameters.log_search_progress = False
         return solver
 
-    def _run(self, model, x, mode: str, time_limit_seconds: float, hint, stopper=None):
+    def _run(self, model, x, mode: str, time_limit_seconds: float, hint, stopper=None, group_terms=None):
+        if (
+            self.rule_set is not None
+            and group_terms
+            and mode == "soft"
+            and len([gid for gid, terms in group_terms.items() if terms]) > 1
+        ):
+            return self._run_lexicographic(model, x, mode, time_limit_seconds, hint, group_terms)
+
         for key, value in (hint or {}).items():
             model.AddHint(x[key], value)
 
@@ -394,8 +639,60 @@ class APSScheduler:
             status_name=solver.StatusName(status),
             objective_value=solver.ObjectiveValue(),
             wall_time_seconds=solver.WallTime(),
+            allow_105_fg=self.allow_105_utilization_fg,
+            allow_105_sf=self.allow_105_utilization_sf,
+            capacity_note=self.capacity_note,
         )
         return result, result.status_name, solver.WallTime()
+
+    def _run_lexicographic(self, model, x, mode, time_limit_seconds, hint, group_terms):
+        """Solve soft groups in priority order, freezing each group's best value.
+
+        This is the production wiring of the kernel's group priority: delivery is
+        frozen before capacity, capacity before changeover/inventory. It only runs
+        in the soft tiers; the hard tier already enforces its groups as constraints.
+        """
+        for key, value in (hint or {}).items():
+            model.AddHint(x[key], value)
+
+        order = [group.group_id for group in self.rule_set.ordered_groups()]
+        order += [group_id for group_id in group_terms if group_id not in order]
+        groups = [group_id for group_id in order if group_terms.get(group_id)]
+        per_group = max(1.0, time_limit_seconds / max(1, len(groups)))
+        bests: Dict[str, float] = {}
+        total_wall = 0.0
+        last_solver = None
+        last_status = "UNKNOWN"
+
+        for group_id in groups:
+            expr = sum(group_terms[group_id])
+            model.Minimize(expr)
+            solver = self._solver(per_group)
+            status = solver.Solve(model)
+            total_wall += solver.WallTime()
+            last_status = solver.StatusName(status)
+            if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                return None, last_status, total_wall
+            best = float(solver.ObjectiveValue())
+            bests[group_id] = best
+            model.Add(expr <= int(math.ceil(best)))
+            last_solver = solver
+
+        if last_solver is None:
+            return None, last_status, total_wall
+
+        result = ScheduleResult(
+            tasks=self._extract(last_solver, x),
+            shifts=self.shifts,
+            strict_utilization=False,
+            status_name=last_status,
+            objective_value=sum(bests.values()),
+            wall_time_seconds=total_wall,
+            allow_105_fg=self.allow_105_utilization_fg,
+            allow_105_sf=self.allow_105_utilization_sf,
+            capacity_note=self.capacity_note,
+        )
+        return result, result.status_name, total_wall
 
     def _due_shift(self, task: ProductionTask) -> int:
         return last_shift_on_or_before(self.shifts, task.due_datetime)
@@ -409,17 +706,19 @@ class APSScheduler:
             windows[task.task_id] = (0, max(0, min(parent_hi - 1, self.num_shifts - 1)))
         return windows
 
-    def _build_model(self, utilization_mode: str, hard_due: bool, gap_cap=None):
+    def _build_model(self, utilization_mode: str, hard_due: bool, gap_cap=None, use_kernel: bool = True):
         model = cp_model.CpModel()
         x: Dict[Tuple[str, int], object] = {}
         active: Dict[Tuple[str, int], object] = {}
+        started: Dict[Tuple[str, int], object] = {}
         end_of: Dict[str, object] = {}
-        # A changeover is paid per production run, not per shift, so the runs are only
-        # counted in the models where they are priced: the hard tier and the
-        # compaction pass, where the filling is already secured and cannot be bought
-        # back down. Priced against soft gaps, a changeover simply buys gaps.
+        # A changeover is paid per production run, not per shift. Run starts are
+        # always materialised because they also consume capacity (setup time) and
+        # because they are the only correct denominator for "how many changeovers".
         price_changeovers = self.price_changeovers and (utilization_mode == "hard" or gap_cap is not None)
         runs: List[object] = []
+        group_terms: Dict[str, List[Any]] = defaultdict(list)
+        kernel_min_batch = self.enforce_mpq_batch and use_kernel and self._use_kernel("min_batch")
 
         for task in self.tasks:
             lo, hi = self.windows[task.task_id]
@@ -427,41 +726,96 @@ class APSScheduler:
             # contribute more lots than that. Capping the domain here is
             # what lets CP-SAT propagate capacity instead of discovering it late.
             max_line_ms = self._get_line_max_shift_ms(task.line)
-            per_shift = max(1, min(task.lots, max_line_ms // task.lot_millis))
+            per_shift = self._per_shift_units(task)
+            units_total = self._units_total(task)
+            splittable = self._is_splittable(task)
             # ...and a shift that opens a task has to run its minimum batch: a whole
             # MPQ for semi-finished pieces, one MPQ batch for finished goods. Without
             # this the filling objective drips a model over dozens of shifts as 1-2
             # pieces at a time, which no line can actually set up for.
-            min_lots = min(per_shift, task.mpq // task.lot_size) if self.enforce_mpq_batch else 1
+            # ACT-06 exception: a split part of an oversized lot is a continuation,
+            # not a new batch, so it is exempt from the per-shift MPQ floor.
+            min_lots = 1 if splittable else (
+                min(per_shift, task.mpq // task.lot_size) if self.enforce_mpq_batch else 1
+            )
             for s in range(lo, hi + 1):
-                lots = model.NewIntVar(0, per_shift, f"x.{task.task_id}.{s}")
+                units = model.NewIntVar(0, per_shift, f"x.{task.task_id}.{s}")
                 used = model.NewBoolVar(f"a.{task.task_id}.{s}")
-                model.Add(lots >= min_lots * used)
-                model.Add(lots <= per_shift * used)
-                x[task.task_id, s] = lots
+                if not kernel_min_batch:
+                    model.Add(units >= min_lots * used)
+                model.Add(units <= per_shift * used)
+                x[task.task_id, s] = units
                 active[task.task_id, s] = used
-            model.Add(sum(x[task.task_id, s] for s in range(lo, hi + 1)) == task.lots)
+            model.Add(sum(x[task.task_id, s] for s in range(lo, hi + 1)) == units_total)
 
-            if price_changeovers:
-                # A run starts on any shift that produces the model while the shift
-                # before it did not, so counting starts is counting changeovers.
-                runs.append(active[task.task_id, lo])
-                for s in range(lo + 1, hi + 1):
-                    started = model.NewBoolVar(f"open.{task.task_id}.{s}")
-                    model.Add(started >= active[task.task_id, s] - active[task.task_id, s - 1])
-                    runs.append(started)
+            # Exact run-start indicator: 1 iff the task begins on shift s. Paid as a
+            # changeover and charged as setup time on that shift.
+            started[task.task_id, lo] = active[task.task_id, lo]
+            runs.append(active[task.task_id, lo])
+            for s in range(lo + 1, hi + 1):
+                st = model.NewBoolVar(f"start.{task.task_id}.{s}")
+                model.Add(st >= active[task.task_id, s] - active[task.task_id, s - 1])
+                model.Add(st <= active[task.task_id, s])
+                model.Add(st <= 1 - active[task.task_id, s - 1])
+                started[task.task_id, s] = st
+                runs.append(st)
 
+            if splittable:
+                # ACT-06: the split parts must form one continuous run (no gap and
+                # no second start), and use only the minimum number of shifts needed.
+                model.Add(sum(started[task.task_id, s] for s in range(lo, hi + 1)) == 1)
+                max_shifts = -(-units_total // per_shift)
+                model.Add(
+                    sum(active[task.task_id, s] for s in range(lo, hi + 1)) <= max_shifts
+                )
+
+            # R-WL-09 continuity is a preference, not a hard rule: each extra run
+            # start is already priced as a changeover, so the model consolidates
+            # unless 95% filling makes a block impossible. A plant can opt into a
+            # hard block cap per stage with max_blocks_per_task(_sf) > 0.
+            block_cap = self.max_blocks_per_task if task.stage == "FG" else self.max_blocks_per_task_sf
+            if block_cap > 0:
+                model.Add(
+                    active[task.task_id, lo]
+                    + sum(started[task.task_id, s] for s in range(lo + 1, hi + 1))
+                    <= block_cap
+                )
+
+            # Completion is exactly the last shift the task is active on. The old
+            # `end >= s` form left `end` a free lower bound, which silently voided
+            # the FIFO ordering below and under-counted lateness.
             end = model.NewIntVar(lo, hi, f"end.{task.task_id}")
-            for s in range(lo, hi + 1):
-                model.Add(end >= s).OnlyEnforceIf(active[task.task_id, s])
+            model.AddMaxEquality(end, [s * active[task.task_id, s] for s in range(lo, hi + 1)])
             end_of[task.task_id] = end
 
+        # min_batch is compiled before the line resources, in the same position as
+        # the legacy constraint: CP-SAT's search is sensitive to constraint order.
+        if kernel_min_batch:
+            self._compile_rules_for(
+                "min_batch", model, x, active, started, end_of, {}, {}, {}, force_hard=True
+            )
+        if use_kernel and self._use_kernel("labor_capacity"):
+            self._compile_rules_for(
+                "labor_capacity", model, x, active, started, end_of, {}, {}, {}, force_hard=False
+            )
+        kernel_material = use_kernel and self.enforce_material_balance and self._use_kernel("material_balance")
+        cumulative = None
         if self.enforce_material_balance:
-            self._add_material_balance(model, x)
-        shortfall, violations, overloads = self._add_line_capacity(model, x, utilization_mode, gap_cap)
+            cumulative = self._create_cumulative(model, x)
+            if not kernel_material:
+                self._legacy_material_balance(model, cumulative)
+        if kernel_material:
+            self._compile_rules_for(
+                "material_balance", model, x, active, started, end_of, {}, {}, {}, cumulative=cumulative
+            )
+        shortfall, violations, overloads, opening, tails, loads, kernel_objective = self._add_line_capacity(
+            model, x, active, started, end_of, utilization_mode, gap_cap, use_kernel=use_kernel
+        )
+        kernel_due = hard_due and use_kernel and self._use_kernel("due_date")
 
         # R-SF-02 & R-FG-05: 顺位紧邻前拉硬约束（同产线同型号按交期先后严格顺位排产，禁止跳序挑单）
-        if self.enforce_sequential_pulling:
+        kernel_sequence = use_kernel and self.enforce_sequential_pulling and self._use_kernel("sequence")
+        if self.enforce_sequential_pulling and not kernel_sequence:
             by_line_part = defaultdict(list)
             for t in self.tasks:
                 by_line_part[(t.line, t.part_no)].append(t)
@@ -476,9 +830,14 @@ class APSScheduler:
                         for ta in by_due[d_early]:
                             for tb in by_due[d_late]:
                                 model.Add(end_of[ta.task_id] <= end_of[tb.task_id])
+        if kernel_sequence:
+            self._compile_rules_for(
+                "sequence", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            )
 
         # R-TL-01: 工装模具物理独占硬约束（同班次跨产线互斥，禁止并发占用同一模具）
-        if self.enforce_tooling_exclusivity:
+        kernel_tooling = use_kernel and self.enforce_tooling_exclusivity and self._use_kernel("tooling_exclusivity")
+        if self.enforce_tooling_exclusivity and not kernel_tooling:
             mold_groups = defaultdict(list)
             for t in self.tasks:
                 mold_id = getattr(t, 'mold_id', None)
@@ -491,9 +850,14 @@ class APSScheduler:
                         active_vars = [active[t.task_id, s] for t in group if (t.task_id, s) in active]
                         if len(active_vars) > 1:
                             model.Add(sum(active_vars) <= 1)
+        if kernel_tooling:
+            self._compile_rules_for(
+                "tooling_exclusivity", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            )
 
         # R-MT-01: 关键物料预计到货齐套开工硬约束（到料前禁止开工）
-        if self.enforce_material_arrival:
+        kernel_ready = use_kernel and self.enforce_material_arrival and self._use_kernel("material_ready")
+        if self.enforce_material_arrival and not kernel_ready:
             for t in self.tasks:
                 arr_shift = getattr(t, 'material_arrival_shift', 0)
                 if arr_shift > 0:
@@ -501,9 +865,14 @@ class APSScheduler:
                     for s in range(lo, min(arr_shift, hi + 1)):
                         if (t.task_id, s) in x:
                             model.Add(x[t.task_id, s] == 0)
+        if kernel_ready:
+            self._compile_rules_for(
+                "material_ready", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            )
 
         # R-PM-01: 设备计划性预防维护（PM）避让硬约束（PM时段产能清零，任务避让）
-        if self.enforce_pm_maintenance and self.pm_shifts:
+        kernel_pm = use_kernel and self.enforce_pm_maintenance and self._use_kernel("pm_block")
+        if self.enforce_pm_maintenance and self.pm_shifts and not kernel_pm:
             for line, pm_slots in self.pm_shifts.items():
                 line_tasks = [t for t in self.tasks if t.line == line]
                 for s in pm_slots:
@@ -511,12 +880,50 @@ class APSScheduler:
                         for t in line_tasks:
                             if (t.task_id, s) in x:
                                 model.Add(x[t.task_id, s] == 0)
+        if kernel_pm:
+            self._compile_rules_for(
+                "pm_block", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            )
+
+        # due is compiled after the physical constraints, where the legacy hard-due
+        # constraint lived, so the search order stays comparable.
+        if kernel_due:
+            self._compile_rules_for(
+                "due_date", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            )
+
+        kernel_changeover = price_changeovers and use_kernel and self._use_kernel("changeover")
+        changeover_objective = None
+        if kernel_changeover:
+            compiled_changeover = self._compile_rules_for(
+                "changeover", model, x, active, started, end_of, opening, tails, loads, force_hard=False
+            )
+            if compiled_changeover.book.terms:
+                changeover_objective = compiled_changeover.total_objective(scale=CHANGEOVER_WEIGHT)
+
+        kernel_customer = (
+            not hard_due
+            and use_kernel
+            and self.enforce_customer_priority
+            and self._use_kernel("customer_priority")
+        )
+        customer_objective = None
+        if kernel_customer:
+            compiled_customer = self._compile_rules_for(
+                "customer_priority", model, x, active, started, end_of, opening, tails, loads,
+                force_hard=False,
+            )
+            if compiled_customer.book.terms:
+                customer_objective = compiled_customer.total_objective(scale=1)
 
         lateness = []
         for task in self.plan.fg_tasks:
+            if kernel_customer:
+                break
             due = self._due_shift(task)
             if hard_due:
-                model.Add(end_of[task.task_id] <= due)
+                if not kernel_due:
+                    model.Add(end_of[task.task_id] <= due)
                 continue
             late = model.NewIntVar(0, self.num_shifts, f"late.{task.task_id}")
             model.Add(late >= end_of[task.task_id] - due)
@@ -528,68 +935,86 @@ class APSScheduler:
             else:
                 lateness.append(late)
 
-        terms = [
-            FG_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.fg_tasks),
-            SF_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.sf_tasks),
-        ]
+        group_terms["G1_DELIVERY"].append(
+            FG_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.fg_tasks)
+        )
+        group_terms["G1_DELIVERY"].append(
+            SF_COMPLETION_WEIGHT * sum(end_of[t.task_id] for t in self.plan.sf_tasks)
+        )
 
         # R-FG-13: Penalize parallel models exceeding 3 per shift
-        concurrency_penalties = []
-        for line in self.lines:
-            line_tasks = [t for t in self.tasks if t.line == line]
-            part_numbers = sorted({t.part_no for t in line_tasks})
-            for s in range(self.num_shifts):
-                part_actives = []
-                for p_no in part_numbers:
-                    matching = [t for t in line_tasks if t.part_no == p_no and (t.task_id, s) in active]
-                    if not matching:
-                        continue
-                    p_act = model.NewBoolVar(f"p_act.{line}.{p_no}.{s}")
-                    for m in matching:
-                        model.Add(p_act >= active[m.task_id, s])
-                    part_actives.append(p_act)
-                if len(part_actives) > 3:
-                    if self.enforce_concurrency_limit:
-                        model.Add(sum(part_actives) <= 3)
-                    excess = model.NewIntVar(0, len(part_actives), f"excess.{line}.{s}")
-                    model.Add(excess >= sum(part_actives) - 3)
-                    concurrency_penalties.append(excess)
+        kernel_concurrency = use_kernel and self._use_kernel("concurrency")
+        concurrency_objective = None
+        if kernel_concurrency:
+            compiled_concurrency = self._compile_rules_for(
+                "concurrency", model, x, active, started, end_of, opening, tails, loads,
+                force_hard=self.enforce_concurrency_limit,
+            )
+            if compiled_concurrency.book.terms:
+                concurrency_objective = compiled_concurrency.total_objective(scale=CONCURRENCY_WEIGHT)
+        else:
+            concurrency_penalties = []
+            for line in self.lines:
+                line_tasks = [t for t in self.tasks if t.line == line]
+                part_numbers = sorted({t.part_no for t in line_tasks})
+                for s in range(self.num_shifts):
+                    part_actives = []
+                    for p_no in part_numbers:
+                        matching = [t for t in line_tasks if t.part_no == p_no and (t.task_id, s) in active]
+                        if not matching:
+                            continue
+                        p_act = model.NewBoolVar(f"p_act.{line}.{p_no}.{s}")
+                        for m in matching:
+                            model.Add(p_act >= active[m.task_id, s])
+                        part_actives.append(p_act)
+                    if len(part_actives) > 3:
+                        if self.enforce_concurrency_limit:
+                            model.Add(sum(part_actives) <= 3)
+                        excess = model.NewIntVar(0, len(part_actives), f"excess.{line}.{s}")
+                        model.Add(excess >= sum(part_actives) - 3)
+                        concurrency_penalties.append(excess)
 
-        if self.enforce_concurrency_limit and concurrency_penalties:
-            terms.append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
+            if self.enforce_concurrency_limit and concurrency_penalties:
+                group_terms["G3_CHANGEOVER"].append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
+        if concurrency_objective is not None:
+            group_terms["G3_CHANGEOVER"].append(concurrency_objective)
 
         # R-SF-07 & R-FG-09: 周末停机偏好软约束惩罚
         weekend_penalties = []
         if self.enforce_weekend_penalty:
             for s_idx, shift in enumerate(self.shifts):
-                try:
-                    dt = datetime.strptime(shift.date_str, "%Y-%m-%d")
-                    if dt.weekday() in (5, 6):  # Saturday (5) or Sunday (6)
-                        for line in self.lines:
-                            line_tasks = [t for t in self.tasks if t.line == line]
-                            line_active = [active[t.task_id, s_idx] for t in line_tasks if (t.task_id, s_idx) in active]
-                            if line_active:
-                                w_run = model.NewBoolVar(f"w_run.{line}.{s_idx}")
-                                for a_var in line_active:
-                                    model.Add(w_run >= a_var)
-                                weekend_penalties.append(w_run)
-                except Exception:
-                    pass
+                if shift.weekday in (5, 6):  # Saturday (5) or Sunday (6)
+                    for line in self.lines:
+                        line_tasks = [t for t in self.tasks if t.line == line]
+                        line_active = [active[t.task_id, s_idx] for t in line_tasks if (t.task_id, s_idx) in active]
+                        if line_active:
+                            w_run = model.NewBoolVar(f"w_run.{line}.{s_idx}")
+                            for a_var in line_active:
+                                model.Add(w_run >= a_var)
+                            weekend_penalties.append(w_run)
         if weekend_penalties:
-            terms.append(15_000 * sum(weekend_penalties))
+            group_terms["G3_CHANGEOVER"].append(15_000 * sum(weekend_penalties))
 
         if price_changeovers:
-            terms.append(CHANGEOVER_WEIGHT * sum(runs))
+            if changeover_objective is None:
+                group_terms["G3_CHANGEOVER"].append(CHANGEOVER_WEIGHT * sum(runs))
+            else:
+                group_terms["G3_CHANGEOVER"].append(changeover_objective)
         elif violations:
-            terms.append(self._violation_weight() * sum(violations))
-            terms.append(SHORTFALL_WEIGHT * sum(shortfall))
+            group_terms["G2_CAPACITY"].append(self._violation_weight() * sum(violations))
+            group_terms["G2_CAPACITY"].append(SHORTFALL_WEIGHT * sum(shortfall))
         if overloads:
             # 弹性上浮负荷（100%~105%）加软惩罚，引导求解器优先保持在 100% 以内，谨慎动用上浮产能
-            terms.append(200 * sum(overloads))
+            group_terms["G2_CAPACITY"].append(200 * sum(overloads))
         if lateness:
-            terms.append(self._lateness_weight() * sum(lateness))
-        model.Minimize(sum(terms))
-        return model, x
+            group_terms["G1_DELIVERY"].append(self._lateness_weight() * sum(lateness))
+        if customer_objective is not None:
+            group_terms["G1_DELIVERY"].append(self._lateness_weight() * customer_objective)
+        if kernel_objective is not None:
+            group_terms["G2_CAPACITY"].append(kernel_objective)
+        all_terms = [term for group in group_terms.values() for term in group]
+        model.Minimize(sum(all_terms))
+        return model, x, {"open": opening, "tail": tails, "load": loads, "group_terms": group_terms}
 
     def _violation_weight(self) -> int:
         """One slot below 95% costs more than every deficit that could pay for it."""
@@ -604,12 +1029,8 @@ class APSScheduler:
         """
         return len(self.lines) * self.num_shifts * self._violation_weight() + 1
 
-    def _add_material_balance(self, model, x) -> None:
-        """Per-shift material balance: bushings must exist before assembly consumes them.
-
-        Output of shift s-1 is available to shift s, so the two stages overlap lot by
-        lot while every assembly unit is still backed by real stock.
-        """
+    def _create_cumulative(self, model, x) -> Dict[str, Dict[int, object]]:
+        """Cumulative production by task and shift, shared by both balance paths."""
         cumulative: Dict[str, Dict[int, object]] = {}
         for task in self.tasks:
             lo, hi = self.windows[task.task_id]
@@ -617,85 +1038,200 @@ class APSScheduler:
             slots = {}
             for s in range(lo, hi + 1):
                 running += x[task.task_id, s]
-                var = model.NewIntVar(0, task.lots, f"cum.{task.task_id}.{s}")
+                var = model.NewIntVar(0, self._units_total(task), f"cum.{task.task_id}.{s}")
                 model.Add(var == running)
                 slots[s] = var
             cumulative[task.task_id] = slots
+        return cumulative
 
+    def _legacy_material_balance(self, model, cumulative) -> None:
+        """Per-shift material balance: bushings must exist before assembly consumes them.
+
+        Output of shift s-1 is available to shift s, so the two stages overlap lot by
+        lot while every assembly unit is still backed by real stock.
+        """
         for fg_task in self.plan.fg_tasks:
             components = [t for t in self.plan.sf_tasks if t.parent_task_id == fg_task.task_id]
             if not components:
                 continue
             fg_lo, fg_hi = self.windows[fg_task.task_id]
             for s in range(fg_lo, fg_hi + 1):
-                assembled = cumulative[fg_task.task_id][s] * fg_task.lot_size
+                assembled = cumulative[fg_task.task_id][s] * self._unit_pieces(fg_task)
                 for component in components:
                     comp_lo, comp_hi = self.windows[component.task_id]
                     frac = Fraction(str(component.bom_ratio)).limit_denominator(1000)
                     num = frac.numerator
                     denom = frac.denominator
                     if s - 1 < comp_lo:
-                        model.Add(cumulative[fg_task.task_id][s] == 0)
+                        # Nothing has been produced yet, but opening stock is real:
+                        # a fully stocked component must not force the first shift idle.
+                        avail = int(round(component.stock_covered))
                     else:
                         avail = (
-                            cumulative[component.task_id][min(s - 1, comp_hi)] * component.lot_size
+                            cumulative[component.task_id][min(s - 1, comp_hi)] * self._unit_pieces(component)
                             + int(round(component.stock_covered))
                         )
-                        model.Add(denom * avail >= num * assembled)
+                    model.Add(denom * avail >= num * assembled)
 
-    def _add_line_capacity(self, model, x, utilization_mode: str, gap_cap=None):
-        """Per line-shift load, rated ceiling, and 95% floor based on plant topology."""
+    # ------------------------------------------------------------------
+    # Capacity: resources are always created here; the 95% floor is either
+    # compiled from the fixed kernel (ACT-22) or applied by the legacy body.
+    # ------------------------------------------------------------------
+    def _rules_for(self, template_id: str):
+        if self.rule_set is None:
+            return []
+        return [
+            rule for rule in self.rule_set.rules
+            if rule.enabled and rule.template_id == template_id
+        ]
+
+    def _use_kernel(self, template_id: str) -> bool:
+        return (
+            self.rule_set is not None
+            and template_id in self.kernel_templates
+            and bool(self._rules_for(template_id))
+        )
+
+    def _compile_rules_for(
+        self,
+        template_id: str,
+        model,
+        x,
+        active,
+        started,
+        end_of,
+        opening,
+        tails,
+        loads,
+        cumulative=None,
+        force_hard: bool = True,
+    ):
+        """Compile one template's rules against the current scheduler model."""
+        from dataclasses import replace
+
+        from src.kernel import Nature, RuleSet, compile_rules
+
+        rules = self._rules_for(template_id)
+        if force_hard:
+            rules = [replace(rule, nature=Nature.HARD) for rule in rules]
+        derived = RuleSet(
+            rule_set_id=f"{self.rule_set.rule_set_id}#{template_id}",
+            site=self.rule_set.site,
+            version=self.rule_set.version,
+            groups=self.rule_set.groups,
+            rules=rules,
+        )
+        context = _SchedulerCompileContext(
+            self, model, x, active, started, end_of, opening, tails, loads, cumulative
+        )
+        compiled = compile_rules(context, derived)
+        for warning in compiled.warnings:
+            print(f"  [kernel] {warning}")
+        return compiled
+
+    def _compile_capacity_kernel(self, model, x, active, started, end_of, opening, tails, loads):
+        """Compile the capacity rules (hard tier only for now)."""
+        compiled = self._compile_rules_for(
+            "capacity_utilization", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+        )
+        if not compiled.book.terms:
+            return None
+        return compiled.total_objective()
+
+    def _add_line_capacity(self, model, x, active, started, end_of, utilization_mode: str, gap_cap=None, use_kernel: bool = True):
+        """Create the line resources, then apply either the kernel or legacy floor."""
+        kernel_capacity = (
+            use_kernel
+            and utilization_mode == "hard"
+            and self._use_kernel("capacity_utilization")
+        )
+        shortfall, violations, overloads, opening, tails, loads = self._legacy_capacity_body(
+            model, x, started, "off" if kernel_capacity else utilization_mode, gap_cap
+        )
+        kernel_objective = None
+        if kernel_capacity:
+            kernel_objective = self._compile_capacity_kernel(
+                model, x, active, started, end_of, opening, tails, loads
+            )
+        return shortfall, violations, overloads, opening, tails, loads, kernel_objective
+
+    def _legacy_capacity_body(self, model, x, started, utilization_mode: str, gap_cap=None):
+        """Per line-shift load (processing + setup), opening decision, rated ceiling
+        and the 95% floor applied to every opened shift except the closing one.
+
+        Opening a shift is a decision, not something inferred from load: the business
+        rule is "if you open a shift you must fill it", and an idle shift is a separate
+        question (calendar coverage) rather than a utilisation violation.
+        """
         shortfall = []
         violations = []
         overloads = []
+        opening: Dict[Tuple[str, int], object] = {}
+        tails: Dict[Tuple[str, int], object] = {}
+        loads: Dict[Tuple[str, int], object] = {}
+
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
             max_line_ms = self._get_line_max_shift_ms(line)
-            load = []
-            running = []
+            line_open = []
+            line_load = []
             for s in range(self.num_shifts):
-                terms = [x[t.task_id, s] * t.lot_millis for t in line_tasks if (t.task_id, s) in x]
+                proc = [x[t.task_id, s] * self._unit_millis(t) for t in line_tasks if (t.task_id, s) in x]
+                setup = [
+                    started[t.task_id, s] * self.setup_ms
+                    for t in line_tasks
+                    if (t.task_id, s) in started
+                ]
                 var = model.NewIntVar(0, max_line_ms, f"load.{line}.{s}")
-                model.Add(var == (sum(terms) if terms else 0))
-                run = model.NewBoolVar(f"run.{line}.{s}")
-                model.Add(var >= 1).OnlyEnforceIf(run)
-                model.Add(var == 0).OnlyEnforceIf(run.Not())
-                load.append(var)
-                running.append(run)
+                model.Add(var == (sum(proc) + sum(setup) if proc or setup else 0))
+                o = model.NewBoolVar(f"open.{line}.{s}")
+                # o == 1 exactly when the shift carries load.
+                model.Add(var >= 1).OnlyEnforceIf(o)
+                model.Add(var <= max_line_ms * o)
+                opening[line, s] = o
+                loads[line, s] = var
+                line_open.append(o)
+                line_load.append(var)
 
                 if max_line_ms > self.shift_ms:
                     over = model.NewIntVar(0, max_line_ms - self.shift_ms, f"over.{line}.{s}")
                     model.Add(over >= var - self.shift_ms)
                     overloads.append(over)
 
-            work = sum(t.lots * t.lot_millis for t in line_tasks)
+            work = sum(self._units_total(t) * self._unit_millis(t) for t in line_tasks)
             # A slot holds at most max_line_ms of work, so this floor on the number of
-            # worked shifts is implied by the capacity constraint above.
-            model.Add(sum(running) >= -(-work // max_line_ms))
+            # opened shifts is implied by the capacity constraint above.
+            model.Add(sum(line_open) >= -(-work // max_line_ms))
+
+            # At most one closing shift per line, and it must be the last opened one.
+            line_tails = []
+            for s in range(self.num_shifts):
+                tail = model.NewBoolVar(f"tail.{line}.{s}")
+                model.Add(tail <= line_open[s])
+                for later in range(s + 1, self.num_shifts):
+                    model.Add(tail <= 1 - line_open[later])
+                tails[line, s] = tail
+                line_tails.append(tail)
+            model.Add(sum(line_tails) <= 1)
 
             if utilization_mode == "off":
                 continue
 
-            last_worked = model.NewIntVar(0, self.num_shifts - 1, f"last.{line}")
             for s in range(self.num_shifts):
-                model.Add(last_worked >= s).OnlyEnforceIf(running[s])
-
-            for s in range(self.num_shifts):
-                tail = model.NewBoolVar(f"tail.{line}.{s}")
-                model.Add(last_worked <= s).OnlyEnforceIf(tail)
-                model.Add(last_worked >= s + 1).OnlyEnforceIf(tail.Not())
+                o = line_open[s]
+                tail = tails[line, s]
+                var = line_load[s]
                 if utilization_mode == "hard":
-                    model.Add(load[s] + self.min_shift_ms * tail >= self.min_shift_ms * running[s])
+                    model.Add(var + self.min_shift_ms * tail >= self.min_shift_ms * o)
                     continue
                 gap = model.NewIntVar(0, self.min_shift_ms, f"gap.{line}.{s}")
-                model.Add(gap >= self.min_shift_ms * running[s] - self.min_shift_ms * tail - load[s])
+                model.Add(gap >= self.min_shift_ms * o - self.min_shift_ms * tail - var)
                 shortfall.append(gap)
-                # `below` is exactly "this slot is short of 95%": the tail exemption and
-                # an empty slot both force it off, so counting it measures what the
-                # report lists rather than how many milliseconds are behind.
+                # `below` is exactly "this opened slot is short of 95%": a closed slot
+                # and the closing shift both force it off.
                 below = model.NewBoolVar(f"below.{line}.{s}")
-                model.Add(load[s] >= self.min_shift_ms * (running[s] - tail)).OnlyEnforceIf(below.Not())
-                model.Add(load[s] <= self.min_shift_ms * (running[s] - tail) - 1).OnlyEnforceIf(below)
+                model.Add(var >= self.min_shift_ms * (o - tail)).OnlyEnforceIf(below.Not())
+                model.Add(var <= self.min_shift_ms * (o - tail) - 1).OnlyEnforceIf(below)
                 if gap_cap is not None:
                     model.Add(gap <= gap_cap[1])
                 violations.append(below)
@@ -703,7 +1239,7 @@ class APSScheduler:
         if gap_cap is not None:
             model.Add(sum(shortfall) <= gap_cap[0])
             model.Add(sum(violations) <= gap_cap[2])
-        return shortfall, violations, overloads
+        return shortfall, violations, overloads, opening, tails, loads
 
     def _extract(self, solver, x) -> List[ScheduledTask]:
         clock = self._clock_times(solver, x)
@@ -716,12 +1252,12 @@ class APSScheduler:
             for s, shift in enumerate(self.shifts):
                 if (task.task_id, s) not in x:
                     continue
-                lots = solver.Value(x[task.task_id, s])
-                if lots <= 0:
+                units = solver.Value(x[task.task_id, s])
+                if units <= 0:
                     continue
                 key: ShiftKey = (shift.date_str, shift.shift_name)
-                breakdown[key] = int(lots * task.lot_size)
-                seconds[key] = lots * task.lot_millis / TIME_SCALE
+                breakdown[key] = int(units * self._unit_pieces(task))
+                seconds[key] = units * self._unit_millis(task) / TIME_SCALE
                 used.append(s)
 
             scheduled.append(ScheduledTask(
@@ -747,6 +1283,8 @@ class APSScheduler:
                 material_arrival_shift=getattr(task, 'material_arrival_shift', 0),
                 customer_tier=getattr(task, 'customer_tier', 'A'),
                 line_pm_slots=getattr(task, 'line_pm_slots', []),
+                crew_required=getattr(task, 'crew_required', 0.0),
+                splittable=self._is_splittable(task),
             ))
         return scheduled
 
@@ -755,16 +1293,21 @@ class APSScheduler:
         clock: Dict[Tuple[str, int], Tuple[datetime, datetime]] = {}
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
-            order = sorted(line_tasks, key=lambda t: (self._first_shift(solver, x, t), t.due_datetime or datetime.max, t.task_id))
+            # Earliest-due first inside a shift: a shipment due at the shift end must
+            # not be pushed behind work that is not due yet.
+            order = sorted(
+                line_tasks,
+                key=lambda t: (t.due_datetime or datetime.max, self._first_shift(solver, x, t), t.task_id),
+            )
             for s, shift in enumerate(self.shifts):
                 cursor = 0.0
                 for task in order:
                     if (task.task_id, s) not in x:
                         continue
-                    lots = solver.Value(x[task.task_id, s])
-                    if lots <= 0:
+                    units = solver.Value(x[task.task_id, s])
+                    if units <= 0:
                         continue
-                    span = lots * task.lot_millis / TIME_SCALE
+                    span = units * self._unit_millis(task) / TIME_SCALE
                     clock[(task.task_id, s)] = (
                         shift.start_dt + timedelta(seconds=cursor),
                         shift.start_dt + timedelta(seconds=cursor + span),

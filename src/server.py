@@ -30,6 +30,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+from src.audit import AuditConfig, PlanRow, ShiftInfo, audit_schedule_part_level
 from src.balance_builder import build_validation_matrix
 from src.data_loader import (
     CustomerOrder,
@@ -40,10 +41,23 @@ from src.data_loader import (
     save_snapshot_json,
 )
 from src.exporter import export_production_plan, export_validation_matrix_excel
+from src.kernel.rule_mapping import describe_legacy_rule
+from src.labor import load_labor_data
+from src.metric_labels import labels_for
 from src.prechecker import precheck_capacity
+from src.rule_sets import service as rule_set_service
+from src.rule_sets import store as rule_set_store
+from src.rule_sets import cli as rule_cli
+from src.rule_sets import diagnose as rule_diagnose
+from src.rule_sets import sensitivity as rule_sensitivity
 from src.rules import REGISTRY, RuleCategory, RuleStatus, get_rules_for_site
 from src.scheduler import APSScheduler, ScheduleResult, ScheduledTask
-from src.shift_manager import CalendarMode, evaluate_calendar_recommendation, get_topology
+from src.shift_manager import (
+    CalendarMode,
+    DEFAULT_CHANGEOVER_MINUTES,
+    evaluate_calendar_recommendation,
+    get_topology,
+)
 from src.validator import validate_schedule, diagnose_empty_shifts
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -373,6 +387,12 @@ def init_app_state():
         session_state["plan"] = build_requirement_plan(session_state["snapshot"])
     except Exception as e:
         print(f"Error loading initial database: {e}")
+    try:
+        created = rule_set_service.ensure_seed()
+        if created:
+            print(f"[rules] seeded Phase 1 baseline for {', '.join(created)}")
+    except Exception as e:
+        print(f"[rules] seed skipped: {e}")
 
 
 def startup_event():
@@ -470,6 +490,20 @@ class SolvePayload(BaseModel):
     lookahead_enabled: Optional[bool] = None
     lookahead_days: Optional[int] = None
     max_pull_forward_days: Optional[int] = None
+    use_rule_set: bool = True
+
+
+class RuleSetSavePayload(BaseModel):
+    payload: Dict[str, Any]
+    note: str = ""
+    activate: bool = False
+
+
+class RuleAnalysisPayload(BaseModel):
+    version_id: Optional[int] = None
+    site: str = "WL"
+    budget: float = 15.0
+    pct: float = 0.2
 
 
 # ---------------- API Endpoints ----------------
@@ -1112,7 +1146,18 @@ def get_rules(site: Optional[str] = None):
         "R-CR-01": "enforce_customer_priority",
     }
 
+    current_rule_set, _ = rule_set_service.active_rule_set(target_site)
+    active_templates = {
+        rule.template_id for rule in current_rule_set.rules if rule.enabled
+    } if current_rule_set is not None else set()
+    active_rule_ids: Dict[str, str] = {}
+    if current_rule_set is not None:
+        for rule in current_rule_set.rules:
+            if rule.enabled:
+                active_rule_ids.setdefault(rule.template_id, rule.rule_id)
+
     for r_id, r in sorted(site_rules.items(), key=lambda x: x[1].row_index):
+        kernel_mapping = describe_legacy_rule(r_id, active_templates, active_rule_ids)
         rules_list.append({
             "rule_id": r.rule_id,
             "row_index": r.row_index,
@@ -1129,10 +1174,160 @@ def get_rules(site: Optional[str] = None):
             "ai_logic": r.ai_logic,
             "is_engine_switch": r_id in engine_switches,
             "switch_key": engine_switches.get(r_id),
+            "kernel_status": kernel_mapping["status"],
+            "kernel_status_label": kernel_mapping["label"],
+            "kernel_templates": kernel_mapping["templates"],
+            "kernel_rule_ids": kernel_mapping["rule_ids"],
             "checked": True,  # Default all checked
             "load_limit_mode": "100",  # Default 95% ~ 100%
         })
     return {"site": target_site, "rules": rules_list}
+
+
+@app.get("/api/rule-sets")
+def list_rule_sets(site: Optional[str] = None):
+    target = site or session_state["site"]
+    return {"site": target, "versions": rule_set_service.list_versions(target)}
+
+
+@app.get("/api/rule-sets/active")
+def get_active_rule_set(site: Optional[str] = None):
+    target = site or session_state["site"]
+    record = rule_set_store.get_active(target)
+    warnings: List[str] = []
+    if record:
+        _, warnings = rule_set_service.validate_payload(record["payload"])
+    return {"site": target, "active": record, "warnings": warnings}
+
+
+@app.get("/api/rule-sets/template")
+def download_rule_template(site: Optional[str] = None):
+    target = site or session_state["site"]
+    handle, path = tempfile.mkstemp(suffix=".xlsx")
+    os.close(handle)
+    rule_set_service.write_template(path, site=target)
+    return FileResponse(
+        path,
+        filename=f"{target}_rule_template.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.post("/api/rule-sets/import")
+async def import_rule_set(
+    file: UploadFile = File(...),
+    site: str = Form("WL"),
+    note: str = Form(""),
+    activate: bool = Form(False),
+):
+    suffix = os.path.splitext(file.filename or "rules.xlsx")[1] or ".xlsx"
+    handle, path = tempfile.mkstemp(suffix=suffix)
+    os.close(handle)
+    try:
+        with open(path, "wb") as output:
+            output.write(await file.read())
+        return rule_set_service.import_excel(path, site=site, note=note, activate=activate)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+@app.post("/api/rule-sets/save")
+def save_rule_set(payload: RuleSetSavePayload):
+    return rule_set_service.save_payload(
+        payload.payload,
+        note=payload.note,
+        activate=payload.activate,
+    )
+
+
+@app.get("/api/rule-sets/diff")
+def diff_rule_sets(from_id: int, to_id: int):
+    before = rule_set_service.get_version(from_id)
+    after = rule_set_service.get_version(to_id)
+    if before is None or after is None:
+        raise HTTPException(status_code=404, detail="rule set version not found")
+    return rule_set_service.diff_payloads(before["payload"], after["payload"])
+
+
+@app.post("/api/rule-sets/{version_id}/activate")
+def activate_rule_set(version_id: int):
+    try:
+        return rule_set_service.activate(version_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/api/rule-sets/{version_id}/export")
+def export_rule_set(version_id: int):
+    record = rule_set_service.get_version(version_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="rule set version not found")
+    from src.kernel.types import RuleSet
+    from src.rule_sets import excel as rule_excel
+
+    rule_set = RuleSet.from_dict(record["payload"])
+    handle, path = tempfile.mkstemp(suffix=".xlsx")
+    os.close(handle)
+    rule_excel.export_rule_set(rule_set, path)
+    return FileResponse(
+        path,
+        filename=f"{rule_set.site}_{rule_set.rule_set_id}_v{rule_set.version}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _analysis_payload(version_id: Optional[int], site: str) -> Dict[str, Any]:
+    record = (
+        rule_set_service.get_version(version_id)
+        if version_id
+        else rule_set_store.get_active(site)
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="rule set version not found")
+    return record["payload"]
+
+
+@app.post("/api/rule-sets/sensitivity")
+def rule_sensitivity_endpoint(payload: RuleAnalysisPayload):
+    target_site = payload.site.upper()
+    data = _analysis_payload(payload.version_id, target_site)
+    solve_fn = rule_cli.make_solve_fn(target_site, max(5.0, payload.budget), 10)
+    return rule_sensitivity.run_sensitivity(data, solve_fn, pct=payload.pct)
+
+
+@app.post("/api/rule-sets/diagnose")
+def rule_diagnose_endpoint(payload: RuleAnalysisPayload):
+    target_site = payload.site.upper()
+    data = _analysis_payload(payload.version_id, target_site)
+    solve_fn = rule_cli.make_solve_fn(target_site, max(5.0, payload.budget), 10)
+    return rule_diagnose.diagnose(data, solve_fn)
+
+
+@app.get("/api/rule-sets/templates")
+def list_rule_templates():
+    from src.kernel.registry import TEMPLATES
+
+    return [
+        {
+            "template_id": spec.template_id,
+            "description": spec.description,
+            "default_nature": spec.default_nature,
+            "default_group": spec.default_group,
+            "params": {param.name: param.default for param in spec.params},
+        }
+        for spec in TEMPLATES.values()
+    ]
+
+
+@app.get("/api/rule-sets/{version_id}")
+def get_rule_set_version(version_id: int):
+    record = rule_set_service.get_version(version_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="rule set version not found")
+    return record
 
 
 @app.post("/api/solve")
@@ -1223,7 +1418,9 @@ def run_solver(payload: SolvePayload):
             if payload.rule_options.get(rk, {}).get("load_limit_mode") == "105":
                 allow_105_sf = True
     enforce_on_time_delivery = ("R-FG-01" in enabled or "R-WL-20" in enabled or "R-SY-01" in enabled or "R-SY-09" in enabled)
-    enforce_concurrency_limit = ("R-FG-13" in enabled or "R-SY-05" in enabled)
+    # R-WL-11 is the WL rule for "merge same-model runs, keep the line to a few
+    # models per shift", so it also switches the ≤3-models-per-shift limit on.
+    enforce_concurrency_limit = ("R-FG-13" in enabled or "R-SY-05" in enabled or "R-WL-11" in enabled)
     enforce_controlled_window = ("R-WL-14" in enabled)
     enforce_mpq_batch = ("R-FG-02" in enabled or "R-SF-09" in enabled or "R-WL-09" in enabled or "R-WL-15" in enabled)
     enforce_material_balance = ("R-SF-03" in enabled or "R-WL-23" in enabled or "R-SY-02" in enabled or "R-SY-04" in enabled)
@@ -1234,7 +1431,6 @@ def run_solver(payload: SolvePayload):
     enforce_pm_maintenance = ("R-PM-01" in enabled or "R-WL-27" in enabled)
     enforce_customer_priority = ("R-CR-01" in enabled or "R-WL-24" in enabled)
     enforce_weekend_penalty = ("R-SF-07" in enabled or "R-FG-09" in enabled or "R-WL-06" in enabled)
-    enforce_exact_demand = ("R-SF-05" in enabled or "R-FG-07" in enabled or "R-WL-13" in enabled)
 
     try:
         cal_mode = CalendarMode(cal_mode_str)
@@ -1247,6 +1443,31 @@ def run_solver(payload: SolvePayload):
             for s in t.line_pm_slots:
                 if s not in pm_shifts_map[t.line]:
                     pm_shifts_map[t.line].append(s)
+
+    kernel_rule_set = None
+    kernel_templates = set()
+    if payload.use_rule_set:
+        kernel_rule_set, rule_warnings = rule_set_service.active_rule_set(payload.site.upper())
+        for warning in rule_warnings:
+            print(f"  [rules] {warning}")
+        if kernel_rule_set is not None:
+            from src.kernel.registry import IMPLEMENTED_TEMPLATES
+
+            kernel_templates = {
+                rule.template_id
+                for rule in kernel_rule_set.rules
+                if rule.enabled and rule.template_id in IMPLEMENTED_TEMPLATES
+            }
+            print(
+                f"[rules] using {kernel_rule_set.rule_set_id} v{kernel_rule_set.version} "
+                f"({len(kernel_rule_set.rules)} rules, kernel templates: {sorted(kernel_templates)})"
+            )
+
+    labor_data = load_labor_data(DATA_DIR, site=payload.site.upper())
+    for warning in labor_data.warnings:
+        print(f"  [labor] {warning}")
+    for error in labor_data.errors:
+        print(f"  [labor] {error}")
 
     scheduler = APSScheduler(
         plan=plan,
@@ -1268,14 +1489,21 @@ def run_solver(payload: SolvePayload):
         pm_shifts=pm_shifts_map,
         enforce_customer_priority=enforce_customer_priority,
         enforce_weekend_penalty=enforce_weekend_penalty,
-        enforce_exact_demand=enforce_exact_demand,
         allow_105_utilization_fg=allow_105_fg,
         allow_105_utilization_sf=allow_105_sf,
+        rule_set=kernel_rule_set,
+        kernel_templates=kernel_templates,
+        labor_data=labor_data,
     )
 
     # Solve with capacity overload diagnosis
+    solve_budget = float(payload.time_limit_seconds)
+    if kernel_templates:
+        # The compiled path carries extra variables/constraints; keep the UI wait
+        # bounded but give the hard tier enough time to find the compliant packing.
+        solve_budget = max(solve_budget, 90.0)
     try:
-        result = scheduler.solve(time_limit_seconds=float(payload.time_limit_seconds))
+        result = scheduler.solve(time_limit_seconds=solve_budget)
     except RuntimeError as e:
         precheck = precheck_capacity(plan, scheduler.shifts)
         raise HTTPException(
@@ -1321,8 +1549,8 @@ def run_solver(payload: SolvePayload):
         plan,
         result,
         site=payload.site,
-        allow_105_fg=allow_105_fg,
-        allow_105_sf=allow_105_sf,
+        allow_105_fg=allow_105_fg or getattr(result, "allow_105_fg", False),
+        allow_105_sf=allow_105_sf or getattr(result, "allow_105_sf", False),
     )
     session_state["checks"] = checks
 
@@ -1358,6 +1586,7 @@ def run_solver(payload: SolvePayload):
     horizon_start = scheduler.shifts[0].start_dt if scheduler.shifts else min_start
     horizon_end = scheduler.shifts[-1].end_dt if scheduler.shifts else max_end
     total_horizon_sec = max(1.0, (horizon_end - horizon_start).total_seconds())
+    shift_lookup = {(shift.date_str, shift.shift_name): shift for shift in scheduler.shifts}
 
     # Task Schedule for Gantt/Table
     task_schedule_list = []
@@ -1386,6 +1615,34 @@ def run_solver(payload: SolvePayload):
         dur_pct = max(0.8, round((t.end_dt - t.start_dt).total_seconds() / total_horizon_sec * 100.0, 3))
         due_pct = round((t.due_datetime - horizon_start).total_seconds() / total_horizon_sec * 100.0, 3) if t.due_datetime else None
 
+        # One block per shift: this is what makes intermittent production visible.
+        segments = []
+        for (date_str, shift_name), qty in t.shift_breakdown.items():
+            shift = shift_lookup.get((date_str, shift_name))
+            if shift is None or qty <= 0:
+                continue
+            seg_left = max(0.0, round((shift.start_dt - horizon_start).total_seconds() / total_horizon_sec * 100.0, 3))
+            seg_width = max(0.1, round((shift.end_dt - shift.start_dt).total_seconds() / total_horizon_sec * 100.0, 3))
+            seg_seconds = t.shift_seconds.get((date_str, shift_name), 0.0)
+            segments.append({
+                "key": f"{date_str} {shift_name}",
+                "date": date_str,
+                "shift": shift_name,
+                "qty": int(qty),
+                "duration_hours": round(seg_seconds / 3600.0, 2),
+                "start_dt": shift.start_dt.strftime("%m/%d %H:%M"),
+                "end_dt": shift.end_dt.strftime("%m/%d %H:%M"),
+                "start_timestamp": int(shift.start_dt.timestamp()),
+                "end_timestamp": int(shift.end_dt.timestamp()),
+                "left_percent": seg_left,
+                "width_percent": seg_width,
+            })
+        segments.sort(key=lambda segment: segment["left_percent"])
+        snake_points = " ".join(
+            f"{segment['left_percent'] + segment['width_percent'] / 2:.3f},50"
+            for segment in segments
+        )
+
         task_schedule_list.append({
             "task_id": t.task_id,
             "stage": t.stage,
@@ -1399,6 +1656,7 @@ def run_solver(payload: SolvePayload):
             "mpq": t.mpq,
             "lot_size": t.lot_size,
             "lots": t.lots,
+            "mold_id": getattr(t, "mold_id", None),
             "start_dt": t.start_dt.strftime("%m/%d %H:%M"),
             "end_dt": t.end_dt.strftime("%m/%d %H:%M"),
             "due_dt": t.due_datetime.strftime("%m/%d %H:%M") if t.due_datetime else "-",
@@ -1406,15 +1664,66 @@ def run_solver(payload: SolvePayload):
             "end_timestamp": int(t.end_dt.timestamp()),
             "due_timestamp": int(t.due_datetime.timestamp()) if t.due_datetime else None,
             "duration_hours": round(t.duration_hours, 1),
+            "crew_required": getattr(t, "crew_required", 0.0),
             "slack_hours": slack_h,
             "is_late": (t.end_dt > t.due_datetime) if t.due_datetime else False,
             "left_percent": left_pct,
             "width_percent": dur_pct,
             "due_percent": due_pct,
             "shift_breakdown": {f"{k[0]} {k[1]}": v for k, v in t.shift_breakdown.items()},
+            "shift_segments": segments,
+            "snake_points": snake_points,
             "bom_children": bom_children,
             "bom_parents": bom_parents,
         })
+
+    # Suggested production order and changeover flags per line.
+    by_line: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for item in task_schedule_list:
+        by_line[item["line"]].append(item)
+    for line_items in by_line.values():
+        line_items.sort(key=lambda item: item["start_timestamp"])
+        previous = None
+        for index, item in enumerate(line_items, start=1):
+            item["sequence"] = index
+            changed = previous is not None and (
+                previous["part_no"] != item["part_no"]
+                or previous.get("mold_id") != item.get("mold_id")
+            )
+            item["changeover"] = bool(changed)
+            item["changeover_from"] = previous["part_no"] if changed else ""
+            previous = item
+
+    # Sequence small production blocks per line (for Gantt dots and table rows).
+    segments_by_line: Dict[str, List[Tuple[Dict[str, Any], Dict[str, Any]]]] = defaultdict(list)
+    for item in task_schedule_list:
+        for segment in item.get("shift_segments", []):
+            segments_by_line[item["line"]].append((item, segment))
+    for line_segments in segments_by_line.values():
+        line_segments.sort(key=lambda pair: (
+            pair[1]["start_timestamp"], pair[0]["start_timestamp"], pair[0]["task_id"]
+        ))
+        for sequence, (item, segment) in enumerate(line_segments, start=1):
+            segment["sequence"] = sequence
+        previous_item = None
+        previous_segment = None
+        for sequence, (item, segment) in enumerate(line_segments, start=1):
+            changed = previous_item is not None and (
+                previous_item["part_no"] != item["part_no"]
+                or previous_item.get("mold_id") != item.get("mold_id")
+            )
+            segment["changeover"] = bool(changed)
+            segment["changeover_from"] = previous_item["part_no"] if changed else ""
+            segment["same_shift_as_previous"] = bool(
+                previous_segment is not None
+                and previous_segment["start_timestamp"] == segment["start_timestamp"]
+            )
+            previous_item = item
+            previous_segment = segment
+    for item in task_schedule_list:
+        for index, segment in enumerate(item.get("shift_segments", []), start=1):
+            segment["task_sequence"] = index
+            segment["is_first"] = index == 1
 
     # Precheck Report
     precheck = precheck_capacity(plan, scheduler.shifts)
@@ -1468,6 +1777,7 @@ def run_solver(payload: SolvePayload):
             "ai_logic": rule.ai_logic,
             "is_checked": is_checked,
             "metrics": getattr(matched_check, "metrics", {}) if matched_check else {},
+            "metric_labels": labels_for(getattr(matched_check, "metrics", {}) if matched_check else {}),
             "calculation_details": getattr(matched_check, "calculation_details", []) if matched_check else [],
             "table_data": getattr(matched_check, "table_data", None) if matched_check else None,
             "violations": getattr(matched_check, "violations", []) if matched_check else [],
@@ -1535,6 +1845,7 @@ def run_solver(payload: SolvePayload):
             "violations": c.violations,
             "total_violations": len(c.violations),
             "metrics": getattr(c, "metrics", {}),
+            "metric_labels": labels_for(getattr(c, "metrics", {})),
             "calculation_details": getattr(c, "calculation_details", []),
             "table_data": getattr(c, "table_data", None),
         }
@@ -1549,6 +1860,9 @@ def run_solver(payload: SolvePayload):
         "solve_time": session_state["last_solve_time"],
         "kpi": {
             "status_name": result.status_name,
+            "capacity_note": getattr(result, "capacity_note", ""),
+            "allow_105_fg": getattr(result, "allow_105_fg", allow_105_fg),
+            "allow_105_sf": getattr(result, "allow_105_sf", allow_105_sf),
             "total_fg_tasks": len(fg_tasks),
             "total_sf_tasks": len(sf_tasks),
             "total_tasks": len(result.tasks),
@@ -1906,6 +2220,50 @@ async def audit_manual_schedule(
         allow_105_sf=allow_105_sf,
         baseline_result=baseline_result,
     )
+
+    # Second, independent part-level audit: no solver objects, own netting/BOM/CT-TRP.
+    # The uploaded PSI sheet is part-level, so the audit aggregates the requirement
+    # plan by part instead of by order.
+    audit_rows = []
+    for item in tasks_raw:
+        pn = item["part_no"]
+        param = snap.fg_params.get(pn) or snap.sf_params.get(pn)
+        stage = "FG" if pn in snap.fg_params else "SF"
+        line = param.line if param else item["line"]
+        for shift_key, qty in item["breakdown"].items():
+            audit_rows.append(
+                PlanRow(
+                    task_id=f"MANUAL::{pn}",
+                    stage=stage,
+                    line=line,
+                    part_no=pn,
+                    order_id="",
+                    shift_key=str(shift_key),
+                    quantity=float(qty),
+                )
+            )
+    shift_infos = [
+        ShiftInfo(
+            key=f"{s.date_str} {s.shift_name}",
+            index=s.index,
+            date_str=s.date_str,
+            shift_name=s.shift_name,
+            start_dt=s.start_dt,
+            end_dt=s.end_dt,
+            duration_hours=s.duration_hours,
+        )
+        for s in shifts
+    ]
+    independent_audit = audit_schedule_part_level(
+        snap,
+        audit_rows,
+        shift_infos,
+        AuditConfig(
+            setup_minutes=DEFAULT_CHANGEOVER_MINUTES,
+            allow_105=allow_105_fg or allow_105_sf,
+            delivery_tolerance_minutes=24.0 if (allow_105_fg or allow_105_sf) else 0.0,
+        ),
+    )
     empty_shift_reasons = diagnose_empty_shifts(manual_tasks, shifts, plan)
     matrix = build_validation_matrix(snap, plan, manual_result, site=site_upper)
 
@@ -1939,6 +2297,7 @@ async def audit_manual_schedule(
             "ai_logic": rule.ai_logic,
             "is_checked": True,
             "metrics": getattr(matched_check, "metrics", {}) if matched_check else {},
+            "metric_labels": labels_for(getattr(matched_check, "metrics", {}) if matched_check else {}),
             "calculation_details": getattr(matched_check, "calculation_details", []) if matched_check else [],
             "table_data": getattr(matched_check, "table_data", None) if matched_check else None,
             "violations": getattr(matched_check, "violations", []) if matched_check else [],
@@ -1952,6 +2311,7 @@ async def audit_manual_schedule(
             "violations": c.violations,
             "total_violations": len(c.violations),
             "metrics": getattr(c, "metrics", {}),
+            "metric_labels": labels_for(getattr(c, "metrics", {})),
             "calculation_details": getattr(c, "calculation_details", []),
             "table_data": getattr(c, "table_data", None),
         }
@@ -2032,6 +2392,7 @@ async def audit_manual_schedule(
             "end_dt": t.end_dt.strftime("%m/%d %H:%M"),
             "due_dt": t.due_datetime.strftime("%m/%d %H:%M") if t.due_datetime else "-",
             "duration_hours": round(t.duration_hours, 1),
+            "crew_required": getattr(t, "crew_required", 0.0),
             "slack_hours": slack_h,
             "is_late": (t.end_dt > t.due_datetime) if t.due_datetime else False,
             "left_percent": left_pct,
@@ -2094,6 +2455,20 @@ async def audit_manual_schedule(
         "tasks": task_schedule_list,
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
+        "independent_audit": {
+            "passed": independent_audit.passed,
+            "summary": f"{len(independent_audit.checks) - len(independent_audit.failed_names())}/{len(independent_audit.checks)} 通过",
+            "checks": [
+                {
+                    "name": check.name,
+                    "passed": check.passed,
+                    "violations": check.violations[:20],
+                    "metrics": check.metrics,
+                    "metric_labels": labels_for(check.metrics),
+                }
+                for check in independent_audit.checks
+            ],
+        },
         "empty_shift_reasons": empty_shift_reasons,
     }
 
@@ -2102,6 +2477,15 @@ async def audit_manual_schedule(
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/rule-sets", response_class=HTMLResponse)
+def rule_sets_page():
+    rule_sets_file = os.path.join(STATIC_DIR, "rule_sets.html")
+    if os.path.exists(rule_sets_file):
+        with open(rule_sets_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Rule Set Editor - Frontend Building...</h1>"
 
 
 @app.get("/", response_class=HTMLResponse)

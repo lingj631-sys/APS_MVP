@@ -1,0 +1,98 @@
+{
+  "rule_set_id": "WL_2026Q4",
+  "site": "WL",
+  "version": 1,
+  "effective_from": "2026-10-01",
+  "effective_to": "2026-12-31",
+  "groups": [
+    {"id": "G0_PHYSICAL", "priority": 0, "mode": "hard"},
+    {"id": "G1_DELIVERY", "priority": 10, "mode": "lexicographic"},
+    {"id": "G2_CAPACITY", "priority": 20, "mode": "lexicographic"},
+    {"id": "G3_CHANGEOVER", "priority": 30, "mode": "weighted"},
+    {"id": "G4_INVENTORY", "priority": 40, "mode": "weighted"}
+  ],
+  "rules": [
+    {
+      "id": "WL_MPQ_FG",
+      "template": "min_batch",
+      "scope": {"stage": "FG"},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "params": {"unit": "MPQ"}
+    },
+    {
+      "id": "WL_MPQ_SF",
+      "template": "min_batch",
+      "scope": {"stage": "SF"},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G0_PHYSICAL",
+      "params": {"unit": "MPQ"}
+    },
+    {
+      "id": "WL_DUE_FG",
+      "template": "due_date",
+      "scope": {"stage": "FG"},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G1_DELIVERY",
+      "params": {"mode": "hard", "cutoff_time": "15:00"}
+    },
+    {
+      "id": "WL_CAP_FG",
+      "template": "capacity_utilization",
+      "scope": {"stage": "FG"},
+      "nature": "soft",
+      "weight": 100,
+      "group": "G2_CAPACITY",
+      "params": {"min_util": 0.95, "max_util": 1.0, "tail_exempt": true, "include_setup": false}
+    },
+    {
+      "id": "WL_CAP_SF",
+      "template": "capacity_utilization",
+      "scope": {"stage": "SF"},
+      "nature": "soft",
+      "weight": 100,
+      "group": "G2_CAPACITY",
+      "params": {"min_util": 0.95, "max_util": 1.0, "tail_exempt": true, "include_setup": false}
+    },
+    {
+      "id": "WL_CAP_PGLINKAGE_105",
+      "template": "capacity_utilization",
+      "scope": {"line": "PGLINKAGE"},
+      "nature": "soft",
+      "weight": 140,
+      "group": "G2_CAPACITY",
+      "inherit": "replace",
+      "params": {"min_util": 0.95, "max_util": 1.05, "tail_exempt": true}
+    },
+    {
+      "id": "WL_CHANGEOVER",
+      "template": "changeover",
+      "scope": {},
+      "nature": "soft",
+      "weight": 80,
+      "group": "G3_CHANGEOVER",
+      "params": {"setup_minutes": 0, "count_by": "run_start", "cross_shift_inherit": true}
+    },
+    {
+      "id": "WL_SF_STOCK",
+      "template": "inventory_bound",
+      "scope": {"stage": "SF"},
+      "nature": "soft",
+      "weight": 20,
+      "group": "G4_INVENTORY",
+      "params": {"max_days": 3, "min_days": 0}
+    },
+    {
+      "id": "WL_LABOR",
+      "template": "labor_capacity",
+      "scope": {},
+      "nature": "hard",
+      "weight": 1,
+      "group": "G2_CAPACITY",
+      "params": {"available_headcount": 6, "crew_source": "part", "allow_overtime": false}
+    }
+  ]
+}

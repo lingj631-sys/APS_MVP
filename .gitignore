@@ -39,3 +39,12 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Runtime rule-set DB / generated test artifacts
+data/rule_sets.sqlite3
+data/test_rules.sqlite3
+data/rule_template.xlsx
+
+# Local visual reference files
+kimi_reference*.css
+

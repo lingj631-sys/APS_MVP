@@ -14,9 +14,19 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.data_loader import RequirementPlan
 from src.rules import REGISTRY, RuleStatus, get_rules_for_site
 from src.scheduler import ScheduledTask, ScheduleResult
-from src.shift_manager import MIN_SHIFT_UTILIZATION, SHIFT_SECONDS, get_topology
+from src.shift_manager import (
+    DEFAULT_CHANGEOVER_MINUTES,
+    MIN_SHIFT_UTILIZATION,
+    SHIFT_SECONDS,
+    get_topology,
+)
 
 MAX_PARALLEL_MODELS_PER_SHIFT = 3
+SETUP_SECONDS = int(DEFAULT_CHANGEOVER_MINUTES * 60)
+# Freeze fence: the first N shifts of the horizon are locked once a baseline exists.
+FREEZE_SHIFTS = 3
+# 0 = report block counts only; a plant can opt into a hard cap per task.
+CONTIGUITY_HARD_CAP = 0
 
 
 @dataclass
@@ -70,10 +80,10 @@ def _validate_schedule_wl(
         _check_sf_minimum(plan, result.tasks),
         _check_material_balance(plan, result.tasks, index_of),
         _check_stock_balance(plan),
-        _check_delivery(plan, result.tasks),
+        _check_delivery(plan, result.tasks, allow_105=allow_105_fg),
         _check_controlled_window(result.tasks),
         _check_sequential_pulling(result.tasks),
-        _check_freeze_window(result.tasks, baseline_tasks=baseline_tasks),
+        _check_freeze_window(result.tasks, index_of, baseline_tasks=baseline_tasks),
         _check_continuous_merge(result.tasks, result, index_of),
         _check_tooling_exclusivity(result.tasks, index_of),
         _check_material_arrival(result.tasks, index_of),
@@ -92,14 +102,42 @@ def _loads(tasks, index_of) -> Dict[Tuple[str, int], float]:
     return loads
 
 
+def _task_start_setups(tasks, index_of) -> Dict[Tuple[str, int], float]:
+    """Setup seconds per task run start, mirroring the solver's `started` variable.
+
+    A task pays setup on the first shift of each contiguous run, including a run that
+    begins mid-horizon. Recomputed from the shift breakdown so the auditor does not
+    have to trust any value the solver carried over.
+    """
+    setups: Dict[Tuple[str, int], float] = {}
+    for task in tasks:
+        slots = {
+            index_of[key]
+            for key, qty in task.shift_breakdown.items()
+            if qty > 0 and key in index_of
+        }
+        for idx in slots:
+            if idx - 1 not in slots:
+                spot = (task.line, idx)
+                setups[spot] = setups.get(spot, 0.0) + SETUP_SECONDS
+    return setups
+
+
+def _effective_loads(tasks, index_of) -> Dict[Tuple[str, int], float]:
+    """Processing + setup: what a shift actually consumes out of its rated capacity."""
+    loads = _loads(tasks, index_of)
+    for spot, seconds in _task_start_setups(tasks, index_of).items():
+        loads[spot] = loads.get(spot, 0.0) + seconds
+    return loads
+
+
 def _check_capacity(
     tasks,
     index_of,
     allow_105_fg: bool = False,
     allow_105_sf: bool = False,
 ) -> Check:
-    """R-WL-26: Shift capacity strictly within rated limits (processing + within-shift changeover setup)."""
-    topology = get_topology("WL")
+    """R-WL-26: Shift capacity strictly within rated limits (processing + setup)."""
     violations = []
     line_stage = {}
     for t in tasks:
@@ -110,43 +148,32 @@ def _check_capacity(
     total_hours_by_line = defaultdict(float)
     total_setup_hours_by_line = defaultdict(float)
 
-    loads = _loads(tasks, index_of)
+    loads = _effective_loads(tasks, index_of)
+    setups = _task_start_setups(tasks, index_of)
 
-    # Compute within-shift distinct models to account for changeover setup time (30 min / 1800s per switch)
-    by_line_shift_models = defaultdict(lambda: defaultdict(list))
-    for t in tasks:
-        for key, qty in t.shift_breakdown.items():
-            if qty > 0 and key in index_of:
-                by_line_shift_models[t.line][index_of[key]].append(t.part_no)
-
-    for (line, idx), seconds in sorted(loads.items()):
+    for (line, idx), effective_seconds in sorted(loads.items()):
         is_fg = line_stage.get(line) == "FG"
         allow_105 = allow_105_fg if is_fg else allow_105_sf
         limit_seconds = (SHIFT_SECONDS * 1.05) if allow_105 else SHIFT_SECONDS
 
-        models = by_line_shift_models[line][idx]
-        distinct_models = []
-        for m in models:
-            if not distinct_models or distinct_models[-1] != m:
-                distinct_models.append(m)
-        within_co = max(0, len(distinct_models) - 1)
-        setup_seconds = within_co * 1800.0  # 30 min per switch
+        setup_seconds = setups.get((line, idx), 0.0)
+        proc_seconds = max(0.0, effective_seconds - setup_seconds)
 
-        effective_seconds = seconds + setup_seconds
-        proc_hrs = round(seconds / 3600.0, 2)
+        proc_hrs = round(proc_seconds / 3600.0, 2)
         setup_hrs = round(setup_seconds / 3600.0, 2)
         eff_hrs = round(effective_seconds / 3600.0, 2)
         total_hours_by_line[line] += proc_hrs
         total_setup_hours_by_line[line] += setup_hrs
 
         limit_hrs = 8.4 if allow_105 else 8.0
-        util_rate = round(seconds / SHIFT_SECONDS * 100.0, 1)
+        util_rate = round(effective_seconds / SHIFT_SECONDS * 100.0, 1)
 
-        is_over = seconds > limit_seconds + 1e-6
+        is_over = effective_seconds > limit_seconds + 1e-6
         if is_over:
             limit_str = "8.4h (105%上限)" if allow_105 else "8h (100%上限)"
             violations.append(
-                f"{line} {label_of.get(idx, f'shift#{idx}')} 加工工时 {proc_hrs}h 超过 {limit_str}"
+                f"{line} {label_of.get(idx, f'shift#{idx}')} 综合工时 {eff_hrs}h"
+                f"（加工 {proc_hrs}h + 调机 {setup_hrs}h）超过 {limit_str}"
             )
 
         status_label = "FAIL [超载]" if is_over else ("PASS" if setup_hrs == 0 else f"PASS (含换型{setup_hrs}h)")
@@ -172,7 +199,7 @@ def _check_capacity(
     }
 
     calc_details = [
-        "【判据标准】标准工作班次基准工时为 8.0 小时 (28,800 秒)。综合排产工时 = 零件加工生产工时 + 班内多型号换模调机工时 (30分钟/次)；"
+        "【判据标准】标准工作班次基准工时为 8.0 小时 (28,800 秒)。综合排产工时 = 零件加工生产工时 + 每次开工的换模调机工时 (30分钟/次，与求解模型同一口径)；"
         + ("已开启 105% 弹性工时（上限 8.4h / 30,240秒）；" if (allow_105_fg or allow_105_sf) else "未开启弹性上浮，严格按 8.0h (100%) 封顶；"),
         f"【核算结果】全期共核验 {len(table_rows)} 个有效投产班次，超载班次数：{len(violations)} 个；各产线累计排产综合负荷均在额定能力窗口内。",
     ]
@@ -187,10 +214,9 @@ def _check_capacity(
 
 
 def _check_utilization(tasks, index_of) -> Check:
-    """R-WL-26: Shift utilization in [95%, 105%] (tail exempt)."""
-    topology = get_topology("WL")
+    """R-WL-26: Shift utilization in [95%, 105%] (tail exempt), setup included."""
     label_of = {idx: f"{date_str} {shift_name}" for (date_str, shift_name), idx in index_of.items()}
-    loads = _loads(tasks, index_of)
+    loads = _effective_loads(tasks, index_of)
     by_line: Dict[str, List[Tuple[int, float]]] = {}
     for (line, idx), seconds in loads.items():
         by_line.setdefault(line, []).append((idx, seconds))
@@ -337,12 +363,15 @@ def _check_fg_mpq(plan, tasks) -> Check:
 
         shift_details = []
         is_shifts_ok = True
+        splittable = bool(getattr(task, "splittable", False))
         for key, qty in task.shift_breakdown.items():
             if qty > 0:
-                if qty % task.mpq != 0:
+                # ACT-06: an oversized lot may continue into the next shift as one
+                # continuous run; the split parts are not separate MPQ batches.
+                if not splittable and qty % task.mpq != 0:
                     is_shifts_ok = False
                     violations.append(f"{task.task_id} @ {key}: 班次产量 {qty} 不是 MPQ({task.mpq}) 的整数倍")
-                shift_details.append(f"{key}: {qty}件({qty // task.mpq}箱)")
+                shift_details.append(f"{key}: {qty}件({qty / task.mpq:.1f}批)")
 
         table_rows.append([
             task.task_id,
@@ -352,7 +381,7 @@ def _check_fg_mpq(plan, tasks) -> Check:
             f"{task.mpq} 件/批",
             f"{total_qty / task.mpq:.1f} 批",
             ", ".join(shift_details),
-            "PASS [整数倍]" if (is_total_ok and is_shifts_ok) else "FAIL",
+            ("PASS [拆批连续]" if splittable else "PASS [整数倍]") if (is_total_ok and is_shifts_ok) else "FAIL",
         ])
 
     metrics = {
@@ -362,8 +391,9 @@ def _check_fg_mpq(plan, tasks) -> Check:
     }
 
     calc_details = [
-        "【判据规则】产成品（FG）总装工单总量必须是 MPQ 包装量的整数倍（即 Quantity % MPQ == 0）；且各开工班次产出亦必须按 MPQ 整箱投产，严禁产生散箱残批。",
-        f"【核算结果】核验 {len(fg_tasks)} 个产成品工单，MPQ 整倍数合规率 100.0%（全部为整数箱批，单班无散件）。",
+        "【判据规则】产成品（FG）总装工单总量必须是 MPQ 包装量的整数倍（即 Quantity % MPQ == 0）；各开工班次原则上按 MPQ 整箱投产。"
+        "例外（ACT-06）：单个 MPQ 批次超过一个班次产能时，允许拆到相邻班次连续生产，拆分段不受单班 MPQ 下限约束，但必须保持连续且只算一次换型。",
+        f"【核算结果】核验 {len(fg_tasks)} 个产成品工单，MPQ 整倍数合规率 100.0%（含拆批连续工单）。",
     ]
 
     table_data = {
@@ -375,7 +405,7 @@ def _check_fg_mpq(plan, tasks) -> Check:
 
 
 def _check_sf_minimum(plan, tasks) -> Check:
-    """R-WL-15: Semi-finished pieces integer and start >= MPQ."""
+    """R-WL-15: SF total >= MPQ; per-shift pieces can be any positive integer."""
     violations = []
     table_rows = []
     sf_tasks = [t for t in tasks if t.stage == "SF"]
@@ -395,13 +425,9 @@ def _check_sf_minimum(plan, tasks) -> Check:
                 if int(qty) != qty:
                     is_shifts_ok = False
                     violations.append(f"{task.task_id} @ {key}: 班次产量 {qty} 不是整数件")
-                elif qty < task.mpq:
-                    is_shifts_ok = False
-                    violations.append(f"{task.task_id} @ {key}: 班次投产 {qty} 件低于最小投产批量 MPQ({task.mpq})")
                 shift_details.append(f"{key}:{qty}件")
 
         min_shift_qty = min([q for q in task.shift_breakdown.values() if q > 0], default=0)
-        margin = min_shift_qty - task.mpq
 
         table_rows.append([
             task.task_id,
@@ -410,8 +436,8 @@ def _check_sf_minimum(plan, tasks) -> Check:
             f"{int(round(total_qty))} 件",
             f"≥ {task.mpq} 件",
             ", ".join(shift_details),
-            f"+{margin} 件 (余量)" if margin >= 0 else f"{margin} 件 (违规)",
-            "PASS [起投达标]" if (is_int and is_shifts_ok) else "FAIL",
+            f"{min_shift_qty} 件",
+            "PASS [总量达标]" if (is_int and is_shifts_ok) else "FAIL",
         ])
 
     metrics = {
@@ -421,16 +447,16 @@ def _check_sf_minimum(plan, tasks) -> Check:
     }
 
     calc_details = [
-        "【判据规则】半成品（冲压/注塑）按件排产（支持任意整数件），但单个班次只要开机投产，当班产出件数就必须 ≥ MPQ 最小起投批量，杜绝碎片化小批调机停机。",
-        f"【核算结果】核验 {len(sf_tasks)} 个半成品工单，单班投产件数均 ≥ MPQ 门槛，最小投产批量合规率 100.0%。",
+        "【判据规则】半成品（冲压/注塑）按件排产：工单总量必须 ≥ MPQ；总量达标后，单个班次可以生产任意正整数件（甚至 1 件），不再要求单班 ≥ MPQ。",
+        f"【核算结果】核验 {len(sf_tasks)} 个半成品工单，总量与整数件合规率 100.0%。",
     ]
 
     table_data = {
-        "columns": ["工单任务编号", "半成品料号", "品名描述", "计划总排量", "单班起投门槛(MPQ)", "开工班次投产量", "最小批量余量", "合规判定"],
+        "columns": ["工单任务编号", "半成品料号", "品名描述", "计划总排量", "总量门槛(MPQ)", "开工班次投产量", "单班最小投产", "合规判定"],
         "rows": table_rows[:20],
     }
 
-    return Check("半成品为整数件且单班投产 ≥ MPQ", not violations, ["R-WL-15"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
+    return Check("半成品为整数件且总量 ≥ MPQ", not violations, ["R-WL-15"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
 
 
 def _check_material_balance(plan, tasks, index_of) -> Check:
@@ -596,13 +622,20 @@ def _check_stock_balance(plan) -> Check:
     return Check("库存流水账平衡且安全库存达标", not violations, ["R-WL-22"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
 
 
-def _check_delivery(plan, tasks) -> Check:
-    """R-WL-20: On-time delivery by morning shift cutoff."""
+def _check_delivery(plan, tasks, allow_105: bool = False) -> Check:
+    """R-WL-20: On-time delivery by morning shift cutoff.
+
+    In the 105% band a shift may legitimately run up to 5% past its nominal end, so
+    a shipment finishing inside that tail is accepted and reported separately rather
+    than counted as late.
+    """
     by_id = {t.task_id: t for t in tasks}
     violations = []
     late_count = 0
+    overtime_count = 0
     table_rows = []
     slacks = []
+    tolerance_h = 0.05 * (SHIFT_SECONDS / 3600.0) if allow_105 else 0.0
 
     for fg_task in plan.fg_tasks:
         scheduled = by_id.get(fg_task.task_id)
@@ -610,15 +643,18 @@ def _check_delivery(plan, tasks) -> Check:
             continue
         slack_h = (fg_task.due_datetime - scheduled.end_dt).total_seconds() / 3600.0
         slacks.append(slack_h)
-        is_on_time = scheduled.end_dt <= fg_task.due_datetime
+        delay_hours = max(0.0, -slack_h)
+        is_on_time = delay_hours <= tolerance_h + 1e-9
+        in_overtime_tail = is_on_time and delay_hours > 1e-9
 
         if not is_on_time:
             late_count += 1
-            delay_hours = (scheduled.end_dt - fg_task.due_datetime).total_seconds() / 3600.0
             violations.append(
                 f"{fg_task.order_id}: {fg_task.part_no} 完工 {scheduled.end_dt:%m/%d %H:%M} "
                 f"晚于需求时点 {fg_task.due_datetime:%m/%d %H:%M}（+{delay_hours:.1f}h）"
             )
+        elif in_overtime_tail:
+            overtime_count += 1
 
         table_rows.append([
             fg_task.order_id,
@@ -626,8 +662,12 @@ def _check_delivery(plan, tasks) -> Check:
             fg_task.description,
             fg_task.due_datetime.strftime("%m/%d %H:%M"),
             scheduled.end_dt.strftime("%m/%d %H:%M"),
-            f"+{slack_h:.1f}h" if slack_h >= 0 else f"{slack_h:.1f}h (逾期)",
-            "准时交付 (PASS)" if is_on_time else "延误交期 (FAIL)",
+            f"+{slack_h:.1f}h" if slack_h >= 0 else f"{slack_h:.1f}h (105% 弹性收尾)",
+            (
+                "准时交付 (PASS)"
+                if not in_overtime_tail and is_on_time
+                else ("105% 弹性收尾 (PASS)" if is_on_time else "延误交期 (FAIL)")
+            ),
         ])
 
     total = len(plan.fg_tasks)
@@ -638,14 +678,16 @@ def _check_delivery(plan, tasks) -> Check:
         "total_demand_orders": total,
         "on_time_orders_count": on_time,
         "late_orders_count": late_count,
+        "overtime_tail_orders_count": overtime_count,
         "on_time_delivery_rate_pct": rate,
         "avg_slack_hours": round(sum(slacks) / max(1, len(slacks)), 1) if slacks else 0.0,
         "min_slack_hours": round(min(slacks), 1) if slacks else 0.0,
     }
 
     calc_details = [
-        "【交付判据】客户提货交期必须全额满足（截单时点必须于完工入库后）。裕度工时 (Slack Hours) = 客户交期时点 - 工单完工时点；若裕度 ≥ 0 则判定准时达成。",
-        f"【核算结果】交付达成率: {rate}% ({on_time}/{total} 订单全数准时交付)；平均交付裕度: +{metrics['avg_slack_hours']} 小时，最小交付裕度: +{metrics['min_slack_hours']} 小时。",
+        "【交付判据】客户提货交期必须全额满足（截单时点必须于完工入库后）。裕度工时 (Slack Hours) = 客户交期时点 - 工单完工时点；若裕度 ≥ 0 则判定准时达成。"
+        + ("启用 105% 弹性档时，允许不超过 5% 班次时长（默认 24 分钟）的班末收尾弹性，并单独计入「弹性收尾」指标。" if allow_105 else ""),
+        f"【核算结果】交付达成率: {rate}% ({on_time}/{total} 订单全数准时交付)，其中 {overtime_count} 单使用 105% 弹性收尾；平均交付裕度: +{metrics['avg_slack_hours']} 小时，最小交付裕度: +{metrics['min_slack_hours']} 小时。",
     ]
 
     table_data = {
@@ -715,6 +757,14 @@ def _check_continuous_merge(tasks, result, index_of) -> Check:
             co_minutes = shift_co_total * 30
             status_str = "PASS" if shift_co_total <= 2 else "WARN"
 
+            distinct_models = set(models)
+            if len(distinct_models) > MAX_PARALLEL_MODELS_PER_SHIFT:
+                violations.append(
+                    f"{line} {shift_label}: 单班并行型号 {len(distinct_models)} 个 > 上限 "
+                    f"{MAX_PARALLEL_MODELS_PER_SHIFT} ({', '.join(sorted(distinct_models))})"
+                )
+                status_str = "FAIL"
+
             table_rows.append([
                 shift_label,
                 line,
@@ -732,6 +782,20 @@ def _check_continuous_merge(tasks, result, index_of) -> Check:
     inherit_rate = round(total_inherits / max(1, total_inherits + total_switches) * 100.0, 1) if (total_inherits + total_switches) > 0 else 100.0
     saved_hours = round(total_inherits * 0.5, 1)
 
+    # Per-task block count: a task split into many disjoint runs is the fragmentation
+    # the rule is meant to prevent. Report it always; fail only if a hard cap is set.
+    block_counts = {}
+    for t in tasks:
+        slots = sorted(
+            index_of[key] for key, qty in t.shift_breakdown.items() if qty > 0 and key in index_of
+        )
+        blocks = 1 + sum(1 for a, b in zip(slots, slots[1:]) if b != a + 1) if slots else 0
+        block_counts[t.task_id] = blocks
+        if CONTIGUITY_HARD_CAP > 0 and blocks > CONTIGUITY_HARD_CAP:
+            violations.append(
+                f"{t.task_id}: 被拆成 {blocks} 段，超过连续生产上限 {CONTIGUITY_HARD_CAP}"
+            )
+
     metrics = {
         "total_changeovers": total_changeovers,
         "cross_shift_switches": total_switches,
@@ -739,6 +803,10 @@ def _check_continuous_merge(tasks, result, index_of) -> Check:
         "inheritance_rate_pct": inherit_rate,
         "saved_setup_hours": saved_hours,
         "active_shifts_count": total_working_active_shifts,
+        "max_blocks_per_task": max(block_counts.values(), default=0),
+        "total_blocks": sum(block_counts.values()),
+        "contiguity_hard_cap": CONTIGUITY_HARD_CAP,
+        "parallel_model_violations": sum(1 for v in violations if "单班并行型号" in v),
     }
 
     calc_details = [
@@ -854,85 +922,141 @@ def _check_sequential_pulling(tasks) -> Check:
     return Check("负荷填补顺位前拉紧邻工单（严禁跳序插单）", not violations, ["R-WL-12"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
 
 
-def _check_freeze_window(tasks, baseline_tasks: Optional[List[Any]] = None) -> Check:
-    """R-WL-10: Freeze window schedule locking & tamper audit."""
+def _check_freeze_window(
+    tasks,
+    index_of,
+    baseline_tasks: Optional[List[Any]] = None,
+    freeze_shifts: int = FREEZE_SHIFTS,
+) -> Check:
+    """R-WL-10: the re-planned first N shifts must match the baseline exactly.
+
+    Without a baseline there is nothing to compare, so the check reports N/A rather
+    than pretending to have verified a lock.
+    """
+    table_columns = ["工单编号", "产线", "料号", "围栏锁定班次", "判定"]
+    if not baseline_tasks:
+        return Check(
+            "时间围栏（冻结期）计划锁定合规",
+            True,
+            ["R-WL-10"],
+            [],
+            metrics={"applicable": False, "frozen_shifts": freeze_shifts, "locked_tasks_count": 0},
+            calculation_details=[
+                "【判据规则】冻结期必须有一份基线计划才能做差异比较；本次求解没有基线快照，按 N/A 处理（不冒充 PASS）。",
+                f"【核算结果】无基线计划，冻结期前 {freeze_shifts} 个班次无法核验。",
+            ],
+            table_data={"columns": table_columns, "rows": [["-", "-", "-", "无基线计划，冻结期不适用", "N/A"]]},
+        )
+
     violations = []
-    locked_count = 0
     table_rows = []
+    new_map = {t.task_id: t for t in tasks}
+    locked = 0
 
-    # Map baseline tasks if available for diff check
-    baseline_breakdown = {}
-    if baseline_tasks:
-        for bt in baseline_tasks:
-            baseline_breakdown[bt.task_id] = getattr(bt, "shift_breakdown", {})
-
-    for task in tasks:
-        is_locked = getattr(task, "is_locked", False)
-        if is_locked:
-            locked_count += 1
-            if task.task_id in baseline_breakdown:
-                orig_bb = baseline_breakdown[task.task_id]
-                curr_bb = getattr(task, "shift_breakdown", {})
-                if orig_bb != curr_bb:
-                    violations.append(f"工单 {task.task_id} 处于冻结期锁定窗口内，但排产计划被违规更改！")
-                    table_rows.append([task.task_id, task.line, task.part_no, "已锁定", "FAIL (违规篡改)"])
-                    continue
-            table_rows.append([task.task_id, task.line, task.part_no, "已锁定", "PASS (锁定保持)"])
+    for base in baseline_tasks:
+        base_frozen = {
+            key: qty
+            for key, qty in getattr(base, "shift_breakdown", {}).items()
+            if qty > 0 and index_of.get(key, 10 ** 6) < freeze_shifts
+        }
+        if not base_frozen:
+            continue
+        locked += 1
+        frozen_label = ", ".join(f"{d} {s}" for (d, s) in sorted(base_frozen))
+        current = new_map.get(base.task_id)
+        if current is None:
+            violations.append(f"工单 {base.task_id} 在冻结期内被整体移出计划")
+            table_rows.append([base.task_id, base.line, base.part_no, frozen_label, "FAIL (被移出)"])
+            continue
+        curr_frozen = {
+            key: qty
+            for key, qty in getattr(current, "shift_breakdown", {}).items()
+            if qty > 0 and index_of.get(key, 10 ** 6) < freeze_shifts
+        }
+        if curr_frozen != base_frozen:
+            violations.append(f"工单 {base.task_id} 处于冻结期锁定窗口内，但排产计划被违规更改")
+            table_rows.append([base.task_id, base.line, base.part_no, frozen_label, "FAIL (违规篡改)"])
+        else:
+            table_rows.append([base.task_id, base.line, base.part_no, frozen_label, "PASS (锁定保持)"])
 
     metrics = {
-        "locked_tasks_count": locked_count,
-        "frozen_fence_hours": 24,
+        "applicable": locked > 0,
+        "frozen_shifts": freeze_shifts,
+        "locked_tasks_count": locked,
         "tamper_violations_count": len(violations),
         "freeze_compliance_rate_pct": 100.0 if not violations else 0.0,
     }
-
     calc_details = [
-        "【判据规则】车间时间围栏（冻结期通常为未来 24~48 小时）内已确认排产的锁定工单，重新优化求解或人工调整时必须保持原排程锁定，严禁随意挪移篡改。",
-        f"【核算结果】锁定工单总数: {locked_count} 个，违规篡改挪移: {len(violations)} 个；时间围栏合规率: {metrics['freeze_compliance_rate_pct']}%。",
+        f"【判据规则】冻结期 = 计划期前 {freeze_shifts} 个班次；基线中已排产的工单，其班次与数量必须原样保留。",
+        f"【核算结果】冻结期内锁定工单 {locked} 个，违规篡改/移出 {len(violations)} 个；合规率 {metrics['freeze_compliance_rate_pct']}%。",
     ]
-
     table_data = {
-        "columns": ["工单编号", "产线", "料号", "围栏锁定状态", "判定"],
-        "rows": table_rows if table_rows else [["-", "-", "-", "无锁定工单（全周期按全局求解）", "PASS"]],
+        "columns": table_columns,
+        "rows": table_rows if table_rows else [["-", "-", "-", "基线内无冻结期工单", "N/A"]],
     }
-
-    return Check("时间围栏（冻结期）计划锁定合规", not violations, ["R-WL-10"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
+    return Check(
+        "时间围栏（冻结期）计划锁定合规",
+        not violations,
+        ["R-WL-10"],
+        violations,
+        metrics=metrics,
+        calculation_details=calc_details,
+        table_data=table_data,
+    )
 
 
 def _check_controlled_window(tasks) -> Check:
-    """R-WL-14: Special pilot/inspection batches strictly restricted to controlled time windows."""
-    violations = []
+    """R-WL-14: pilot/inspection batches must stay on day/afternoon shifts."""
     pilot_tasks = [
         t for t in tasks
         if getattr(t, "is_pilot", False) or "PILOT" in t.task_id.upper() or "质检" in getattr(t, "description", "")
     ]
+    table_columns = ["受控工单编号", "投产料号", "排产班次时段", "投产数量", "受控窗口判定"]
+    if not pilot_tasks:
+        return Check(
+            "特殊首批/质检跟线总成受控时间窗口合规",
+            True,
+            ["R-WL-14"],
+            [],
+            metrics={"applicable": False, "monitored_batches": 0, "controlled_window_violations": 0},
+            calculation_details=[
+                "【判据规则】受控窗口只对标记为试制/质检跟线的工单生效；本次计划中没有此类工单，按 N/A 处理（不冒充 PASS）。",
+                "【核算结果】无受控工单，本项不适用。",
+            ],
+            table_data={"columns": table_columns, "rows": [["-", "无试制批次", "全周期", "0 件", "N/A（无受控工单）"]]},
+        )
+
+    violations = []
     table_rows = []
     for t in pilot_tasks:
         for (date_str, shift_name), qty in t.shift_breakdown.items():
-            if qty > 0 and "晚" in shift_name:
+            if qty <= 0:
+                continue
+            if "晚" in shift_name:
                 violations.append(f"试制/首批受控任务 {t.task_id} 违规排入夜班 ({date_str} {shift_name})")
                 table_rows.append([t.task_id, t.part_no, f"{date_str} {shift_name}", f"{qty}件", "夜班违规排产 (FAIL)"])
-            elif qty > 0:
+            else:
                 table_rows.append([t.task_id, t.part_no, f"{date_str} {shift_name}", f"{qty}件", "日间受控窗口合规 (PASS)"])
 
     metrics = {
+        "applicable": True,
         "monitored_batches": len(pilot_tasks),
         "controlled_window_violations": len(violations),
         "compliance_rate_pct": 100.0 if not violations else 0.0,
     }
-
     calc_details = [
-        "【判据规则】特殊首批试制或质检跟线总成，必须锁定在质检工程师在岗的白班/中班受控时间窗口内投产，严禁安排在无质检保障的夜班离线生产。",
-        f"【核算结果】全期共核验 {len(pilot_tasks)} 个特殊质检/试制受控批次，违规越界排产: {len(violations)} 个；受控窗口合规率: {metrics['compliance_rate_pct']}%。"
-        if pilot_tasks else "【核算结果】当前生产计划中未包含首批试制（PILOT）特殊受控订单，受控时间窗口判定自然合规。",
+        "【判据规则】特殊首批试制或质检跟线总成，必须锁定在质检工程师在岗的白班/中班受控时间窗口内投产，严禁安排在无质检保障的夜班。",
+        f"【核算结果】核验 {len(pilot_tasks)} 个受控批次，违规 {len(violations)} 个；合规率 {metrics['compliance_rate_pct']}%。",
     ]
-
-    table_data = {
-        "columns": ["受控工单编号", "投产料号", "排产班次时段", "投产数量", "受控窗口判定"],
-        "rows": table_rows if table_rows else [["-", "无试制批次", "全周期", "0 件", "无受控试制批次（自然合规）"]],
-    }
-
-    return Check("特殊首批/质检跟线总成受控时间窗口合规", not violations, ["R-WL-14"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
+    return Check(
+        "特殊首批/质检跟线总成受控时间窗口合规",
+        not violations,
+        ["R-WL-14"],
+        violations,
+        metrics=metrics,
+        calculation_details=calc_details,
+        table_data={"columns": table_columns, "rows": table_rows},
+    )
 
 
 def _check_tooling_exclusivity(tasks, index_of) -> Check:
@@ -1126,22 +1250,34 @@ def _check_customer_priority(plan, tasks) -> Check:
 
 
 def _check_calendar_and_backward(plan, result) -> Check:
-    """R-WL-02..08, R-WL-25: Dynamic calendar decoupling, lookahead smoothing & demand balancing."""
+    """R-WL-02..08, R-WL-25: calendar compliance, shift geometry and load smoothing."""
     violations = []
     shifts = getattr(result, "shifts", [])
     tasks = getattr(result, "tasks", [])
     total_shifts = len(shifts)
     work_shifts = len([s for s in shifts if getattr(s, "is_work_shift", True)])
+    topology_hours = getattr(getattr(result, "shifts", [None])[0], "duration_hours", 8.0) if shifts else 8.0
 
     # 1. Audit shift duration adherence to plant topology (8.0h for WL)
     non_standard_shifts = []
     for s in shifts:
-        if abs(getattr(s, "duration_hours", 8.0) - 8.0) > 1e-3:
-            non_standard_shifts.append(f"{s.date_str} {s.shift_name} ({s.duration_hours}h != 8.0h)")
+        if abs(getattr(s, "duration_hours", topology_hours) - topology_hours) > 1e-3:
+            non_standard_shifts.append(f"{s.date_str} {s.shift_name} ({s.duration_hours}h != {topology_hours}h)")
     if non_standard_shifts:
         violations.append(f"存在非标工时班次: {', '.join(non_standard_shifts[:3])}")
 
-    # 2. Audit load distribution variance (smoothing & lookahead evaluation)
+    # 2. No production on a calendar rest shift (R-WL-06..08 / R-WL-25)
+    scheduled_on_rest = []
+    for s in shifts:
+        if getattr(s, "is_work_shift", True):
+            continue
+        key = (s.date_str, s.shift_name)
+        if any(t.shift_breakdown.get(key, 0) > 0 for t in tasks):
+            scheduled_on_rest.append(f"{s.date_str} {s.shift_name}")
+    if scheduled_on_rest:
+        violations.append(f"非工作日仍有排产: {', '.join(scheduled_on_rest[:3])}")
+
+    # 3. Audit load distribution variance (smoothing & lookahead evaluation)
     loads_by_shift = defaultdict(float)
     index_of = {(s.date_str, s.shift_name): s.index for s in shifts}
     for t in tasks:
@@ -1161,30 +1297,34 @@ def _check_calendar_and_backward(plan, result) -> Check:
     smoothing_pass = cv_pct <= 35.0  # Coefficient of variation <= 35% indicates healthy smoothing
 
     calc_details = [
-        f"【日历解耦核验】全周期规划班次 {total_shifts} 个（有效开工班次 {work_shifts} 个），单班基准工时严格契合 8.0 小时标准拓扑（违规班次: {len(non_standard_shifts)} 个）。",
+        f"【日历解耦核验】全周期规划班次 {total_shifts} 个（有效开工班次 {work_shifts} 个），单班基准工时 {topology_hours:.1f}h（非标班次 {len(non_standard_shifts)} 个）；非工作日排产 {len(scheduled_on_rest)} 个班次。",
         f"【前瞻平准指标】开工班次平均负荷: {avg_shift_load:.1f}h/班，负荷波动变异系数 (CV): {cv_pct}%（平准基准门槛 ≤ 35.0%），需求削峰填谷效果良好。",
     ]
 
     table_data = {
         "columns": ["考核维度", "设计基准", "实测核算值", "合规阈值", "判定状态"],
         "rows": [
-            ["单班标准工时", "8.0 小时/班", "8.0 小时/班", "偏差 ≤ 0.0h", "PASS (契合)"],
-            ["工厂排班拓扑", "7×3 连续生产 / 5×2 弹性", f"{total_shifts} 班次 / {work_shifts} 工作班", "日历解耦", "PASS"],
+            ["单班标准工时", f"{topology_hours:.1f} 小时/班", f"{topology_hours:.1f} 小时/班", "偏差 ≤ 0.0h", "PASS (契合)" if not non_standard_shifts else "FAIL"],
+            ["非工作日排产", "0 个班次", f"{len(scheduled_on_rest)} 个", "必须为 0", "PASS" if not scheduled_on_rest else "FAIL"],
+            ["工厂排班拓扑", "按日历模板绑定产线", f"{total_shifts} 班次 / {work_shifts} 工作班", "日历解耦", "PASS"],
             ["负荷平准波动系数", "CV 变异系数 ≤ 35%", f"{cv_pct}%", "平稳削峰填谷", "PASS" if smoothing_pass else "WARN (波动偏高)"],
-            ["远期需求平准合批", "30天前瞻平准前拉", "消除零碎小单换型损耗", "前拉合批", "PASS"],
         ],
     }
 
     metrics = {
         "total_shifts_count": total_shifts,
         "work_shifts_count": work_shifts,
+        "topology_shift_hours": topology_hours,
+        "non_standard_shift_count": len(non_standard_shifts),
+        "non_work_production_count": len(scheduled_on_rest),
         "average_shift_load_hours": round(avg_shift_load, 2),
         "utilization_cv_pct": cv_pct,
-        "calendar_decoupled": True,
+        "smoothing_within_35pct": smoothing_pass,
+        "calendar_decoupled": not scheduled_on_rest,
     }
 
     return Check(
-        "三阶动态日历与前瞻平准需求倒排前置备库",
+        "日历合规与负荷平准（非工作日零排产 + 班次几何 + CV）",
         not violations,
         ["R-WL-02", "R-WL-03", "R-WL-04", "R-WL-05", "R-WL-06", "R-WL-07", "R-WL-08", "R-WL-25"],
         violations,
@@ -1222,10 +1362,10 @@ def _check_capacity_sy(tasks, index_of, allow_105: bool = False) -> Check:
     topology = get_topology("SY38")
     violations = []
     limit_seconds = (topology.shift_seconds * 1.05) if allow_105 else topology.shift_seconds
-    for (line, idx), seconds in sorted(_loads(tasks, index_of).items()):
+    for (line, idx), seconds in sorted(_effective_loads(tasks, index_of).items()):
         if seconds > limit_seconds + 1e-6:
             limit_str = "12.6h (105%上限)" if allow_105 else "12h (100%上限)"
-            violations.append(f"{line} shift#{idx} 投入 {seconds / 3600:.2f}h 超过 {limit_str}")
+            violations.append(f"{line} shift#{idx} 综合投入 {seconds / 3600:.2f}h 超过 {limit_str}")
     check_name = "单班产能不超额定上限" + (" (已启用105%弹性上限)" if allow_105 else " (12小时/100%)")
     return Check(check_name, not violations, ["R-SY-08"], violations)
 
@@ -1233,7 +1373,7 @@ def _check_capacity_sy(tasks, index_of, allow_105: bool = False) -> Check:
 def _check_utilization_sy(tasks, index_of) -> Check:
     topology = get_topology("SY38")
     label_of = {idx: f"{date_str} {shift_name}" for (date_str, shift_name), idx in index_of.items()}
-    loads = _loads(tasks, index_of)
+    loads = _effective_loads(tasks, index_of)
     by_line: Dict[str, List[Tuple[int, float]]] = {}
     for (line, idx), seconds in loads.items():
         by_line.setdefault(line, []).append((idx, seconds))
@@ -1451,7 +1591,10 @@ def format_report(checks: List[Check], site: str = "WL") -> str:
     title = f"排产结果校验报告 ({site_upper} 专属规则体系)"
     lines = ["-" * 70, f"{title:^70}", "-" * 70]
     for check in checks:
-        mark = "PASS [OK]" if check.passed else "FAIL [!!]"
+        if check.metrics.get("applicable") is False:
+            mark = "N/A"
+        else:
+            mark = "PASS [OK]" if check.passed else "FAIL [!!]"
         rules_str = f"[{', '.join(check.rule_ids)}]" if check.rule_ids else ""
         lines.append(f"{mark:<11} {check.name:<38} {rules_str}")
         for detail in check.violations[:12]:
@@ -1471,9 +1614,12 @@ def format_rule_compliance_matrix(checks: List[Check], site: str = "WL") -> str:
     site_upper = (site or "WL").upper()
     site_rules = get_rules_for_site(site_upper)
     check_status: Dict[str, bool] = {}
+    check_applicable: Dict[str, bool] = {}
     for c in checks:
+        applicable = c.metrics.get("applicable", True) is not False
         for r_id in c.rule_ids:
             check_status[r_id] = check_status.get(r_id, True) and c.passed
+            check_applicable[r_id] = check_applicable.get(r_id, True) and applicable
 
     title = f"{len(site_rules)}条排产规则遵循状态一览表 (SITE: {site_upper})"
     lines = [
@@ -1485,7 +1631,10 @@ def format_rule_compliance_matrix(checks: List[Check], site: str = "WL") -> str:
     ]
     for r_id, rule in sorted(site_rules.items(), key=lambda item: item[1].row_index):
         if r_id in check_status:
-            effective = "PASS [OK]" if check_status[r_id] else "FAIL [!]"
+            if not check_applicable.get(r_id, True):
+                effective = "N/A"
+            else:
+                effective = "PASS [OK]" if check_status[r_id] else "FAIL [!]"
         else:
             effective = rule.status.value
 

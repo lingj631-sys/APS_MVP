@@ -957,18 +957,6 @@
                 </button>
               </div>
 
-              <!-- Track Sub-lane Display Switcher (Prevent Overlap) -->
-              <div v-show="ganttViewMode === 'gantt'" class="flex items-center bg-indigo-50/80 p-0.5 rounded-lg border border-indigo-200 text-xs font-semibold shadow-2xs">
-                <button @click="ganttTrackMode = 'BY_PART'" :class="ganttTrackMode === 'BY_PART' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:text-indigo-950'" class="px-2.5 py-1.5 rounded transition flex items-center space-x-1 cursor-pointer">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
-                  <span>分料号独立时间轨 (防重叠)</span>
-                </button>
-                <button @click="ganttTrackMode = 'COMPACT'" :class="ganttTrackMode === 'COMPACT' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:text-indigo-950'" class="px-2.5 py-1.5 rounded transition flex items-center space-x-1 cursor-pointer">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
-                  <span>产线聚合单轨</span>
-                </button>
-              </div>
-
               <!-- Line Filter -->
               <div class="flex items-center bg-slate-100 rounded-lg px-2 py-1 border border-slate-200 text-xs">
                 <span class="text-slate-500 mr-1.5">产线:</span>
@@ -1120,7 +1108,6 @@
               <!-- Swimlane Rows -->
               <div class="divide-y divide-slate-200">
                 <!-- Mode 1: Sub-lanes by Part (Expanded, No Stacking) -->
-                <template v-if="ganttTrackMode === 'BY_PART'">
                   <div v-for="lane in ganttSwimlanes" :key="'part-mode-'+lane.line" class="border-b-2 border-slate-300">
                     <!-- Line Banner Header -->
                     <div class="flex items-center justify-between px-3.5 py-2 bg-slate-100/90 border-b border-slate-200 text-xs">
@@ -1131,13 +1118,13 @@
                       </div>
                       <div class="flex items-center space-x-4 text-[11px] text-slate-500 font-mono">
                         <span>额定 TRP: <b class="text-slate-700">{{ lane.trp }}</b></span>
-                        <span>排产物料: <b class="text-indigo-700">{{ lane.parts.length }} 种</b></span>
+                        <span>排产物料: <b class="text-indigo-700">{{ lane.part_count }} 种</b></span>
                         <span>排产工单: <b class="text-indigo-700">{{ lane.tasks.length }} 个</b></span>
                       </div>
                     </div>
 
-                    <!-- Part Sub-lanes -->
-                    <div v-for="part in lane.parts" :key="lane.line + '-' + part.part_no" class="flex border-b border-slate-200/70 hover:bg-slate-50/60 transition">
+                    <!-- One sub-lane per work order (a part can have several orders) -->
+                    <div v-for="part in lane.parts" :key="lane.line + '-' + part.task_id" class="flex border-b border-slate-200/70 hover:bg-slate-50/60 transition">
                       <!-- Part Info Left Card -->
                       <div class="w-[280px] min-w-[280px] max-w-[280px] p-2.5 border-r border-slate-200 bg-white sticky left-0 z-20 flex flex-col justify-center shadow-xs">
                         <div class="flex items-center justify-between">
@@ -1150,10 +1137,14 @@
                           </span>
                         </div>
                         <p class="text-[10px] text-slate-500 truncate mt-0.5" :title="part.description">{{ part.description }}</p>
+                        <div class="flex items-center justify-between text-[9px] text-slate-400 mt-0.5">
+                          <span class="font-mono truncate" :title="part.task_id">{{ part.task_id }}</span>
+                          <span class="font-mono font-bold text-indigo-600 shrink-0">#{{ part.sequence }}</span>
+                        </div>
                       </div>
 
                       <!-- Part Timeline Track -->
-                      <div class="flex-1 relative h-[56px] py-1.5">
+                      <div class="flex-1 relative h-[64px] py-1.5">
                         <!-- Background Shifts Grid -->
                         <div class="absolute inset-0 pointer-events-none">
                           <div v-for="s in shiftsInfo" :key="'bg-part-'+lane.line+'-'+part.part_no+'-'+s.key"
@@ -1164,8 +1155,54 @@
                           </div>
                         </div>
 
-                        <!-- Task Bars for this part (Zero Overlap Guaranteed) -->
+                        <!-- Per-shift segments: intermittent production is visible, connectors show the run order -->
+                        <template v-for="task in part.tasks" :key="'segments-' + task.task_id">
+                          <template v-if="task.shift_segments && task.shift_segments.length">
+                            <svg v-if="task.shift_segments.length > 1" class="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+                              <polyline :points="task.snake_points" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2 1.6" vector-effect="non-scaling-stroke" />
+                            </svg>
+                            <div v-for="(seg, si) in task.shift_segments" :key="task.task_id + '-' + seg.key"
+                                 @mouseenter="onTaskHover(task)"
+                                 @mouseleave="onTaskLeave()"
+                                 @click="openTaskDetail(task)"
+                                 :style="{ left: (seg.left_percent + 0.05) + '%', width: Math.max(0.15, seg.width_percent - 0.1) + '%' }"
+                                 class="absolute top-1.5 bottom-1.5 rounded-md px-1.5 py-0.5 flex flex-col justify-between cursor-pointer transition-all duration-150 hover:brightness-110 hover:ring-2 hover:ring-indigo-400 hover:z-30 select-none shadow-md overflow-hidden z-20"
+                                 :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400' : '']"
+                                 :title="`${seg.date} ${seg.shift} · ${seg.qty} 件 · 工单 ${task.task_id}`">
+                              <div class="flex items-center justify-between overflow-hidden">
+                                <span class="font-mono font-black text-[10px] tracking-tight text-white drop-shadow-xs truncate">
+                                  {{ si === 0 ? task.part_no : '↳ ' + seg.qty }}
+                                </span>
+                                <span v-if="si === 0 && task.is_late" class="bg-rose-500 text-white text-[8px] px-1 py-0.1 rounded font-bold shadow-xs">延误</span>
+                                <span v-else-if="si === 0" class="bg-emerald-500/90 text-white text-[8px] px-1 py-0.1 rounded font-bold shadow-xs flex items-center">
+                                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                </span>
+                              </div>
+                              <div class="flex items-center justify-between text-[9px] text-white/95 font-sans truncate">
+                                <span>{{ seg.qty }} 件</span>
+                                <span class="font-mono">{{ seg.shift }}</span>
+                              </div>
+
+                              <!-- Bright sequence dot: first segment of each run is highlighted -->
+                              <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-5 h-5 rounded-full border-2 flex items-center justify-center text-[8px] font-black shadow-lg"
+                                   :class="si === 0 ? 'bg-amber-300 border-white text-slate-900 ring-2 ring-amber-100 scale-110' : 'bg-cyan-300 border-white text-slate-900'"
+                                   :title="'顺位 ' + seg.sequence + ' · ' + seg.date + ' ' + seg.shift">
+                                {{ seg.sequence }}
+                              </div>
+                            </div>
+                            <div v-if="task.due_percent !== null && task.due_percent !== undefined"
+                                 :style="{ left: Math.max(0, Math.min(100, task.due_percent)) + '%' }"
+                                 class="absolute -top-1 -bottom-1 pointer-events-none flex flex-col items-center z-30"
+                                 title="客户提货交期">
+                              <svg class="w-3.5 h-3.5 text-rose-600 fill-current filter drop-shadow-sm" viewBox="0 0 24 24"><path d="M3 3h2v18H3V3zm4 0h12l-3 6 3 6H7V3z"/></svg>
+                              <div class="w-0.5 flex-1 border-r border-dashed border-red-500/80"></div>
+                            </div>
+                          </template>
+                        </template>
+
+                        <!-- Task Bars for this part (fallback when no segment detail) -->
                         <div v-for="task in part.tasks" :key="task.task_id"
+                             v-show="!(task.shift_segments && task.shift_segments.length)"
                              @mouseenter="onTaskHover(task)"
                              @mouseleave="onTaskLeave()"
                              @click="openTaskDetail(task)"
@@ -1207,71 +1244,6 @@
                       当前筛选条件下此产线无排产工单
                     </div>
                   </div>
-                </template>
-
-                <!-- Mode 2: Traditional Compact Aggregated Lane Track -->
-                <template v-else>
-                  <div v-for="lane in ganttSwimlanes" :key="'compact-mode-'+lane.line" class="flex hover:bg-slate-50/40 transition">
-                    <div class="w-[280px] min-w-[280px] max-w-[280px] p-3.5 border-r border-slate-200 bg-white sticky left-0 z-20 flex flex-col justify-between shadow-xs">
-                      <div>
-                        <div class="flex items-center justify-between">
-                          <div class="flex items-center space-x-1.5">
-                            <span :class="lane.stage === 'FG' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'" class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">{{ lane.stage === 'FG' ? 'FG' : 'SF' }}</span>
-                            <span class="font-bold text-slate-900 text-sm">{{ lane.line }}</span>
-                          </div>
-                          <span :class="lane.stage === 'FG' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-2 py-0.5 rounded text-[10px] font-bold border">
-                            {{ lane.stage === 'FG' ? '产成品装配' : '半成品冲压' }}
-                          </span>
-                        </div>
-                        <p class="text-[11px] text-slate-500 mt-1">
-                          {{ lane.line === 'PGLINKAGE' ? '雨刮连杆总成自动装配流水线' : '轴套6 连续冲压成型生产线' }}
-                        </p>
-                      </div>
-
-                      <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                        <div>
-                          <span class="text-slate-400">额定 TRP:</span>
-                          <b class="text-slate-700 ml-1">{{ lane.trp }}</b>
-                        </div>
-                        <div>
-                          <span class="text-slate-400">已排产:</span>
-                          <b class="text-indigo-700 ml-1">{{ lane.tasks.length }} 个任务</b>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="flex-1 relative h-[110px] py-3">
-                      <div class="absolute inset-0 pointer-events-none">
-                        <div v-for="s in shiftsInfo" :key="'bg-compact-'+lane.line+'-'+s.key"
-                             :style="{ left: s.left_percent + '%', width: s.width_percent + '%' }"
-                             class="absolute top-0 bottom-0 border-r border-slate-200/70"
-                             :class="!s.is_work ? 'gantt-stripes' : (isAlternateDate(s.date) ? 'bg-slate-50/50' : 'bg-transparent')"
-                             :title="getEmptyShiftTooltip(lane.line, s.key)">
-                        </div>
-                      </div>
-
-                      <div v-for="task in lane.tasks" :key="'compact-t-'+task.task_id"
-                           @mouseenter="onTaskHover(task)"
-                           @mouseleave="onTaskLeave()"
-                           @click="openTaskDetail(task)"
-                           :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
-                           class="absolute top-3.5 bottom-3.5 rounded-lg px-2.5 py-1 flex flex-col justify-between cursor-pointer transition-all duration-150 hover:brightness-105 hover:ring-2 hover:ring-indigo-400 hover:z-30 select-none shadow-md overflow-hidden"
-                           :class="[getTaskColorClass(task), isTaskLinked(task) ? 'bom-pulse ring-2 ring-cyan-400 z-20' : '']">
-                        <div class="flex items-center justify-between overflow-hidden">
-                          <span class="font-mono font-black text-xs tracking-tight text-white drop-shadow-xs truncate">{{ task.part_no }}</span>
-                          <span v-if="task.is_late" class="bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded font-bold shadow-xs">延误</span>
-                          <span v-else class="bg-emerald-500/90 text-white text-[9px] px-1.5 py-0.2 rounded font-bold shadow-xs flex items-center">
-                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-                          </span>
-                        </div>
-                        <div class="flex items-center justify-between text-[10px] text-white/90 font-sans truncate">
-                          <span class="font-bold">{{ task.quantity.toLocaleString() }} 件</span>
-                          <span class="text-white/80 font-mono">{{ task.duration_hours }}h</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </template>
               </div>
             </div>
           </div>
@@ -1279,62 +1251,80 @@
 
         <!-- ================= DETAILED TABLE VIEW (Data Audit / Planner Mode) ================= -->
         <div v-show="ganttViewMode === 'table'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-3 py-2 text-[11px] text-amber-800 bg-amber-50/70 border-b border-amber-200 leading-relaxed">
+            顺序是“班次级建议顺序”：同一班次内出现多个“段”表示模型把多个产品并行排在同一班，**不代表班内分钟级先后**；换型标记按建议顺序逐段计算，所以 #3→#4 换产品会显示“换型”。真正要做到同产品跨班连续，需要在求解器里加班内排序/换型转移约束。
+          </div>
           <div class="overflow-x-auto max-h-[700px]">
             <table class="min-w-full text-xs text-left">
               <thead class="bg-slate-100 text-slate-700 sticky top-0 font-semibold border-b border-slate-200 z-10">
                 <tr>
                   <th class="py-2.5 px-3">阶段</th>
                   <th class="py-2.5 px-3">产线</th>
-                  <th class="py-2.5 px-3">工单编号</th>
+                  <th class="py-2.5 px-3 text-center">顺序</th>
+                  <th class="py-2.5 px-3">工单 / 段</th>
                   <th class="py-2.5 px-3">料号 (PN)</th>
                   <th class="py-2.5 px-3">品名描述</th>
-                  <th class="py-2.5 px-3 text-right">计划排产量</th>
-                  <th class="py-2.5 px-3">开工时间</th>
-                  <th class="py-2.5 px-3">完工时间</th>
-                  <th class="py-2.5 px-3">工时耗时</th>
+                  <th class="py-2.5 px-3 text-right">本段产量</th>
+                  <th class="py-2.5 px-3">班次开始</th>
+                  <th class="py-2.5 px-3">班次结束</th>
+                  <th class="py-2.5 px-3">本段工时</th>
                   <th class="py-2.5 px-3">客户需求交期</th>
-                  <th class="py-2.5 px-3">交付裕度</th>
+                  <th class="py-2.5 px-3">段末裕度</th>
+                  <th class="py-2.5 px-3 text-center">换型</th>
                   <th class="py-2.5 px-3 text-center">状态</th>
                   <th class="py-2.5 px-3 text-center">操作</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-200">
-                <tr v-for="task in filteredGanttTasks" :key="task.task_id" 
-                    @mouseenter="hoveredTask = task" @mouseleave="hoveredTask = null"
-                    :class="isTaskLinked(task) ? 'bg-cyan-50/70' : 'hover:bg-slate-50'"
+                <tr v-for="row in filteredGanttSegments" :key="row.segment_key"
+                    @mouseenter="hoveredTask = row" @mouseleave="hoveredTask = null"
+                    :class="isTaskLinked(row) ? 'bg-cyan-50/70' : 'hover:bg-slate-50'"
                     class="transition">
                   <td class="py-2 px-3">
-                    <span :class="task.stage === 'FG' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-2 py-0.5 rounded text-[10px] font-bold border">
-                      {{ task.stage === 'FG' ? '产成品 (FG)' : '半成品 (SF)' }}
+                    <span :class="row.stage === 'FG' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-2 py-0.5 rounded text-[10px] font-bold border">
+                      {{ row.stage === 'FG' ? '产成品 (FG)' : '半成品 (SF)' }}
                     </span>
                   </td>
-                  <td class="py-2 px-3 font-semibold text-slate-800">{{ task.line }}</td>
-                  <td class="py-2 px-3 font-mono text-slate-500 text-[10px]">{{ task.task_id }}</td>
-                  <td class="py-2 px-3 font-mono font-bold text-slate-900">{{ task.part_no }}</td>
-                  <td class="py-2 px-3 text-slate-700 text-[11px] max-w-xs truncate" :title="task.description">{{ task.description }}</td>
-                  <td class="py-2 px-3 text-right font-mono font-bold text-indigo-700">{{ task.quantity.toLocaleString() }}</td>
-                  <td class="py-2 px-3 font-mono text-slate-700 text-[11px]">{{ task.start_dt }}</td>
-                  <td class="py-2 px-3 font-mono text-slate-700 text-[11px]">{{ task.end_dt }}</td>
-                  <td class="py-2 px-3 font-mono text-slate-500 text-[11px]">{{ task.duration_hours }}h</td>
-                  <td class="py-2 px-3 font-mono text-slate-700 text-[11px]">{{ task.due_dt }}</td>
+                  <td class="py-2 px-3 font-semibold text-slate-800">{{ row.line }}</td>
+                  <td class="py-2 px-3 text-center font-mono font-bold text-slate-700">
+                    <span class="text-indigo-700">#{{ row.segment_sequence }}</span>
+                    <span class="block text-[9px] text-slate-400 font-normal">段 {{ row.segment_index }}/{{ row.segment_count }}</span>
+                    <span v-if="row.segment_same_shift" class="block text-[8px] text-amber-600 font-normal">同班并行</span>
+                  </td>
+                  <td class="py-2 px-3 font-mono text-slate-500 text-[10px]">{{ row.task_id }}</td>
+                  <td class="py-2 px-3 font-mono font-bold text-slate-900">{{ row.part_no }}</td>
+                  <td class="py-2 px-3 text-slate-700 text-[11px] max-w-xs truncate" :title="row.description">{{ row.description }}</td>
+                  <td class="py-2 px-3 text-right font-mono font-bold text-indigo-700">{{ row.segment_qty.toLocaleString() }}</td>
+                  <td class="py-2 px-3 font-mono text-slate-700 text-[11px]">{{ row.segment_start }}</td>
+                  <td class="py-2 px-3 font-mono text-slate-700 text-[11px]">{{ row.segment_end }}</td>
+                  <td class="py-2 px-3 font-mono text-slate-500 text-[11px]">{{ row.segment_hours }}h</td>
+                  <td class="py-2 px-3 font-mono text-slate-700 text-[11px]">{{ row.due_dt }}</td>
                   <td class="py-2 px-3 font-mono text-[11px]">
-                    <span v-if="task.slack_hours !== 999" :class="task.slack_hours >= 0 ? 'text-emerald-700 font-semibold' : 'text-rose-700 font-bold'">
-                      {{ task.slack_hours >= 0 ? '+' : '' }}{{ task.slack_hours }}h
+                    <span v-if="row.segment_slack_hours !== 999" :class="row.segment_slack_hours >= 0 ? 'text-emerald-700 font-semibold' : 'text-rose-700 font-bold'">
+                      {{ row.segment_slack_hours >= 0 ? '+' : '' }}{{ row.segment_slack_hours }}h
                     </span>
                     <span v-else class="text-slate-400">-</span>
                   </td>
                   <td class="py-2 px-3 text-center">
-                    <span v-if="task.is_late" class="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">延误风险</span>
+                    <span v-if="row.segment_changeover" class="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold" :title="'上一段: ' + row.segment_changeover_from">
+                      换型
+                    </span>
+                    <span v-else-if="row.segment_first && row.sequence === 1" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-300 text-[10px]">首单</span>
+                    <span v-else-if="row.segment_first" class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px]">连续</span>
+                    <span v-else class="px-2 py-0.5 rounded bg-slate-50 text-slate-400 border border-slate-200 text-[10px]">同批</span>
+                  </td>
+                  <td class="py-2 px-3 text-center">
+                    <span v-if="row.is_late" class="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">延误风险</span>
                     <span v-else class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">准时 [OK]</span>
                   </td>
                   <td class="py-2 px-3 text-center">
-                    <button @click="openTaskDetail(task)" class="px-2 py-1 text-[11px] text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded transition font-semibold">
+                    <button @click="openTaskDetail(row)" class="px-2 py-1 text-[11px] text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded transition font-semibold">
                       详情 ↗
                     </button>
                   </td>
                 </tr>
-                <tr v-if="filteredGanttTasks.length === 0">
-                  <td colspan="13" class="text-center py-8 text-slate-400">没有找到匹配的工单数据</td>
+                <tr v-if="filteredGanttSegments.length === 0">
+                  <td colspan="15" class="text-center py-8 text-slate-400">没有找到匹配的工单数据</td>
                 </tr>
               </tbody>
             </table>
@@ -1500,6 +1490,20 @@
 
       <!-- ================= TAB 3: RULES & CONSTRAINTS CONFIG ================= -->
       <div v-show="currentTab === 'rules'" class="space-y-4">
+        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-bold text-indigo-900 uppercase tracking-wider">规则集版本（内核）</div>
+            <p class="text-xs text-indigo-700/80 mt-1">
+              19 个固定算子 · 作用域 / 软硬 / 权重 / 分组 · Excel 导入 · 版本对比与回滚。下方是旧版规则开关；两者同时存在时，内核规则集优先。班次上限以规则集 <span class="font-mono">capacity_utilization.max_util</span> 为准（1.00 / 1.05），下方 95%~105% 单选不会覆盖规则集。
+            </p>
+            <p class="text-[11px] text-indigo-700/70 mt-1">
+              27 条是旧版业务规则目录；17/17 是校验检查项；拆分版内核规则集 13 条（11 个算子，capacity/min_batch 各拆 FG/SF；active 以 /rule-sets 为准）。已迁移模板以规则集为准；27 页部分开关仍 gate 未迁移/内核模板，调参时保持开启。
+            </p>
+          </div>
+          <a href="/rule-sets" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded transition">
+            打开规则集编辑器 →
+          </a>
+        </div>
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <!-- Header Bar -->
           <div class="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200">
@@ -1565,6 +1569,7 @@
                 <tr>
                   <th class="py-2.5 px-3 w-12 text-center">启用</th>
                   <th class="py-2.5 px-3 w-24">规则 ID</th>
+                  <th class="py-2.5 px-3 w-36">内核状态</th>
                   <th class="py-2.5 px-3 w-20">阶段</th>
                   <th class="py-2.5 px-3 w-28">约束类型</th>
                   <th class="py-2.5 px-3 w-28">性质与权重</th>
@@ -1577,7 +1582,10 @@
                   <tr class="hover:bg-slate-50 transition" :class="rule.checked ? '' : 'opacity-60 bg-slate-50/50'">
                     <!-- Checkbox -->
                     <td class="py-2.5 px-3 text-center align-top pt-3">
-                      <input type="checkbox" v-model="rule.checked" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer">
+                      <input type="checkbox" v-model="rule.checked"
+                             :disabled="rule.kernel_status === 'active'"
+                             :title="rule.kernel_status === 'active' ? '已由内核规则集接管，修改请到 /rule-sets' : ''"
+                             class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50">
                     </td>
 
                     <!-- Rule ID -->
@@ -1585,6 +1593,26 @@
                       <span class="font-mono font-bold text-slate-800 text-[11px] bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded shadow-2xs">
                         {{ rule.rule_id }}
                       </span>
+                    </td>
+
+                    <!-- Kernel migration status -->
+                    <td class="py-2.5 px-3 align-top pt-3">
+                      <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold border"
+                            :class="{
+                              'bg-emerald-100 text-emerald-800 border-emerald-300': (rule.kernel_status || 'legacy') === 'active',
+                              'bg-amber-100 text-amber-800 border-amber-300': rule.kernel_status === 'partial',
+                              'bg-sky-50 text-sky-700 border-sky-200': rule.kernel_status === 'available',
+                              'bg-slate-100 text-slate-500 border-slate-300': (rule.kernel_status || 'legacy') === 'legacy',
+                              'bg-rose-50 text-rose-700 border-rose-200': rule.kernel_status === 'phase2'
+                            }">
+                        {{ rule.kernel_status_label || '旧版/校验' }}
+                      </span>
+                      <div v-if="rule.kernel_templates && rule.kernel_templates.length" class="text-[9px] text-slate-400 font-mono mt-0.5">
+                        {{ rule.kernel_templates.join(' · ') }}
+                      </div>
+                      <div v-if="rule.kernel_rule_ids && rule.kernel_rule_ids.length" class="text-[9px] text-slate-400 font-mono">
+                        {{ rule.kernel_rule_ids.join(' · ') }}
+                      </div>
                     </td>
 
                     <!-- Stage -->
@@ -1644,7 +1672,11 @@
                           </span>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div v-if="rule.kernel_status === 'active'" class="text-[11px] text-indigo-900 bg-white/80 border border-indigo-200 rounded-md px-2.5 py-2 leading-relaxed">
+                          已由内核规则集接管：成品 <span class="font-mono font-bold">WL_CAP_FG=95%~105%</span>，半成品 <span class="font-mono font-bold">WL_CAP_SF=95%~100%</span>。此处单选不再生效，请到 <a href="/rule-sets" target="_blank" class="underline font-bold">/rule-sets</a> 调整。
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" v-if="rule.kernel_status !== 'active'">
                           <!-- 选项 1: 95% ~ 100% -->
                           <label class="flex items-start space-x-2 p-2 rounded-md border transition cursor-pointer select-none"
                                  :class="rule.load_limit_mode !== '105' ? 'bg-white border-indigo-500 shadow-xs ring-1 ring-indigo-400' : 'bg-slate-50/60 border-slate-200 hover:bg-white'">
@@ -3026,8 +3058,8 @@
                 
                 <!-- Quick KPI Metrics if any -->
                 <div v-if="chk.metrics && Object.keys(chk.metrics).length > 0" class="mt-2 flex flex-wrap gap-1">
-                  <span v-for="(v, k) in chk.metrics" :key="k" class="bg-white/80 border border-slate-200 rounded px-1.5 py-0.2 text-[9px] font-mono text-slate-700">
-                    {{ k }}: <b>{{ typeof v === 'object' ? JSON.stringify(v) : v }}</b>
+                  <span v-for="(v, k) in chk.metrics" :key="k" class="bg-white/80 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-sans text-slate-700">
+                    {{ (chk.metric_labels && chk.metric_labels[k]) || k }}: <b>{{ formatCheckMetric(k, v) }}</b>
                   </span>
                 </div>
 
@@ -3167,9 +3199,9 @@
                         <!-- 2. Core Quantitative KPI Metric Badges -->
                         <div v-if="r.metrics && Object.keys(r.metrics).length" class="flex flex-wrap items-center gap-2">
                           <span class="text-xs font-bold text-slate-700">算法核算指标:</span>
-                          <span v-for="(val, mKey) in r.metrics" :key="mKey" class="bg-indigo-50 text-indigo-900 border border-indigo-200 px-2.5 py-1 rounded-md text-xs font-mono font-bold flex items-center space-x-1.5">
-                            <span class="text-indigo-600 font-normal">{{ mKey }}:</span>
-                            <span>{{ typeof val === 'object' ? JSON.stringify(val) : val }}</span>
+                          <span v-for="(val, mKey) in r.metrics" :key="mKey" class="bg-indigo-50 text-indigo-900 border border-indigo-200 px-2.5 py-1 rounded-md text-xs font-sans font-bold flex items-center space-x-1.5">
+                            <span class="text-indigo-600 font-normal">{{ (r.metric_labels && r.metric_labels[mKey]) || mKey }}:</span>
+                            <span>{{ formatCheckMetric(mKey, val) }}</span>
                           </span>
                         </div>
 
@@ -4036,7 +4068,6 @@
         const showAiRecModal = ref(false);
         const ganttHorizon = ref(null);
         const shiftsInfo = ref([]);
-        const ganttTrackMode = ref("BY_PART");
         const psiProductionFilter = ref("ALL");
         const emptyShiftReasons = ref({});
         const expandedAuditRules = ref(new Set());
@@ -4202,7 +4233,62 @@
               t.task_id.toLowerCase().includes(q)
             );
           }
-          return list;
+          return list.slice().sort((a, b) => {
+            if (a.line !== b.line) return String(a.line).localeCompare(String(b.line));
+            return (a.sequence || 0) - (b.sequence || 0);
+          });
+        });
+
+        const filteredGanttSegments = computed(() => {
+          if (!filteredGanttTasks.value) return [];
+          const rows = [];
+          for (const task of filteredGanttTasks.value) {
+            const segments = task.shift_segments || [];
+            if (!segments.length) {
+              rows.push({
+                ...task,
+                segment_key: task.task_id + '-whole',
+                segment_qty: task.quantity,
+                segment_index: 1,
+                segment_count: 1,
+                segment_sequence: task.sequence || 0,
+                segment_start: task.start_dt,
+                segment_end: task.end_dt,
+                segment_hours: task.duration_hours,
+                segment_first: true,
+                segment_slack_hours: task.slack_hours,
+                segment_changeover: task.changeover || false,
+                segment_changeover_from: task.changeover_from || '',
+                segment_same_shift: false,
+              });
+              continue;
+            }
+            segments.forEach((seg, index) => {
+              const slack = task.due_timestamp
+                ? Math.round(((task.due_timestamp - seg.end_timestamp) / 3600) * 10) / 10
+                : 999;
+              rows.push({
+                ...task,
+                segment_key: task.task_id + '-' + seg.key,
+                segment_qty: seg.qty,
+                segment_index: index + 1,
+                segment_count: segments.length,
+                segment_sequence: seg.sequence || task.sequence || 0,
+                segment_start: seg.start_dt,
+                segment_end: seg.end_dt,
+                segment_hours: seg.duration_hours,
+                segment_first: index === 0,
+                segment_slack_hours: slack,
+                segment_changeover: seg.changeover || false,
+                segment_changeover_from: seg.changeover_from || '',
+                segment_same_shift: seg.same_shift_as_previous || false,
+              });
+            });
+          }
+          return rows.slice().sort((a, b) => {
+            if (a.line !== b.line) return String(a.line).localeCompare(String(b.line));
+            return (a.segment_sequence || 0) - (b.segment_sequence || 0);
+          });
         });
 
         const ganttSwimlanes = computed(() => {
@@ -4216,31 +4302,30 @@
             const stage = allLineTasks.length > 0 ? allLineTasks[0].stage : 'FG';
             const trp = allLineTasks.length > 0 ? allLineTasks[0].trp : 0.71;
 
-            // Group lineTasks into parts sub-lanes (Zero Overlap Guaranteed)
+            // One sub-lane per work order. Multiple work orders can share a
+            // part number; grouping by part hid the later task and its dots.
             const partMap = new Map();
             lineTasks.forEach(task => {
-              if (!partMap.has(task.part_no)) {
-                partMap.set(task.part_no, {
-                  part_no: task.part_no,
-                  description: task.description || '',
-                  stage: task.stage,
-                  line: task.line,
-                  total_qty: 0,
-                  total_duration: 0,
-                  earliest_start: task.start_dt,
-                  tasks: []
-                });
-              }
-              const entry = partMap.get(task.part_no);
-              entry.tasks.push(task);
-              entry.total_qty += (task.quantity || 0);
-              entry.total_duration += (task.duration_hours || 0);
-              if (task.start_dt < entry.earliest_start) {
-                entry.earliest_start = task.start_dt;
-              }
+              partMap.set(task.task_id, {
+                key: task.task_id,
+                task_id: task.task_id,
+                sequence: task.sequence,
+                part_no: task.part_no,
+                description: task.description || '',
+                stage: task.stage,
+                line: task.line,
+                total_qty: task.quantity || 0,
+                total_duration: task.duration_hours || 0,
+                earliest_start: task.start_dt,
+                tasks: [task],
+              });
             });
 
-            const parts = Array.from(partMap.values()).sort((a, b) => a.earliest_start.localeCompare(b.earliest_start));
+            const parts = Array.from(partMap.values()).sort((a, b) => {
+              if (a.earliest_start !== b.earliest_start) return a.earliest_start.localeCompare(b.earliest_start);
+              return (a.sequence || 0) - (b.sequence || 0);
+            });
+            const partCount = new Set(lineTasks.map(task => task.part_no)).size;
 
             return {
               line,
@@ -4248,6 +4333,7 @@
               trp,
               tasks: lineTasks,
               parts: parts,
+              part_count: partCount,
             };
           });
         });
@@ -4922,6 +5008,30 @@
           return val;
         };
 
+        const formatCheckMetric = (key, val) => {
+          if (val === undefined || val === null) return '-';
+          if (typeof val === 'boolean') {
+            if (key === 'applicable') return val ? '适用' : '不适用';
+            if (key.indexOf('allow_105') === 0) return val ? '允许' : '不允许';
+            return val ? '是' : '否';
+          }
+          if (Array.isArray(val)) return val.join('、');
+          if (typeof val === 'object') {
+            return Object.entries(val).map(([k, v]) => {
+              let suffix = '';
+              if (key.indexOf('hours') >= 0) suffix = 'h';
+              if (key.indexOf('pieces') >= 0) suffix = ' 件';
+              return `${k} ${v}${suffix}`;
+            }).join(' · ');
+          }
+          if (typeof val === 'number') {
+            if (key.endsWith('_pct')) return `${val}%`;
+            if (key.indexOf('hours') >= 0 || key.endsWith('_hours')) return `${val}h`;
+            if (key.indexOf('pieces') >= 0) return `${val} 件`;
+          }
+          return String(val);
+        };
+
         const getStatusBadgeClass = (status) => {
           if (status.includes('PASS')) return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
           if (status.includes('FAIL')) return 'bg-rose-100 text-rose-800 border border-rose-300';
@@ -5134,6 +5244,7 @@
           fgTasksCount,
           sfTasksCount,
           filteredGanttTasks,
+          filteredGanttSegments,
           ganttSwimlanes,
           ganttDateGroups,
           getWeekdayName,
@@ -5169,6 +5280,7 @@
           onSiteChange,
           getLoadCellClass,
           formatMetricValue,
+          formatCheckMetric,
           getStatusBadgeClass,
           loadCalendar,
           selectHorizon,
@@ -5190,7 +5302,6 @@
           loadSiteSettings,
           saveSiteSettings,
           resetSiteSettingsDefault,
-          ganttTrackMode,
           psiProductionFilter,
           totalMaterialsInStage,
           scheduledMaterialsCount,

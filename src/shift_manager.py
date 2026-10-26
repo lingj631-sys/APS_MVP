@@ -19,6 +19,12 @@ MIN_SHIFT_UTILIZATION = 0.95
 MIN_SHIFT_SECONDS = int(-(-SHIFT_SECONDS * MIN_SHIFT_UTILIZATION // 1))  # ceil
 SHIFT_NAMES = ("早班", "中班", "晚班")
 
+# Setup/changeover allowance charged against shift capacity.
+# The plant's TRP already prices changeover, so the default is 0: the solver must
+# only *prefer* few changeovers (objective + contiguity), not deduct setup minutes
+# a second time. Keep the knob for plants that later split changeover out of TRP.
+DEFAULT_CHANGEOVER_MINUTES = 0.0
+
 
 @dataclass(frozen=True)
 class PlantTopology:

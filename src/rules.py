@@ -1,5 +1,8 @@
-"""
-Rule registry for the APS MVP (Unified Multi-Site Architecture: WL 27 Rules & SY38 9 Rules).
+"""DEPRECATED: Legacy Read-only Business Rule Catalog.
+
+This module is maintained solely for backward-compatible metadata lookup
+and fallback in UI endpoints. The single source of truth for executable
+scheduling constraints and CP-SAT compilation is `src.kernel` and `config.rule_sets`.
 
 Source of truth: '排产原则-约束条件' sheet in 'APS Database- Simulation draft.xlsx'.
 Classifies rules by site, category, nature, and landing layer.

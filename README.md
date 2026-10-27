@@ -25,24 +25,42 @@
 
 ```text
 APS_MVP/
-├── dataSource.xlsx                      # 标准主数据源与排产输入/输出工作簿 (规范化12张标准Sheet，含排产规则、模具、PM、物料ETA及客户分级)
-├── requirements.txt                     # Python 依赖项 (openpyxl, ortools, fastapi, uvicorn, python-multipart)
+├── ARCHITECTURE.md                      # 系统架构设计说明书 (Deep Modules 规范、接缝与测试表面)
+├── dataSource.xlsx                      # 标准主数据源与排产输入/输出工作簿
+├── requirements.txt                     # Python 依赖项 (openpyxl, ortools, fastapi, uvicorn, ...)
 ├── run_web.py                           # Web 服务一键启动入口 (支持代码热重载)
-├── Specification/                       # 业务功能规格与调研文档
-│   ├── aps_project_progress.md          # 项目研发进度与里程碑台账 (M1..M10 收官全记录)
-│   ├── aps_rules_registry.md            # 39条排产规则全景台账、规范化解析与五大架构共识
-│   ├── aps_functional_spec.md           # 功能规格设计说明书 (v0.7 全要素规则穿透审计版)
-│   ├── aps_ipo_overview.md              # Input - Process - Output 概览与组织层级架构
-│   └── aps_checkList.md                 # 物流专家访谈提纲
-└── src/                                 # 排产系统源代码
-    ├── rules.py                         # 39条全要素业务规则注册表 (9大业务分类 + 5级性质)
-    ├── data_loader.py                   # 读取 Excel 参数、BOM、需求，并解析模具/PM/物料ETA/客户评级主数据
-    ├── shift_manager.py                 # LineCalendar解耦日历与三阶排班模式 (做四休三/做五休二/连产)
-    ├── prechecker.py                    # 排产前粗能力宏观可行性预检与《交期调整建议表》
-    ├── scheduler.py                     # Google OR-Tools CP-SAT 班次槽位优化模型 (顺位前拉/模具独占/维保避让/客户分级保供)
-    ├── exporter.py                      # 自动格式化回写 Production plan-Done 工作表
-    ├── validator.py                     # 排产结果 17 项独立硬指标验证器、数据穿透审计底表与空班诊断引擎
-    └── server.py                        # FastAPI 高性能 RESTful 接口、手工 Excel 审计接口与静态站点托管服务
+├── run_tests.py                         # 统一自动化测试运行器 (支持 --fast 极速单测模式)
+├── config/                              # 工厂排产规则集配置库
+│   └── rule_sets/                       # 双工厂 Phase 1 基线与 Q4 规则集 (JSON)
+├── data/                                # 主数据与业务输入源
+│   ├── *.csv                            # BOM、需求、期初库存、参数、模具、PM与到货
+│   └── templates/labor/                 # 人工劳动力定员三阶模板 (Crew-Pool, Availability, Line-Staffing)
+├── Specification/                       # 业务功能规格与工程治理规范 (13 份专业文档)
+│   ├── aps_diagnosis_and_architecture_gap_report.md  # 架构差距与缺陷诊断报告 (66 项差距评估)
+│   ├── aps_remediation_action_plan.md   # 整改行动计划 (Phase 0 ~ Phase 2 路线图)
+│   ├── aps_implementation_log.md        # 实施日志与代码变更记录台账
+│   ├── aps_rule_set_editor_manual.md    # 规则集编辑器操作手册与 19 个模板参数详表
+│   └── aps_rules_registry.md            # 排产规则全景注册台账与语义解析
+├── src/                                 # 系统核心源代码
+│   ├── domain/                          # 核心领域实体层 (Site, Line, ShiftSlot 值对象, Routing 多线工艺路线, Part)
+│   ├── services/                        # 应用编排服务层 (手工排产 Excel 审计解析、DTO 转换)
+│   ├── kernel/                          # 规则内核平台深模块 (19 算子编译、多目标字典序求解、作用域继承)
+│   ├── audit/                           # 独立二次审计引擎深模块 (零依赖求解器、时序动态离散仿真账本)
+│   ├── rule_sets/                       # 规则集服务深模块 (SQLite 版本库、Excel 双向转换、冲突诊断)
+│   ├── static/                          # 前端工程控制台 (Vue + Tailwind 工业级工作台与规则编辑器)
+│   ├── scheduler.py                     # Google OR-Tools CP-SAT 核心求解器 (开班决策、大单拆批连续)
+│   ├── validator.py                     # 求解器内置合规校验器与穿透明细矩阵
+│   ├── data_loader.py                   # 主数据加载、BOM 展开、净需求计算与快照管理
+│   ├── shift_manager.py                 # 双工厂物理拓扑 (WE34 8h×3班 vs SY38 12h×2班) 与动态日历解耦
+│   ├── labor.py                         # 劳动力资源考勤与定员定额主数据处理
+│   ├── metric_labels.py                 # 工业合规指标与量纲中文标准化字典
+│   ├── exporter.py                      # 单 Sheet 冻结窗 Production plan-Done 导出
+│   ├── prechecker.py                    # 前置粗能力宏观可行性预检
+│   ├── balance_builder.py               # 生产动态平衡与 PSI 数据构建
+│   └── server.py                        # FastAPI RESTful API 轻量接入层 (纯 HTTP Transport Adapter)
+└── tests/                               # 8 大自动化测试套件 (覆盖领域实体、内核、独立审计、黄金基线、拆批等)
+    ├── fixtures/                        # 黄金基线快照 (wl_10d_baseline.json)
+    └── test_*.py                        # 单元与集成测试用例
 ```
 
 ## 3. 环境准备与运行

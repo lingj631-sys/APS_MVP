@@ -170,11 +170,22 @@ class RequirementPlan:
     stock_movements: List[StockMovement]
     covered_by_stock: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    invalid_orders: List[Tuple[str, str]] = field(default_factory=list)
     site: str = "WL"
+    bom: Dict[str, List[Tuple[str, float]]] = field(default_factory=dict)
+    initial_stock: Dict[str, float] = field(default_factory=dict)
 
     @property
     def tasks(self) -> List[ProductionTask]:
         return self.fg_tasks + self.sf_tasks
+
+    @property
+    def has_invalid_orders(self) -> bool:
+        return len(self.invalid_orders) > 0
+
+    @property
+    def rejected_order_ids(self) -> List[str]:
+        return [order_id for order_id, _ in self.invalid_orders]
 
 
 def _to_float(value, default: float = 0.0) -> float:
@@ -747,22 +758,25 @@ def _load_aps_excel(excel_path: str, site_filter: str = "WL") -> ProductionInput
 
 def load_aps_database(source_path: str = "data", site_filter: str = "WL") -> ProductionInputSnapshot:
     """Unified entry point to load APS dataset.
-    Prioritizes loading from CSV in data/ directory. Falls back to Excel if explicitly pointing to an existing .xlsx file.
+    Prioritizes loading from explicit .xlsx file if given, otherwise loads from CSV directory.
     """
-    if os.path.isdir(source_path) or source_path == "data" or os.path.basename(source_path).startswith("data"):
-        return load_aps_csv(source_path, site_filter=site_filter)
-
     # If source_path is an existing xlsx file
-    if os.path.isfile(source_path) and source_path.endswith(".xlsx"):
+    if os.path.isfile(source_path) and source_path.lower().endswith(".xlsx"):
         return _load_aps_excel(source_path, site_filter=site_filter)
+
+    if os.path.isdir(source_path):
+        return load_aps_csv(source_path, site_filter=site_filter)
 
     # Check candidate data dir
     candidate_data = os.path.join(os.path.dirname(os.path.abspath(source_path)), "data")
-    if os.path.exists(candidate_data):
+    if os.path.exists(candidate_data) and os.path.isdir(candidate_data):
         return load_aps_csv(candidate_data, site_filter=site_filter)
 
     # Default fallback to 'data'
-    return load_aps_csv("data", site_filter=site_filter)
+    if os.path.isdir("data"):
+        return load_aps_csv("data", site_filter=site_filter)
+
+    raise FileNotFoundError(f"Cannot load APS dataset: invalid path '{source_path}'")
 
 
 def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: float,
@@ -824,6 +838,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
     sf_tasks: List[ProductionTask] = []
     covered_by_stock: List[str] = []
     warnings: List[str] = []
+    invalid_orders: List[Tuple[str, str]] = []
     crew_warned: set = set()
 
     fg_avail = {pn: snapshot.initial_stock.get(pn, 0.0) for pn in snapshot.fg_params}
@@ -855,14 +870,17 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
     for ma in snapshot.material_arrivals:
         if ma.eta_date:
             try:
-                d_idx = 0
+                parsed_date = datetime.strptime(ma.eta_date.replace("-", "/"), "%Y/%m/%d") if len(ma.eta_date) > 5 else datetime.strptime(ma.eta_date.replace("-", "/"), "%m/%d")
+                d_idx = -1
                 for idx, pdate in enumerate(snapshot.planning_dates):
-                    if pdate in ma.eta_date or ma.eta_date.endswith(pdate.replace("/", "-")) or pdate.replace("/", "-") in ma.eta_date:
+                    p_parsed = datetime.strptime(pdate, "%m/%d")
+                    if p_parsed.month == parsed_date.month and p_parsed.day == parsed_date.day:
                         d_idx = idx
                         break
-                target_shift = topology.slot_index(d_idx, ma.eta_shift)
-                part_target = ma.associated_part or ma.part_no
-                mat_arrival_map[part_target] = max(mat_arrival_map.get(part_target, 0), target_shift)
+                if d_idx >= 0:
+                    target_shift = topology.slot_index(d_idx, ma.eta_shift)
+                    part_target = ma.associated_part or ma.part_no
+                    mat_arrival_map[part_target] = max(mat_arrival_map.get(part_target, 0), target_shift)
             except Exception:
                 pass
 
@@ -870,16 +888,22 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
     for pm in snapshot.pm_schedules:
         if pm.capacity_rate == 0 or "避让" in pm.handling_strategy or "切分" in pm.handling_strategy:
             try:
+                start_parsed = datetime.strptime(pm.start_date.replace("-", "/"), "%Y/%m/%d") if len(pm.start_date) > 5 else datetime.strptime(pm.start_date.replace("-", "/"), "%m/%d")
+                end_parsed = datetime.strptime(pm.end_date.replace("-", "/"), "%Y/%m/%d") if len(pm.end_date) > 5 else datetime.strptime(pm.end_date.replace("-", "/"), "%m/%d")
+
                 d_start = 0
                 for idx, pdate in enumerate(snapshot.planning_dates):
-                    if pdate in pm.start_date or pm.start_date.endswith(pdate.replace("/", "-")) or pdate.replace("/", "-") in pm.start_date:
+                    p_parsed = datetime.strptime(pdate, "%m/%d")
+                    if p_parsed.month == start_parsed.month and p_parsed.day == start_parsed.day:
                         d_start = idx
                         break
                 d_end = d_start
                 for idx, pdate in enumerate(snapshot.planning_dates):
-                    if pdate in pm.end_date or pm.end_date.endswith(pdate.replace("/", "-")) or pdate.replace("/", "-") in pm.end_date:
+                    p_parsed = datetime.strptime(pdate, "%m/%d")
+                    if p_parsed.month == end_parsed.month and p_parsed.day == end_parsed.day:
                         d_end = idx
                         break
+
                 s_start = topology.slot_index(d_start, pm.start_shift)
                 s_end = topology.slot_index(d_end, pm.end_shift)
                 for s in range(s_start, s_end + 1):
@@ -892,13 +916,13 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
         param = snapshot.fg_params.get(order.part_no)
         if param is None:
             warnings.append(f"{order.order_id}: 成品 {order.part_no} 无 Parameters-FG 主数据，跳过")
+            invalid_orders.append((order.order_id, f"成品 {order.part_no} 缺失主数据"))
             continue
         if param.headcount <= 0 and order.part_no not in crew_warned:
             warnings.append(f"{order.part_no}: 缺少 Headcount 主数据，人力工时按 0 计")
             crew_warned.add(order.part_no)
 
-        usable = max(0.0, fg_avail[order.part_no] - param.target_stock)
-        net_need = order.demand_quantity - usable
+        net_need = max(0.0, order.demand_quantity + param.target_stock - fg_avail[order.part_no])
         fg_consumed[order.part_no] = fg_consumed.get(order.part_no, 0.0) + order.demand_quantity
 
         if net_need <= 0:
@@ -943,6 +967,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
             sf_param = snapshot.sf_params.get(sf_pn)
             if sf_param is None:
                 warnings.append(f"{fg_task.task_id}: BOM 半成品 {sf_pn} 无 Parameters-SFN 主数据，跳过齐套")
+                invalid_orders.append((order.order_id, f"半成品 {sf_pn} 缺失主数据"))
                 continue
             if sf_param.headcount <= 0 and sf_pn not in crew_warned:
                 warnings.append(f"{sf_pn}: 缺少 Headcount 主数据，人力工时按 0 计")
@@ -950,7 +975,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
 
             gross_need = qty * ratio
             sf_usable = max(0.0, sf_avail[sf_pn] - sf_param.target_stock)
-            sf_net = gross_need - sf_usable
+            sf_net = max(0.0, gross_need + sf_param.target_stock - sf_avail[sf_pn])
             sf_consumed[sf_pn] = sf_consumed.get(sf_pn, 0.0) + gross_need
 
             if sf_net <= 0:
@@ -1020,5 +1045,8 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
         stock_movements=movements,
         covered_by_stock=covered_by_stock,
         warnings=warnings,
+        invalid_orders=invalid_orders,
         site=site,
+        bom=dict(snapshot.bom),
+        initial_stock=dict(snapshot.initial_stock),
     )

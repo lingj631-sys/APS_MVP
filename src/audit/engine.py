@@ -106,7 +106,10 @@ class AuditReport:
 # ---------------------------------------------------------------------------
 # Requirement plan, re-derived from master data
 # ---------------------------------------------------------------------------
-def _expected_tasks(snapshot: Any) -> Tuple[Dict[TaskKey, float], List[str]]:
+def _expected_tasks(
+    snapshot: Any,
+    orders: Optional[Iterable[Any]] = None,
+) -> Tuple[Dict[TaskKey, float], List[str]]:
     """Re-run the netting/explosion independently of ``build_requirement_plan``.
 
     The arithmetic mirrors the business definition: usable stock = opening stock
@@ -123,7 +126,8 @@ def _expected_tasks(snapshot: Any) -> Tuple[Dict[TaskKey, float], List[str]]:
     }
     expected: Dict[TaskKey, float] = {}
 
-    for order in sorted(snapshot.orders, key=lambda o: (o.due_datetime, o.part_no)):
+    order_list = list(orders) if orders is not None else list(snapshot.orders)
+    for order in sorted(order_list, key=lambda o: (o.due_datetime, o.part_no)):
         param = snapshot.fg_params.get(order.part_no)
         if param is None:
             warnings.append(f"{order.order_id}: 成品 {order.part_no} 无主数据，未生成需求")
@@ -618,32 +622,77 @@ def _check_due_part(
     shift_by_key: Dict[str, ShiftInfo],
     snapshot: Any,
     cfg: AuditConfig,
+    orders: Optional[Iterable[Any]] = None,
 ) -> AuditCheck:
-    latest_due: Dict[str, datetime] = {}
-    for order in snapshot.orders:
-        latest_due[order.part_no] = max(latest_due.get(order.part_no, order.due_datetime), order.due_datetime)
-    last_slot: Dict[str, int] = {}
+    """Check due dates at part level using strict FIFO chronological matching against orders (REG-06)."""
+    orders_by_part: Dict[str, List[Any]] = defaultdict(list)
+    order_list = list(orders) if orders is not None else list(snapshot.orders)
+    for order in order_list:
+        orders_by_part[order.part_no].append(order)
+    for p in orders_by_part:
+        orders_by_part[p].sort(key=lambda o: (o.due_datetime, o.order_id))
+
+    rows_by_part: Dict[str, List[Tuple[ShiftInfo, PlanRow]]] = defaultdict(list)
     for row in rows:
-        shift = shift_by_key.get(row.shift_key)
-        if shift is None or row.stage != "FG":
+        if row.stage != "FG" or row.quantity <= 0:
             continue
-        last_slot[row.part_no] = max(last_slot.get(row.part_no, -1), shift.index)
+        shift = shift_by_key.get(row.shift_key)
+        if shift is None:
+            continue
+        rows_by_part[row.part_no].append((shift, row))
+    for p in rows_by_part:
+        rows_by_part[p].sort(key=lambda item: item[0].end_dt)
 
     violations = []
     tolerance = cfg.delivery_tolerance_minutes * 60.0
-    for part_no, idx in last_slot.items():
-        due = latest_due.get(part_no)
-        shift = next((s for s in shift_by_key.values() if s.index == idx), None)
-        if due is None or shift is None:
-            continue
-        if shift.end_dt > due + timedelta(seconds=tolerance):
-            delay = (shift.end_dt - due).total_seconds() / 3600.0
-            violations.append(f"{part_no}: 末班结束 {shift.end_dt:%m/%d %H:%M} 晚于最晚交期 {due:%m/%d %H:%M}（+{delay:.1f}h）")
+    checked_orders = 0
+
+    for part_no, p_orders in orders_by_part.items():
+        p_rows = rows_by_part.get(part_no, [])
+        opening_qty = float(snapshot.initial_stock.get(part_no, 0.0))
+
+        # Build chronological supply events: [available_dt, qty]
+        supply_events: List[List[Any]] = []
+        if opening_qty > 0:
+            earliest_dt = min((s.start_dt for s in shift_by_key.values()), default=p_orders[0].due_datetime)
+            supply_events.append([earliest_dt, opening_qty])
+        for shift, row in p_rows:
+            supply_events.append([shift.end_dt, float(row.quantity)])
+
+        supply_idx = 0
+        for order in p_orders:
+            checked_orders += 1
+            rem_order_qty = float(order.demand_quantity)
+            latest_fulfill_dt = None
+
+            while rem_order_qty > 0 and supply_idx < len(supply_events):
+                supp_dt, supp_avail = supply_events[supply_idx]
+                if supp_avail <= 0:
+                    supply_idx += 1
+                    continue
+                alloc = min(rem_order_qty, supp_avail)
+                rem_order_qty -= alloc
+                supply_events[supply_idx][1] -= alloc
+                latest_fulfill_dt = supp_dt
+                if supply_events[supply_idx][1] <= 1e-6:
+                    supply_idx += 1
+
+            if rem_order_qty > 1e-6:
+                violations.append(
+                    f"{part_no} (订单 {order.order_id}): 需求 {order.demand_quantity:.0f} 欠产 {rem_order_qty:.0f}"
+                )
+            elif latest_fulfill_dt and latest_fulfill_dt > order.due_datetime + timedelta(seconds=tolerance):
+                delay = (latest_fulfill_dt - order.due_datetime).total_seconds() / 3600.0
+                violations.append(
+                    f"{part_no} (订单 {order.order_id}): 需求 {order.demand_quantity:.0f} 交付时点 "
+                    f"{latest_fulfill_dt:%m/%d %H:%M} 晚于交期 {order.due_datetime:%m/%d %H:%M}（+{delay:.1f}h）"
+                )
+
     return AuditCheck(
-        "交付达成（按料号，取该料号最晚交期）",
+        "交付达成（按料号时序 FIFO 订单逐笔核算）",
         not violations,
         violations,
-        {"checked_parts": len(last_slot), "late": len(violations)},
+        {"checked_orders": checked_orders, "late": len(violations)},
     )
 
 
@@ -652,13 +701,30 @@ def audit_schedule_part_level(
     rows: Iterable[PlanRow],
     shifts: Iterable[ShiftInfo],
     config: Optional[AuditConfig] = None,
+    demand_scope_orders: Optional[Iterable[Any]] = None,
+    horizon_end: Optional[datetime] = None,
 ) -> AuditReport:
-    """Audit a part-level plan (the manually edited PSI sheet has no order ids)."""
+    """Audit a part-level plan (the manually edited PSI sheet has no order ids).
+
+    Aligns demand scope with the scheduling horizon (REG-07) so orders beyond
+    the schedule window do not produce false under-production (欠产) failures.
+    """
     cfg = config or AuditConfig()
     rows = list(rows)
     shift_by_key = {s.key: s for s in shifts}
 
-    expected_order, warnings = _expected_tasks(snapshot)
+    if demand_scope_orders is None:
+        if horizon_end is None and shifts:
+            horizon_end = max((s.end_dt for s in shifts), default=None)
+        if horizon_end is not None:
+            demand_scope_orders = [
+                o for o in snapshot.orders
+                if o.due_datetime <= horizon_end + timedelta(hours=2)
+            ]
+        else:
+            demand_scope_orders = list(snapshot.orders)
+
+    expected_order, warnings = _expected_tasks(snapshot, orders=demand_scope_orders)
     expected = _expected_by_part(expected_order)
     actual_all = _group_actual(rows, shift_by_key)
     actual = _actual_by_part(actual_all)
@@ -669,7 +735,7 @@ def audit_schedule_part_level(
         _check_part_conservation(expected, actual, cfg),
         _check_contiguity(actual_all, shift_by_key, cfg),
         _check_capacity(rows, shift_by_key, snapshot, cfg),
-        _check_due_part(rows, shift_by_key, snapshot, cfg),
+        _check_due_part(rows, shift_by_key, snapshot, cfg, orders=demand_scope_orders),
         _check_material(snapshot, actual_all, shift_by_key, cfg),
         _check_mpq(rows, snapshot, cfg),
         _check_utilization(rows, shift_by_key, snapshot, cfg),

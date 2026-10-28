@@ -287,6 +287,8 @@ class APSScheduler:
         kernel_templates: Optional[Iterable[str]] = None,
         labor_data: Optional[Any] = None,
         site: Optional[str] = None,
+        baseline_tasks: Optional[List[Any]] = None,
+        freeze_shifts: int = 3,
     ):
         self.plan = plan
         self.site = site or getattr(plan, "site", "WL")
@@ -307,6 +309,8 @@ class APSScheduler:
         self.day_shift_overrides = day_shift_overrides
         self.enforce_sequential_pulling = enforce_sequential_pulling
         self.enforce_freeze_window = enforce_freeze_window
+        self.baseline_tasks = baseline_tasks
+        self.freeze_shifts = max(0, int(freeze_shifts))
         self.enforce_tooling_exclusivity = enforce_tooling_exclusivity
         self.enforce_material_arrival = enforce_material_arrival
         self.enforce_pm_maintenance = enforce_pm_maintenance
@@ -788,6 +792,24 @@ class APSScheduler:
             model.AddMaxEquality(end, [s * active[task.task_id, s] for s in range(lo, hi + 1)])
             end_of[task.task_id] = end
 
+        # R-WL-10: Freeze window baseline equality constraints (REG-05)
+        if self.enforce_freeze_window and self.baseline_tasks:
+            baseline_map = {t.task_id: t for t in self.baseline_tasks}
+            for task in self.tasks:
+                lo, hi = self.windows[task.task_id]
+                base_t = baseline_map.get(task.task_id)
+                for s in range(lo, min(hi + 1, self.freeze_shifts)):
+                    if (task.task_id, s) not in x:
+                        continue
+                    if base_t is not None:
+                        shift = self.shifts[s]
+                        key = (shift.date_str, shift.shift_name)
+                        base_qty = getattr(base_t, "shift_breakdown", {}).get(key, 0)
+                        base_units = int(base_qty // self._unit_pieces(task))
+                        model.Add(x[task.task_id, s] == base_units)
+                    else:
+                        model.Add(x[task.task_id, s] == 0)
+
         # min_batch is compiled before the line resources, in the same position as
         # the legacy constraint: CP-SAT's search is sensitive to constraint order.
         if kernel_min_batch:
@@ -1045,33 +1067,101 @@ class APSScheduler:
         return cumulative
 
     def _legacy_material_balance(self, model, cumulative) -> None:
-        """Per-shift material balance: bushings must exist before assembly consumes them.
-
-        Output of shift s-1 is available to shift s, so the two stages overlap lot by
-        lot while every assembly unit is still backed by real stock.
+        """Per-shift time-phased material ledger (REG-01 / ALG-01):
+        For each semi-finished part_no, cumulative supply released by shift s-1 (plus initial stock)
+        must cover cumulative consumption across all finished goods assembly tasks up to shift s.
         """
+        bom = getattr(self.plan, "bom", {})
+        initial_stock = getattr(self.plan, "initial_stock", {})
+
+        # If BOM is not available in plan, fall back to pairwise parent_task_id matching
+        if not bom:
+            for fg_task in self.plan.fg_tasks:
+                components = [t for t in self.plan.sf_tasks if t.parent_task_id == fg_task.task_id]
+                if not components:
+                    continue
+                fg_lo, fg_hi = self.windows[fg_task.task_id]
+                for s in range(fg_lo, fg_hi + 1):
+                    assembled = cumulative[fg_task.task_id][s] * self._unit_pieces(fg_task)
+                    for component in components:
+                        comp_lo, comp_hi = self.windows[component.task_id]
+                        frac = Fraction(str(component.bom_ratio)).limit_denominator(1000)
+                        num = frac.numerator
+                        denom = frac.denominator
+                        if s - 1 < comp_lo:
+                            avail = int(round(component.stock_covered))
+                        else:
+                            avail = (
+                                cumulative[component.task_id][min(s - 1, comp_hi)] * self._unit_pieces(component)
+                                + int(round(component.stock_covered))
+                            )
+                        model.Add(denom * avail >= num * assembled)
+            return
+
+        # True Time-phased Material Balance Ledger (ALG-01)
+        sf_tasks_by_part: Dict[str, List[ProductionTask]] = defaultdict(list)
+        for t in self.plan.sf_tasks:
+            sf_tasks_by_part[t.part_no].append(t)
+
+        fg_consumers_by_part: Dict[str, List[Tuple[ProductionTask, float]]] = defaultdict(list)
         for fg_task in self.plan.fg_tasks:
-            components = [t for t in self.plan.sf_tasks if t.parent_task_id == fg_task.task_id]
-            if not components:
+            for sf_pn, ratio in bom.get(fg_task.part_no, []):
+                fg_consumers_by_part[sf_pn].append((fg_task, float(ratio)))
+
+        components = set(sf_tasks_by_part.keys()) | set(fg_consumers_by_part.keys())
+
+        for sf_pn in sorted(components):
+            producers = sf_tasks_by_part.get(sf_pn, [])
+            consumers = fg_consumers_by_part.get(sf_pn, [])
+            if not consumers:
                 continue
-            fg_lo, fg_hi = self.windows[fg_task.task_id]
-            for s in range(fg_lo, fg_hi + 1):
-                assembled = cumulative[fg_task.task_id][s] * self._unit_pieces(fg_task)
-                for component in components:
-                    comp_lo, comp_hi = self.windows[component.task_id]
-                    frac = Fraction(str(component.bom_ratio)).limit_denominator(1000)
-                    num = frac.numerator
-                    denom = frac.denominator
-                    if s - 1 < comp_lo:
-                        # Nothing has been produced yet, but opening stock is real:
-                        # a fully stocked component must not force the first shift idle.
-                        avail = int(round(component.stock_covered))
-                    else:
-                        avail = (
-                            cumulative[component.task_id][min(s - 1, comp_hi)] * self._unit_pieces(component)
-                            + int(round(component.stock_covered))
-                        )
-                    model.Add(denom * avail >= num * assembled)
+
+            opening_stock = int(round(float(initial_stock.get(sf_pn, 0.0))))
+
+            all_slots = []
+            for p_task in producers:
+                lo, hi = self.windows[p_task.task_id]
+                all_slots.extend([lo, hi])
+            for c_task, _ in consumers:
+                lo, hi = self.windows[c_task.task_id]
+                all_slots.extend([lo, hi])
+
+            if not all_slots:
+                continue
+            min_s, max_s = min(all_slots), max(all_slots)
+
+            for s in range(min_s, max_s + 1):
+                supply_terms = [opening_stock]
+                for p_task in producers:
+                    p_lo, p_hi = self.windows[p_task.task_id]
+                    if s - 1 >= p_lo:
+                        cum_slot = min(s - 1, p_hi)
+                        unit_pcs = self._unit_pieces(p_task)
+                        supply_terms.append(cumulative[p_task.task_id][cum_slot] * unit_pcs)
+
+                consumption_terms = []
+                for c_task, ratio in consumers:
+                    c_lo, c_hi = self.windows[c_task.task_id]
+                    if s >= c_lo:
+                        cum_slot = min(s, c_hi)
+                        unit_pcs = self._unit_pieces(c_task)
+                        frac = Fraction(str(ratio)).limit_denominator(1000)
+                        consumption_terms.append((c_task.task_id, cum_slot, unit_pcs, frac))
+
+                if not consumption_terms:
+                    continue
+
+                lcm_denom = 1
+                for _, _, _, frac in consumption_terms:
+                    lcm_denom = (lcm_denom * frac.denominator) // math.gcd(lcm_denom, frac.denominator)
+
+                scaled_supply = sum(supply_terms) * lcm_denom
+                scaled_consumed = []
+                for t_id, cum_slot, unit_pcs, frac in consumption_terms:
+                    coeff = unit_pcs * frac.numerator * (lcm_denom // frac.denominator)
+                    scaled_consumed.append(cumulative[t_id][cum_slot] * coeff)
+
+                model.Add(scaled_supply >= sum(scaled_consumed))
 
     # ------------------------------------------------------------------
     # Capacity: resources are always created here; the 95% floor is either

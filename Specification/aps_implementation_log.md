@@ -461,4 +461,11 @@ python src/main.py                       # CLI 全流程 + 17 项校验（约 2�
 python -m unittest test_aps_pipeline -v  # 单元测试（约 8–10 分钟）
 ```
 
-> 运行 `main.py` 会回写 `dataSource.xlsx` 的 `Production plan-Done`，运行后建议 `git checkout -- dataSource.xlsx`。
+---
+
+## 8. 核心算法缺陷修复记录（2026-10-28 闭环，Commit 53ee1df ➔ 最新）
+
+详细差距与代码对账分析见专用日志文件：[`Specification/aps_algorithm_defect_remediation_log.md`](aps_algorithm_defect_remediation_log.md)。
+
+* **修复清单**：REG-01（半成品时序账本）、REG-02（日历绝对时间映射）、REG-03（安全库存恢复方程）、REG-04（未知物料无效单捕获）、REG-05（基线冻结等式入模）、REG-06（FIFO 逐单交付核对）、REG-07（计划周期范围对齐）、REG-08（Excel 路径分流优先）。
+* **自动化测试**：新增 `tests/test_regressions.py`，全量 56 项测试 100% 绿色通过。

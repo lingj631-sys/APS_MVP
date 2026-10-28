@@ -1,10 +1,10 @@
-# APS 核心算法物理缺陷修复与差距对账日志 (585f44d ➔ 53ee1df)
+# APS 核心算法物理缺陷修复与差距对账日志 (585f44d ➔ 5727e4c)
 
-> **文档编号**：APS-SPEC-REMEDIATION-DIFF · **版本**：v1.0 · **日期**：2026-10-28  
+> **文档编号**：APS-SPEC-REMEDIATION-DIFF · **版本**：v1.1 · **日期**：2026-10-28  
 > **基线 Commit**：`585f44ddc889eff2a98dee14fd66772259a16555` (`refactor(arch): slim server router, model domain entities...`)  
-> **目标 Commit**：`53ee1dfaf85cdbf028b293f4dde0009f0f6e0600` (`fix(algorithm): resolve time-phased material ledger...`)  
+> **目标 Commit**：`5727e4cf9743b2acb2449920c4c7bce5d6e30e68` (`fix(algorithm): resolve time-phased material ledger...`)  
 > **对比范围**：4 个核心文件变更（`src/data_loader.py`、`src/scheduler.py`、`src/audit/engine.py`、`tests/test_regressions.py`）  
-> **指导规范依据**：`C:\Users\shan6\workspace\next\aps_solver_evolution.md` §2.2、§5、§7、§12
+> **指导规范依据**：外部 `aps_solver_evolution.md` §2.2、§5、§7、§12
 
 ---
 
@@ -112,7 +112,27 @@
 
 ## 3. 验证与回归结论
 
-全量自动化测试套件执行通过情况：
-* `tests/test_regressions.py`：8 / 8 项测试全绿（0.159s）；
-* 现有核心套件（独立审计、规则内核、拆批、人力、领域）：48 / 48 项测试全绿；
-* **总计 56 项自动化测试 100% 绿色通过，零回归破坏**。
+### 3.1 快速回归（已通过）
+
+* `tests/test_regressions.py`：8 / 8 项测试全绿（0.57s）；
+* `python run_tests.py --fast`：48 / 48 项测试全绿（60.8s，含 domain / kernel / rule_sets / labor / split / audit）；
+* **快速合计：56 / 56 绿色通过**。
+
+### 3.2 全量套件（当前未全绿，不能宣称 77/77）
+
+`python run_tests.py` 当前发现 **77 个测试用例**，已确认 **5 项未通过**：
+
+| 套件 | 失败项 | 现象 |
+|---|---|---|
+| `tests/test_golden_baseline.py` | `test_08_kernel_capacity_matches_legacy` | 内核 capacity 与 legacy 断言失败 |
+| 同上 | `test_09_kernel_min_batch_and_due_match_legacy` | 19 个班次低于 95% |
+| 同上 | `test_10_kernel_changeover_matches_legacy` | 19 个班次低于 95% |
+| `tests/test_aps_pipeline.py` | `test_03_wl_10day_solve_and_validation` | 半成品库存时刻齐套防断线 FAIL |
+| 同上 | `test_04_sy38_solve_and_topology` | SY38 硬/软档均 INFEASIBLE |
+
+因此当前口径应是：
+
+- **REG 快速回归 56/56 绿**；
+- **全量 77 项目前 72 绿 / 5 红**，全量回归尚未闭环。
+
+> 另：原先 `test_independent_audit` 与 `test_golden_baseline` 的 30s 求解预算在新增物料账本后不够，已调到 60s；这是测试稳定性修正，不代表算法回归已修复。

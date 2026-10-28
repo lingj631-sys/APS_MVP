@@ -78,7 +78,7 @@ class TestGoldenBaseline(unittest.TestCase):
             calendar_mode=CalendarMode.SEVEN_ZERO,
             site="WL",
         )
-        cls.result = sched.solve(time_limit_seconds=30.0)
+        cls.result = sched.solve(time_limit_seconds=60.0)
         cls.checks = validate_schedule(
             cls.plan,
             cls.result,

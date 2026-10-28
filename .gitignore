@@ -48,3 +48,7 @@ data/rule_template.xlsx
 # Local visual reference files
 kimi_reference*.css
 
+
+# Generated rule workbook from tests/CLI
+Light China APS Rules.xlsx
+

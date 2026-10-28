@@ -182,7 +182,7 @@
 | 人力工时 | 552.0h，峰值 3 人（轴套6 缺数据按 0 计） |
 | 换型块 | 19 + 34 = 53（与 R-WL-12 的权衡见 §3.6） |\n\n> 当前 active WL v1（11 条）的 `/api/solve` 实测：200，19 单，0 项校验失败，55 块，90.6s 请求；拆分版 v3 在版本列表里，未自动激活。
 
-### 4.2 单元测试（最终新增套件）
+### 4.2 单元测试（2026-10-26 Phase 1 基线，历史）
 
 | 测试 | 结果 |
 |---|---|
@@ -194,7 +194,7 @@
 | `test_golden_baseline` | 13 项 PASS（内核迁移 + 105 口径 + 组目标） |
 | **合计** | **57 项 PASS，375.0s** |
 
-> `test_aps_pipeline` 的旧 01/03/05/07/08 用例是早期全流程验证，不在上述 57 项新增套件里；最终新增套件以本表为准。迁移测试预算 90s，避免墙钟抖动。
+> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **77 项（72 绿 / 5 红，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
 
 ### 4.3 独立审计（ACT-09 / ACT-10）
 
@@ -457,15 +457,23 @@ CLI `python src/main.py`（active WL_PHASE1，180s）
 ## 7. 复现命令
 
 ```bash
-python src/main.py                       # CLI 全流程 + 17 项校验（约 2–3 分钟）
-python -m unittest test_aps_pipeline -v  # 单元测试（约 8–10 分钟）
+python src/main.py                 # CLI 全流程 + 17 项校验
+python run_tests.py --fast         # 快速单元/回归（48 项，约 61s）
+python run_tests.py                # 全量 9 套件（77 项，含黄金基线与端到端）
+python -m unittest discover -s tests -v
 ```
 
----
+> 测试已从仓库根目录迁到 `tests/`；不要再使用 `python -m unittest test_aps_pipeline`。
 
-## 8. 核心算法缺陷修复记录（2026-10-28 闭环，Commit 53ee1df ➔ 最新）
+## 8. 2026-10-28 架构 / 部署 / REG 修复
 
-详细差距与代码对账分析见专用日志文件：[`Specification/aps_algorithm_defect_remediation_log.md`](aps_algorithm_defect_remediation_log.md)。
+- `585f44d`：引入 `src/domain/` 领域实体骨架、`src/services/manual_audit.py` 服务骨架、统一 `run_tests.py`，测试迁入 `tests/`；
+  - **注意**：`src/domain/` 尚未被 scheduler/server 主链使用；`src/services/manual_audit.py` 尚未接线，`/api/audit_manual_schedule` 仍走 `server.py` 旧编排。
+- `9727dc4`：新增 `.env.example`、`Dockerfile`，`run_web.py` 支持 HOST/PORT/RELOAD，README 补部署说明。
+- `5727e4c`：REG-01～08 算法修复；详见 [`aps_algorithm_defect_remediation_log.md`](aps_algorithm_defect_remediation_log.md)。
 
-* **修复清单**：REG-01（半成品时序账本）、REG-02（日历绝对时间映射）、REG-03（安全库存恢复方程）、REG-04（未知物料无效单捕获）、REG-05（基线冻结等式入模）、REG-06（FIFO 逐单交付核对）、REG-07（计划周期范围对齐）、REG-08（Excel 路径分流优先）。
-* **自动化测试**：新增 `tests/test_regressions.py`，全量 56 项测试 100% 绿色通过。
+### 8.1 当前测试口径
+
+- 快速回归：`run_tests.py --fast` 48/48 + `test_regressions` 8/8 = **56/56 绿**；
+- 全量：**77 项，72 绿 / 5 红**（golden 08/09/10；pipeline 03/04）；
+- 未闭环前不要宣称“全量 100% 绿色”。

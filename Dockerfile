@@ -1,6 +1,6 @@
 # ==============================================================================
 # APS MVP - Production Dockerfile
-# Optimized for Python 3.11-slim runtime with Google OR-Tools & FastAPI
+# Optimized for Python 3.12-slim runtime with Google OR-Tools & FastAPI
 # Designed for Valeo Central Ingress Gateway (Traefik v3 + Kerberos ForwardAuth)
 # ==============================================================================
 

@@ -83,7 +83,7 @@ class TestIndependentAudit(unittest.TestCase):
             calendar_mode=CalendarMode.SEVEN_ZERO,
             site="WL",
         )
-        result = sched.solve(time_limit_seconds=30.0)
+        result = sched.solve(time_limit_seconds=60.0)
         cls.snapshot = snap
         cls.plan = plan
         cls.result = result

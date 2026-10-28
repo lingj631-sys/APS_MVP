@@ -1,7 +1,7 @@
 # APS 智能排产系统代码库架构设计文档 (Codebase Architecture)
 
 > **设计基准**：基于 **Deep Modules（深模块）** 设计哲学 —— *窄接口、深实现、清晰接缝、高杠杆调用、高局部性维护*。  
-> **适用版本**：APS MVP Phase 1 (Commit `75f801d` + 缺陷闭环基线)
+> **适用版本**：APS MVP Phase 1 (Commit `5727e4c`，含 REG-01~08 缺陷闭环)
 
 ---
 
@@ -17,7 +17,7 @@
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                 应用与编排服务层 (Application Services Layer)            │
-│  src/services/manual_audit.py (手工排产 Excel 审计解析服务)              │
+│  src/services/manual_audit.py (已抽取的手工审计服务；路由仍待接线)       │
 │  src/main.py (CLI 排程编排)  |  src/prechecker.py (粗能力预检)           │
 └──────────────┬───────────────────────────────────┬─────────────────────┘
                │                                   │
@@ -44,7 +44,7 @@
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                  领域实体与工业拓扑 (Domain & Data Layer)                │
-│  src/domain/ (Site, Line, ShiftSlot 值对象, Routing 多线工艺路线, Part)│
+│  src/domain/ (Site/Line/ShiftSlot/Routing/Part 骨架；Phase 2 才接入主链) │
 │  src/data_loader.py (多表加载/BOM展开) | src/shift_manager.py (日历解耦)  │
 │  src/labor.py (劳动力定员三阶模板)     | src/metric_labels.py (工业量纲)  │
 └────────────────────────────────────────────────────────────────────────┘
@@ -123,7 +123,7 @@
 
 ## 3. 测试表面与回归矩阵 (The Interface is the Test Surface)
 
-根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 8 大自动化测试套件与系统接缝的映射关系如下：
+根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 9 大自动化测试套件与系统接缝的映射关系如下：
 
 | 测试套件文件 | 覆盖的模块接缝 | 核心验证不变量 |
 |---|---|---|
@@ -135,6 +135,7 @@
 | `tests/test_rule_sets.py` | `src/rule_sets/` 服务接口 | SQLite 版本管理、Excel 双向导入导出幂等性、敏感度分析、冲突诊断 |
 | `tests/test_labor.py` | `src/labor.py` 主数据 | 产线定员定额、考勤日历可用工时校验、异常数据防御拦截 |
 | `tests/test_aps_pipeline.py` | 端到端流水线集成 | 双工厂加载、10 天全流程排程、17 项硬校验、Excel 冻结窗回写与手工上传闭环 |
+| `tests/test_regressions.py` | REG-01~08 缺陷回归 | 时序物料账本、日历槽位、安全库存补产、未知料号、冻结期、FIFO 交期、计划窗口、xlsx 路径 |
 
 ---
 
@@ -146,8 +147,8 @@
    * *现状*：仍保留 27+9 条硬编码规则文字说明，主要作为前端静态兼容字典。
    * *方向*：完全由 `config/rule_sets/*.json` 与 `src/kernel/rule_mapping.py` 接管，退役静态硬编码。
 2. **`src/server.py` 路由瘦身**：
-   * *现状*：文件约 2,400 行，包含大量手工 Excel 上传解析与数据装配逻辑。
-   * *方向*：将手工 Excel 解析与业务编排下沉至 `src/audit/` 或专属 service，使 `server.py` 成为纯粹的 HTTP Adapter。
+   * *现状*：文件约 2,547 行；`src/services/manual_audit.py` 已抽取，但 `/api/audit_manual_schedule` 仍使用 `server.py` 内的旧编排，服务层尚未接线。
+   * *方向*：接线 service 并删除重复路由，使 `server.py` 成为纯 HTTP Adapter。
 3. **数据模型实体化 (ACT-30 ~ ACT-32)**：
-   * *现状*：料号与产线目前为一对一字符串强绑定。
-   * *方向*：引入真正的 `Site / Workshop / Line / Routing` 数据实体模型，在内核中激活 `routing` 算子实现多产线选择。
+   * *现状*：`src/domain/` 已落 Site/Workshop/Line/Routing/Part 值对象与 `test_domain.py`，但 scheduler/server 仍使用字符串绑定；`routing` 算子未实现。
+   * *方向*：把 domain 实体接入 data_loader/scheduler，并在内核中激活 `routing` 实现多产线选择。

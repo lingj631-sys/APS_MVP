@@ -74,14 +74,18 @@
 
 | 套件 | 项数 | 耗时 | 状态 |
 |---|---:|---:|---|
-| `test_kernel.py` | 22 | 0.09s | PASS |
-| `test_independent_audit.py` | 6（含 20 类变异） | 22s | PASS |
-| `test_golden_baseline.py` | 13（含 4 项内核迁移 + 105 口径 + 组目标） | ~375s | PASS |
-| `test_split_batch.py` | 2（WA14208S 拆批） | 0.03s | PASS |
-| `test_rule_sets.py` | 9（Excel/版本/敏感度/诊断） | 0.3s | PASS |
-| `test_labor.py` | 5（人力主数据） | 0.1s | PASS |
-| `test_aps_pipeline.py` | 8 | 不稳定 | 01/02/03/05/07/08 通过；04/06 本轮未复跑 |
-| **新增合计** | **57** | — | 全部 PASS（最近一次） |
+| `tests/test_domain.py` | 4 | 0.1s | PASS |
+| `tests/test_kernel.py` | 22 | 0.1s | PASS |
+| `tests/test_independent_audit.py` | 6（含 20 类变异） | 60s（60s 预算） | PASS |
+| `tests/test_golden_baseline.py` | 13（含 4 项内核迁移 + 105 口径 + 组目标） | ~391s | **10 PASS / 3 FAIL**（08/09/10） |
+| `tests/test_split_batch.py` | 2（WA14208S 拆批） | 0.03s | PASS |
+| `tests/test_rule_sets.py` | 9（Excel/版本/敏感度/诊断） | 0.3s | PASS |
+| `tests/test_labor.py` | 5（人力主数据） | 0.1s | PASS |
+| `tests/test_aps_pipeline.py` | 8 | — | **6 PASS / 2 FAIL**（03/04） |
+| `tests/test_regressions.py` | 8（REG-01~08） | 0.6s | PASS |
+| **全量** | **77** | ~665s | **72 PASS / 5 FAIL（未闭环）** |
+
+> 快速回归（`python run_tests.py --fast` + `test_regressions`）= **56/56 PASS**；全量 77 项仍有 5 项红，不能标记为“全部 PASS”。
 
 ### 4.4 配置
 

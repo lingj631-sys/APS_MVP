@@ -22,6 +22,20 @@ class TestRuleCatalog(unittest.TestCase):
     def test_classes_are_hc_sc_bs(self):
         self.assertEqual({r.rule_class for r in self.catalog}, {"HC", "SC", "BS"})
 
+    def test_catalog_rule_counts_by_class(self):
+        hc = [r for r in self.catalog if r.rule_class == "HC"]
+        sc = [r for r in self.catalog if r.rule_class == "SC"]
+        bs = [r for r in self.catalog if r.rule_class == "BS"]
+        self.assertEqual(len(hc), 16, "Must have exactly 16 Hard Constraints (HC-01..16)")
+        self.assertEqual(len(sc), 10, "Must have exactly 10 Soft Constraints (SC-01..10)")
+        self.assertEqual(len(bs), 6, "Must have exactly 6 Business Strategies (BS-01..06)")
+
+    def test_all_rules_have_names_and_categories(self):
+        for r in self.catalog:
+            self.assertTrue(r.name, f"{r.id} missing name")
+            self.assertTrue(r.category, f"{r.id} missing category")
+            self.assertTrue(r.logic, f"{r.id} missing logic")
+
     def test_site_override_does_not_mutate_global(self):
         overrides = {
             "HC-15": SiteRuleOverride(enabled=False),

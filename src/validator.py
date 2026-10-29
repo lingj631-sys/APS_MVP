@@ -47,12 +47,37 @@ def validate_schedule(
     allow_105_fg: bool = False,
     allow_105_sf: bool = False,
     baseline_result: Optional[ScheduleResult] = None,
+    rule_set: Optional[Any] = None,
 ) -> List[Check]:
     index_of = {(s.date_str, s.shift_name): s.index for s in result.shifts}
     site_upper = (site or "WL").upper()
     baseline_tasks = baseline_result.tasks if baseline_result else None
+    
+    freeze_shifts = FREEZE_SHIFTS
+    max_parallel = MAX_PARALLEL_MODELS_PER_SHIFT
+    if rule_set is not None:
+        for r in getattr(rule_set, "rules", []):
+            if not getattr(r, "enabled", True):
+                continue
+            tid = getattr(r, "template_id", "")
+            params = getattr(r, "params", {})
+            if tid == "freeze":
+                freeze_shifts = int(params.get("fence_shifts", freeze_shifts))
+            elif tid == "concurrency":
+                max_parallel = int(params.get("max_models", max_parallel))
+            elif tid == "capacity_utilization":
+                # Fallback extraction just in case, though allow_105_* might be passed in
+                stg = getattr(getattr(r, "scope", None), "stage", "*")
+                if stg in ("*", "FG") and float(params.get("max_util", 1.0)) > 1.0:
+                    allow_105_fg = True
+                if stg in ("*", "SF") and float(params.get("max_util", 1.0)) > 1.0:
+                    allow_105_sf = True
+
     if site_upper in ("SY38", "SY"):
-        return _validate_schedule_sy38(plan, result, index_of, allow_105_fg=allow_105_fg, allow_105_sf=allow_105_sf)
+        return _validate_schedule_sy38(
+            plan, result, index_of, allow_105_fg=allow_105_fg, allow_105_sf=allow_105_sf,
+            freeze_shifts=freeze_shifts, max_parallel=max_parallel, baseline_tasks=baseline_tasks
+        )
     else:
         return _validate_schedule_wl(
             plan,
@@ -61,6 +86,8 @@ def validate_schedule(
             allow_105_fg=allow_105_fg,
             allow_105_sf=allow_105_sf,
             baseline_tasks=baseline_tasks,
+            freeze_shifts=freeze_shifts,
+            max_parallel=max_parallel,
         )
 
 
@@ -71,6 +98,8 @@ def _validate_schedule_wl(
     allow_105_fg: bool = False,
     allow_105_sf: bool = False,
     baseline_tasks: Optional[List[ScheduledTask]] = None,
+    freeze_shifts: int = FREEZE_SHIFTS,
+    max_parallel: int = MAX_PARALLEL_MODELS_PER_SHIFT,
 ) -> List[Check]:
     return [
         _check_capacity(result.tasks, index_of, allow_105_fg=allow_105_fg, allow_105_sf=allow_105_sf),
@@ -83,13 +112,14 @@ def _validate_schedule_wl(
         _check_delivery(plan, result.tasks, allow_105=allow_105_fg),
         _check_controlled_window(result.tasks),
         _check_sequential_pulling(result.tasks),
-        _check_freeze_window(result.tasks, index_of, baseline_tasks=baseline_tasks),
-        _check_continuous_merge(result.tasks, result, index_of),
+        _check_freeze_window(result.tasks, index_of, baseline_tasks=baseline_tasks, freeze_shifts=freeze_shifts),
+        _check_continuous_merge(result.tasks, result, index_of, max_parallel=max_parallel),
         _check_tooling_exclusivity(result.tasks, index_of),
         _check_material_arrival(result.tasks, index_of),
         _check_pm_maintenance(result.tasks, index_of),
         _check_customer_priority(plan, result.tasks),
         _check_calendar_and_backward(plan, result),
+        _check_concurrency(result.tasks, index_of, max_parallel=max_parallel),
     ]
 
 
@@ -710,7 +740,7 @@ def _check_delivery(plan, tasks, allow_105: bool = False) -> Check:
     return Check(check_title, not violations, ["R-WL-20"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
 
 
-def _check_continuous_merge(tasks, result, index_of) -> Check:
+def _check_continuous_merge(tasks, result, index_of, max_parallel: int = MAX_PARALLEL_MODELS_PER_SHIFT) -> Check:
     """R-WL-11: Cross-shift continuous production without redundant setups, with shift-to-shift inheritance."""
     violations = []
     shift_by_idx = {s.index: s for s in result.shifts} if hasattr(result, "shifts") and result.shifts else {}
@@ -769,10 +799,10 @@ def _check_continuous_merge(tasks, result, index_of) -> Check:
             status_str = "PASS" if shift_co_total <= 2 else "WARN"
 
             distinct_models = set(models)
-            if len(distinct_models) > MAX_PARALLEL_MODELS_PER_SHIFT:
+            if len(distinct_models) > max_parallel:
                 violations.append(
                     f"{line} {shift_label}: 单班并行型号 {len(distinct_models)} 个 > 上限 "
-                    f"{MAX_PARALLEL_MODELS_PER_SHIFT} ({', '.join(sorted(distinct_models))})"
+                    f"{max_parallel} ({', '.join(sorted(distinct_models))})"
                 )
                 status_str = "FAIL"
 
@@ -834,7 +864,7 @@ def _check_continuous_merge(tasks, result, index_of) -> Check:
     return Check("跨班次连续生产合并单一批次（无多余换模停机）", not violations, ["R-WL-11"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
 
 
-def _check_concurrency(tasks, index_of) -> Check:
+def _check_concurrency(tasks, index_of, max_parallel: int = MAX_PARALLEL_MODELS_PER_SHIFT) -> Check:
     """Legacy R-FG-13 / Generic changeover concurrency check."""
     label_of = {idx: f"{date_str} {shift_name}" for (date_str, shift_name), idx in index_of.items()}
     per_line_slot = defaultdict(set)
@@ -845,36 +875,36 @@ def _check_concurrency(tasks, index_of) -> Check:
 
     violations = []
     table_rows = []
-    max_parallel = 0
+    actual_max = 0
 
     for (line, slot), models in sorted(per_line_slot.items()):
         cnt = len(models)
-        if cnt > max_parallel:
-            max_parallel = cnt
-        is_ok = (cnt <= MAX_PARALLEL_MODELS_PER_SHIFT)
+        if cnt > actual_max:
+            actual_max = cnt
+        is_ok = (cnt <= max_parallel)
         if not is_ok:
             violations.append(
-                f"{line} {label_of[slot]}: 并行型号数 {cnt} > 上限 {MAX_PARALLEL_MODELS_PER_SHIFT} ({', '.join(sorted(models))})"
+                f"{line} {label_of[slot]}: 并行型号数 {cnt} > 上限 {max_parallel} ({', '.join(sorted(models))})"
             )
         table_rows.append([
             label_of.get(slot, f"Shift#{slot}"),
             line,
             f"{cnt} 种",
             ", ".join(sorted(models)),
-            f"≤ {MAX_PARALLEL_MODELS_PER_SHIFT} 种",
+            f"≤ {max_parallel} 种",
             "PASS [合规]" if is_ok else "FAIL [超标]",
         ])
 
     metrics = {
-        "max_parallel_models": max_parallel,
-        "threshold": MAX_PARALLEL_MODELS_PER_SHIFT,
+        "max_parallel_models": actual_max,
+        "threshold": max_parallel,
         "violation_shifts_count": len(violations),
         "total_active_shifts": len(table_rows),
     }
 
     calc_details = [
-        f"【判据规则】单班内产线开工切换的物料型号数不得超过上限（标准上限 ≤ {MAX_PARALLEL_MODELS_PER_SHIFT} 种），避免班次内过度碎换线调机。",
-        f"【核算结果】单班最大并行型号数为 {max_parallel} 种（≤ {MAX_PARALLEL_MODELS_PER_SHIFT} 种），超标违规班次数: 0 个。",
+        f"【判据规则】单班内产线开工切换的物料型号数不得超过上限（标准上限 ≤ {max_parallel} 种），避免班次内过度碎换线调机。",
+        f"【核算结果】单班最大并行型号数为 {actual_max} 种（≤ {max_parallel} 种），超标违规班次数: 0 个。",
     ]
 
     table_data = {
@@ -882,7 +912,7 @@ def _check_concurrency(tasks, index_of) -> Check:
         "rows": table_rows[:30],
     }
 
-    return Check(f"单班换型频次控制（并行型号数 ≤ {MAX_PARALLEL_MODELS_PER_SHIFT}）", not violations, ["R-FG-13"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
+    return Check(f"单班换型频次控制（并行型号数 ≤ {max_parallel}）", not violations, ["R-FG-13"], violations, metrics=metrics, calculation_details=calc_details, table_data=table_data)
 
 
 def _check_sequential_pulling(tasks) -> Check:
@@ -1355,6 +1385,9 @@ def _validate_schedule_sy38(
     index_of: Dict[Tuple[str, str], int],
     allow_105_fg: bool = False,
     allow_105_sf: bool = False,
+    freeze_shifts: int = FREEZE_SHIFTS,
+    max_parallel: int = 2,
+    baseline_tasks: Optional[List[ScheduledTask]] = None,
 ) -> List[Check]:
     return [
         _check_capacity_sy(result.tasks, index_of, allow_105=allow_105_fg or allow_105_sf),
@@ -1364,7 +1397,7 @@ def _validate_schedule_sy38(
         _check_sf_lead_time_sy(plan, result.tasks, index_of),
         _check_fg_stock_sy(plan),
         _check_sf_stock_penalty_sy(plan),
-        _check_molds_per_shift_sy(result.tasks, index_of),
+        _check_molds_per_shift_sy(result.tasks, index_of, max_parallel=max_parallel),
         _check_conservation_sy(plan, result.tasks),
     ]
 
@@ -1494,8 +1527,8 @@ def _check_sf_stock_penalty_sy(plan) -> Check:
     return Check("半成品库存不超上限（防断线特批除外，软约束80%）", not violations, ["R-SY-02", "R-SY-07"], violations)
 
 
-def _check_molds_per_shift_sy(tasks, index_of) -> Check:
-    """R-SY-05: Machine tool changeover frequency <= 2 molds per 12h shift."""
+def _check_molds_per_shift_sy(tasks, index_of, max_parallel: int = 2) -> Check:
+    """R-SY-05: Machine tool changeover frequency <= max_parallel molds per 12h shift."""
     violations = []
     by_line_shift: Dict[Tuple[str, int], set] = defaultdict(set)
     for t in tasks:
@@ -1508,10 +1541,10 @@ def _check_molds_per_shift_sy(tasks, index_of) -> Check:
     for (line, s_idx), parts in by_line_shift.items():
         if len(parts) > max_molds:
             max_molds = len(parts)
-        if len(parts) > 2:
-            violations.append(f"{line} {label_of.get(s_idx, f'Shift#{s_idx}')} 排产 {len(parts)} 种模具/料号，超过 12h 单班换模上限 2 套")
+        if len(parts) > max_parallel:
+            violations.append(f"{line} {label_of.get(s_idx, f'Shift#{s_idx}')} 排产 {len(parts)} 种模具/料号，超过单班换模上限 {max_parallel} 套")
     metrics = {"max_molds_per_shift": max_molds, "violating_shifts": len(violations)}
-    return Check("单机台12小时内换模频次 ≤ 2套模具（软约束30%）", not violations, ["R-SY-05"], violations, metrics=metrics)
+    return Check(f"单机台单班换模频次 ≤ {max_parallel}套模具（软约束30%）", not violations, ["R-SY-05"], violations, metrics=metrics)
 
 
 def _check_conservation_sy(plan, tasks) -> Check:

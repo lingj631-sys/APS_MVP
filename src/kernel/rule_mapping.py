@@ -10,7 +10,48 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from src.kernel.registry import IMPLEMENTED_TEMPLATES
 
+RULE_32_KERNEL_MAP: Dict[str, List[str]] = {
+    # 16 Hard Constraints (HC)
+    "HC-01": ["tooling_exclusivity"],
+    "HC-02": ["labor_capacity", "changeover"],
+    "HC-03": ["pm_block"],
+    "HC-04": ["freeze"],
+    "HC-05": ["routing"],
+    "HC-06": ["material_ready"],
+    "HC-07": ["co_product"],
+    "HC-08": ["sequence"],
+    "HC-09": ["min_batch"],
+    "HC-10": ["capacity_utilization"],
+    "HC-11": ["capacity_utilization"],
+    "HC-12": ["due_date"],
+    "HC-13": ["time_window"],
+    "HC-14": ["inventory_bound"],
+    "HC-15": ["labor_capacity"],
+    "HC-16": ["contiguity"],
+
+    # 10 Soft Constraints (SC)
+    "SC-01": ["due_date", "customer_priority"],
+    "SC-02": ["capacity_utilization"],
+    "SC-03": ["routing"],
+    "SC-04": ["customer_priority"],
+    "SC-05": ["changeover"],
+    "SC-06": ["inventory_bound"],
+    "SC-07": ["inventory_bound"],
+    "SC-08": ["concurrency"],
+    "SC-09": ["contiguity"],
+    "SC-10": ["calendar"],
+
+    # 6 Business Strategies (BS)
+    "BS-01": ["calendar"],
+    "BS-02": ["time_window", "due_date"],
+    "BS-03": ["due_date"],
+    "BS-04": ["time_window", "capacity_utilization"],
+    "BS-05": ["contiguity", "min_batch"],
+    "BS-06": ["inventory_bound", "min_batch"],
+}
+
 LEGACY_KERNEL_MAP: Dict[str, List[str]] = {
+    **RULE_32_KERNEL_MAP,
     # WL
     "R-WL-01": ["tooling_exclusivity"],
     "R-WL-06": ["calendar"],

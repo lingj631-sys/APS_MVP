@@ -378,11 +378,21 @@ class APSScheduler:
         self.max_blocks_per_task = max(0, int(max_blocks_per_task))
         self.max_blocks_per_task_sf = max(0, int(max_blocks_per_task_sf))
         self.rule_set = rule_set
-        templates = set(kernel_templates or [])
+        if kernel_templates is None and rule_set is not None:
+            from src.kernel.registry import IMPLEMENTED_TEMPLATES
+
+            templates = {
+                rule.template_id
+                for rule in rule_set.rules
+                if rule.enabled and rule.template_id in IMPLEMENTED_TEMPLATES
+            }
+        else:
+            templates = set(kernel_templates or [])
         if use_kernel_capacity:
             templates.add("capacity_utilization")
         self.kernel_templates = templates
         self.use_kernel_capacity = rule_set is not None and "capacity_utilization" in templates
+        self._compiled_kernel_templates = set()
         self.sequence_setup_hard = True
         if self.rule_set is not None and self.use_kernel_capacity:
             # The rule set is the source of truth for the load ceiling. Keeping the
@@ -830,6 +840,7 @@ class APSScheduler:
 
     def _build_model(self, utilization_mode: str, hard_due: bool, gap_cap=None, use_kernel: bool = True):
         model = cp_model.CpModel()
+        self._compiled_kernel_templates = set()
         x: Dict[Tuple[str, int], object] = {}
         active: Dict[Tuple[str, int], object] = {}
         started: Dict[Tuple[str, int], object] = {}
@@ -840,7 +851,8 @@ class APSScheduler:
         price_changeovers = self.price_changeovers and (utilization_mode == "hard" or gap_cap is not None)
         runs: List[object] = []
         group_terms: Dict[str, List[Any]] = defaultdict(list)
-        kernel_min_batch = self.enforce_mpq_batch and use_kernel and self._use_kernel("min_batch")
+        kernel_min_batch = use_kernel and self._use_kernel("min_batch")
+        kernel_contiguity = use_kernel and self._use_kernel("contiguity")
 
         for task in self.tasks:
             lo, hi = self.windows[task.task_id]
@@ -895,13 +907,14 @@ class APSScheduler:
             # start is already priced as a changeover, so the model consolidates
             # unless 95% filling makes a block impossible. A plant can opt into a
             # hard block cap per stage with max_blocks_per_task(_sf) > 0.
-            block_cap = self.max_blocks_per_task if task.stage == "FG" else self.max_blocks_per_task_sf
-            if block_cap > 0:
-                model.Add(
-                    active[task.task_id, lo]
-                    + sum(started[task.task_id, s] for s in range(lo + 1, hi + 1))
-                    <= block_cap
-                )
+            if not kernel_contiguity:
+                block_cap = self.max_blocks_per_task if task.stage == "FG" else self.max_blocks_per_task_sf
+                if block_cap > 0:
+                    model.Add(
+                        active[task.task_id, lo]
+                        + sum(started[task.task_id, s] for s in range(lo + 1, hi + 1))
+                        <= block_cap
+                    )
 
             # Completion is exactly the last shift the task is active on. The old
             # `end >= s` form left `end` a free lower bound, which silently voided
@@ -910,8 +923,21 @@ class APSScheduler:
             model.AddMaxEquality(end, [s * active[task.task_id, s] for s in range(lo, hi + 1)])
             end_of[task.task_id] = end
 
-        # R-WL-10: Freeze window baseline equality constraints (REG-05)
-        if self.enforce_freeze_window and self.baseline_tasks:
+        # Contiguity compiled from kernel
+        if kernel_contiguity:
+            compiled_contiguity = self._compile_rules_for(
+                "contiguity", model, x, active, started, end_of, {}, {}, {}, force_hard=False
+            )
+            self._absorb_penalty_book(compiled_contiguity.book, group_terms, scale=CHANGEOVER_WEIGHT)
+
+        # R-WL-10: Freeze window baseline equality constraints (REG-05 / ACT-22)
+        kernel_freeze = use_kernel and self._use_kernel("freeze")
+        if kernel_freeze:
+            compiled_freeze = self._compile_rules_for(
+                "freeze", model, x, active, started, end_of, {}, {}, {}, force_hard=False
+            )
+            self._absorb_penalty_book(compiled_freeze.book, group_terms)
+        elif self.enforce_freeze_window and self.baseline_tasks:
             baseline_map = {t.task_id: t for t in self.baseline_tasks}
             for task in self.tasks:
                 lo, hi = self.windows[task.task_id]
@@ -935,18 +961,20 @@ class APSScheduler:
                 "min_batch", model, x, active, started, end_of, {}, {}, {}, force_hard=True
             )
         if use_kernel and self._use_kernel("labor_capacity"):
-            self._compile_rules_for(
+            compiled_labor = self._compile_rules_for(
                 "labor_capacity", model, x, active, started, end_of, {}, {}, {}, force_hard=False
             )
-        kernel_material = use_kernel and self.enforce_material_balance and self._use_kernel("material_balance")
+            self._absorb_penalty_book(compiled_labor.book, group_terms)
+
+        kernel_material = use_kernel and self._use_kernel("material_balance")
         cumulative = None
-        if self.enforce_material_balance:
+        if kernel_material or self.enforce_material_balance:
             cumulative = self._create_cumulative(model, x)
             if not kernel_material:
                 self._legacy_material_balance(model, cumulative)
         if kernel_material:
             self._compile_rules_for(
-                "material_balance", model, x, active, started, end_of, {}, {}, {}, cumulative=cumulative
+                "material_balance", model, x, active, started, end_of, {}, {}, {}, cumulative=cumulative, force_hard=True
             )
         shortfall, violations, overloads, opening, tails, loads, kernel_objective = self._add_line_capacity(
             model, x, active, started, end_of, utilization_mode, gap_cap, use_kernel=use_kernel
@@ -957,8 +985,8 @@ class APSScheduler:
         kernel_due = hard_due and use_kernel and self._use_kernel("due_date")
 
         # R-SF-02 & R-FG-05: 顺位紧邻前拉硬约束（同产线同型号按交期先后严格顺位排产，禁止跳序挑单）
-        kernel_sequence = use_kernel and self.enforce_sequential_pulling and self._use_kernel("sequence")
-        if self.enforce_sequential_pulling and not kernel_sequence:
+        kernel_sequence = use_kernel and self._use_kernel("sequence")
+        if not kernel_sequence and self.enforce_sequential_pulling:
             by_line_part = defaultdict(list)
             for t in self.tasks:
                 by_line_part[(t.line, t.part_no)].append(t)
@@ -979,8 +1007,8 @@ class APSScheduler:
             )
 
         # R-TL-01: 工装模具物理独占硬约束（同班次跨产线互斥，禁止并发占用同一模具）
-        kernel_tooling = use_kernel and self.enforce_tooling_exclusivity and self._use_kernel("tooling_exclusivity")
-        if self.enforce_tooling_exclusivity and not kernel_tooling:
+        kernel_tooling = use_kernel and self._use_kernel("tooling_exclusivity")
+        if not kernel_tooling and self.enforce_tooling_exclusivity:
             mold_groups = defaultdict(list)
             for t in self.tasks:
                 mold_id = getattr(t, 'mold_id', None)
@@ -999,8 +1027,8 @@ class APSScheduler:
             )
 
         # R-MT-01: 关键物料预计到货齐套开工硬约束（到料前禁止开工）
-        kernel_ready = use_kernel and self.enforce_material_arrival and self._use_kernel("material_ready")
-        if self.enforce_material_arrival and not kernel_ready:
+        kernel_ready = use_kernel and self._use_kernel("material_ready")
+        if not kernel_ready and self.enforce_material_arrival:
             for t in self.tasks:
                 arr_shift = getattr(t, 'material_arrival_shift', 0)
                 if arr_shift > 0:
@@ -1014,8 +1042,8 @@ class APSScheduler:
             )
 
         # R-PM-01: 设备计划性预防维护（PM）避让硬约束（PM时段产能清零，任务避让）
-        kernel_pm = use_kernel and self.enforce_pm_maintenance and self._use_kernel("pm_block")
-        if self.enforce_pm_maintenance and self.pm_shifts and not kernel_pm:
+        kernel_pm = use_kernel and self._use_kernel("pm_block")
+        if not kernel_pm and self.enforce_pm_maintenance and self.pm_shifts:
             for line, pm_slots in self.pm_shifts.items():
                 line_tasks = [t for t in self.tasks if t.line == line]
                 for s in pm_slots:
@@ -1027,6 +1055,22 @@ class APSScheduler:
             self._compile_rules_for(
                 "pm_block", model, x, active, started, end_of, opening, tails, loads, force_hard=True
             )
+
+        # Time window: 特殊首批/试产受控时间窗口约束
+        kernel_time_window = use_kernel and self._use_kernel("time_window")
+        if kernel_time_window:
+            compiled_tw = self._compile_rules_for(
+                "time_window", model, x, active, started, end_of, opening, tails, loads, force_hard=False
+            )
+            self._absorb_penalty_book(compiled_tw.book, group_terms)
+
+        # Co-product: 左右件 (L/R) 共模联产品同步产出约束
+        kernel_co_product = use_kernel and self._use_kernel("co_product")
+        if kernel_co_product:
+            compiled_cop = self._compile_rules_for(
+                "co_product", model, x, active, started, end_of, opening, tails, loads, force_hard=False
+            )
+            self._absorb_penalty_book(compiled_cop.book, group_terms)
 
         # due is compiled after the physical constraints, where the legacy hard-due
         # constraint lived, so the search order stays comparable.
@@ -1047,7 +1091,6 @@ class APSScheduler:
         kernel_customer = (
             not hard_due
             and use_kernel
-            and self.enforce_customer_priority
             and self._use_kernel("customer_priority")
         )
         customer_objective = None
@@ -1122,9 +1165,24 @@ class APSScheduler:
         if concurrency_objective is not None:
             group_terms["G3_CHANGEOVER"].append(concurrency_objective)
 
-        # R-SF-07 & R-FG-09: 周末停机偏好软约束惩罚
-        weekend_penalties = []
-        if self.enforce_weekend_penalty:
+        # Inventory Bound: 库存上下限与覆盖天数约束 (SC-06, SC-07)
+        kernel_inventory_bound = use_kernel and self._use_kernel("inventory_bound")
+        if kernel_inventory_bound:
+            compiled_inv = self._compile_rules_for(
+                "inventory_bound", model, x, active, started, end_of, opening, tails, loads, force_hard=False
+            )
+            self._absorb_penalty_book(compiled_inv.book, group_terms, scale=1000)
+
+        # Calendar: 阶梯日历工作制与周末避让约束 (BS-01, R-WL-06~08, R-SF-07)
+        kernel_calendar = use_kernel and self._use_kernel("calendar")
+        if kernel_calendar:
+            compiled_cal = self._compile_rules_for(
+                "calendar", model, x, active, started, end_of, opening, tails, loads, force_hard=False
+            )
+            self._absorb_penalty_book(compiled_cal.book, group_terms, scale=15_000)
+        elif self.enforce_weekend_penalty:
+            # R-SF-07 & R-FG-09: 周末停机偏好软约束惩罚
+            weekend_penalties = []
             for s_idx, shift in enumerate(self.shifts):
                 if shift.weekday in (5, 6):  # Saturday (5) or Sunday (6)
                     for line in self.lines:
@@ -1135,8 +1193,8 @@ class APSScheduler:
                             for a_var in line_active:
                                 model.Add(w_run >= a_var)
                             weekend_penalties.append(w_run)
-        if weekend_penalties:
-            group_terms["G3_CHANGEOVER"].append(15_000 * sum(weekend_penalties))
+            if weekend_penalties:
+                group_terms["G3_CHANGEOVER"].append(15_000 * sum(weekend_penalties))
 
         if price_changeovers:
             if changeover_objective is None:
@@ -1305,6 +1363,16 @@ class APSScheduler:
             and bool(self._rules_for(template_id))
         )
 
+    def _absorb_penalty_book(self, book, group_terms, scale: int = 1000):
+        if not book or not book.terms:
+            return
+        for gid in book.groups():
+            obj = book.group_objective(gid, scale=scale)
+            if obj is not None:
+                if isinstance(obj, (int, float)) and obj == 0:
+                    continue
+                group_terms[gid].append(obj)
+
     def _compile_rules_for(
         self,
         template_id: str,
@@ -1324,6 +1392,7 @@ class APSScheduler:
 
         from src.kernel import Nature, RuleSet, compile_rules
 
+        self._compiled_kernel_templates.add(template_id)
         rules = self._rules_for(template_id)
         if force_hard:
             rules = [replace(rule, nature=Nature.HARD) for rule in rules]
@@ -1635,18 +1704,50 @@ class APSScheduler:
         return scheduled
 
     def _clock_times(self, solver, x) -> Dict[Tuple[str, int], Tuple[datetime, datetime]]:
-        """Walk each line shift by shift so 制造开始时间 reads as a real clock time."""
+        """Stage 2 Microscopic Continuous-Time Intra-Shift Scheduler.
+
+        Solves continuous physical intervals within each shift:
+        - HC-01: Cross-line mold exclusivity (NoOverlap on mold usage).
+        - HC-02: Setup technician capacity (Cumulative on setups <= capacity).
+        - HC-03: Minute-level PM avoidance (Tasks NoOverlap with PM windows).
+        - Non-overlapping execution on each line with SDST setup inclusion.
+        """
+        from src.micro_scheduler import (
+            MicroTaskSegment,
+            PMWindow,
+            schedule_intra_shift,
+        )
+
         clock: Dict[Tuple[str, int], Tuple[datetime, datetime]] = {}
-        for line in self.lines:
-            line_tasks = [t for t in self.tasks if t.line == line]
-            # Earliest-due first inside a shift: a shipment due at the shift end must
-            # not be pushed behind work that is not due yet.
-            order = sorted(
-                line_tasks,
-                key=lambda t: (t.due_datetime or datetime.max, self._first_shift(solver, x, t), t.task_id),
-            )
-            for s, shift in enumerate(self.shifts):
-                cursor = 0.0
+        self.micro_schedules: Dict[int, Any] = {}
+        prev_molds: Dict[str, str] = {}
+        tech_capacity = 2
+
+        for s, shift in enumerate(self.shifts):
+            micro_tasks = []
+            pm_windows = []
+
+            # HC-03 PM windows for this shift
+            for line, pm_slots in self.pm_shifts.items():
+                if s in pm_slots:
+                    # PM window: 2 hours in the middle of shift
+                    pm_windows.append(
+                        PMWindow(
+                            line=line,
+                            start_seconds=7200.0,
+                            end_seconds=14400.0,
+                            reason="PM",
+                        )
+                    )
+
+            # Collect active tasks for this shift
+            for line in self.lines:
+                line_tasks = [t for t in self.tasks if t.line == line]
+                order = sorted(
+                    line_tasks,
+                    key=lambda t: (t.due_datetime or datetime.max, self._first_shift(solver, x, t), t.task_id),
+                )
+                prev_mold = prev_molds.get(line, "")
                 for task in order:
                     if (task.task_id, s) not in x:
                         continue
@@ -1654,11 +1755,50 @@ class APSScheduler:
                     if units <= 0:
                         continue
                     span = units * self._unit_millis(task) / TIME_SCALE
-                    clock[(task.task_id, s)] = (
-                        shift.start_dt + timedelta(seconds=cursor),
-                        shift.start_dt + timedelta(seconds=cursor + span),
+                    mold = str(getattr(task, "mold_id", "") or task.part_no)
+
+                    # Compute setup time from SDST matrix if available
+                    setup_sec = 0.0
+                    if self.setup_matrix and prev_mold and mold != prev_mold:
+                        edge = self.setup_matrix.get((self.site, line, prev_mold, mold))
+                        if edge is None:
+                            edge = self.setup_matrix.get((self.site, line, mold, prev_mold))
+                        setup_min = float(edge.minutes) if edge is not None else (DEFAULT_CHANGEOVER_MINUTES or 0.0)
+                        setup_sec = setup_min * 60.0
+
+                    micro_tasks.append(
+                        MicroTaskSegment(
+                            task_id=task.task_id,
+                            line=line,
+                            part_no=task.part_no,
+                            mold_id=mold,
+                            quantity=float(units * self._unit_pieces(task)),
+                            duration_seconds=float(span),
+                            setup_seconds=float(setup_sec),
+                            due_datetime=task.due_datetime,
+                            technicians_required=1 if setup_sec > 0 else 0,
+                        )
                     )
-                    cursor += span
+                    prev_mold = mold
+                prev_molds[line] = prev_mold
+
+            if not micro_tasks:
+                continue
+
+            # Stage 2: Solve microscopic continuous-time interval schedule
+            micro_sched = schedule_intra_shift(
+                shift=shift,
+                tasks=micro_tasks,
+                pm_windows=pm_windows,
+                technician_capacity=tech_capacity,
+                preserve_line_order=True,
+                time_limit_seconds=1.0,
+            )
+            self.micro_schedules[s] = micro_sched
+
+            for seg in micro_sched.segments:
+                clock[(seg.task_id, s)] = (seg.start_dt, seg.end_dt)
+
         return clock
 
     def _first_shift(self, solver, x, task) -> int:

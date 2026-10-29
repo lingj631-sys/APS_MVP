@@ -629,6 +629,23 @@ python -m unittest discover -s tests -v
 - 最终验证：全量 97/97，快速 54/54；真实 API `/api/solve` success / 19 tasks / 17 checks。
 - 仍待完成：C1-b 真正班内 sequence 变量、C2-b CP-SAT Assign(i,m)、B4-b CP-SAT 库存约束、C4/C5。
 
+### 2026-10-29 P0 重大修复：调度器算子接线断层与旧布尔门控死锁闭环
+
+- **现象与问题**：
+  - 规则内核 `src/kernel/compiler.py` 虽已实现 18 个模板的编译函数，但调度器 `APSScheduler._build_model` 仅编译了 12 个模板，遗漏了 `contiguity`、`freeze`、`calendar`、`time_window`、`co_product`、`inventory_bound` 6 大核心物理算子，形成“界面已配置、后台静默不编译”的断层；
+  - 调度器内算子编译受制于旧版 `self.enforce_xxx` 布尔标志（与门死锁），若用户未勾选旧版 27 条复选框，内核算子直接被短路；
+  - 调度器默认未从 `rule_set` 自动推导 `kernel_templates` 集合，未显式传参时模板集合为空。
+- **解决方案与实施**：
+  1. **构建红灯反馈环**：新增 `tests/test_operator_wiring.py`（6 个测试），针对上述断层先跑出红灯失败。
+  2. **算子全量接入**：在 `APSScheduler._build_model` 关键构模时段补齐 `contiguity`、`freeze`、`calendar`、`time_window`、`co_product`、`inventory_bound` 的编译调用。
+  3. **门控彻底解耦**：将所有算子判断由 `self.enforce_xxx and ...` 重构为规则集优先（`use_kernel and self._use_kernel(template_id)`），当且仅当规则集未定义该算子时才退回旧版布尔逻辑。
+  4. **软惩罚统一吸收**：实现 `_absorb_penalty_book` 函数，将编译产生的 `PenaltyBook` 软惩罚项自动归并至字典序目标分组（G1~G4），并消除 CP-SAT 线性表达式直接求布尔值的 `NotImplementedError` 隐患。
+  5. **默认模板自动识别**：`APSScheduler.__init__` 支持在传入 `rule_set` 时自动识别其启用的已实现模板，无需调用方手工装配。
+- **验证结果**：
+  - 新增 `tests/test_operator_wiring.py` 6/6 全部绿色通过（0.10s）；
+  - 将用例加入 `run_tests.py --fast`，快速回归套件扩充至 **60/60 全部 PASS（60.5s）**；
+  - 黄金基线 `tests/test_golden_baseline.py` 13/13 项全绿通过（720s），既有排产业务与物理不变量零退化。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

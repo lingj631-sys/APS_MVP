@@ -300,6 +300,47 @@ class TestApsRegressions(unittest.TestCase):
             "dataSource.xlsx was misidentified or read empty (REG-08)",
         )
 
+    def test_reg09_rule_set_operator_wiring_and_gate_decoupling(self):
+        """REG-09: RuleSet operators must compile and enforce even when legacy boolean flags are False."""
+        from src.kernel.types import GroupMode, Nature, RuleGroup, RuleInstance, RuleSet, Scope
+
+        o = CustomerOrder("ORD-REG09", "PART_R9", "CUST", "10/12", datetime(2026, 10, 12, 15, 0), 100.0)
+        snap = ProductionInputSnapshot(
+            fg_params={
+                "PART_R9": ProductParam("WL", "L1", "PART_R9", "FG", 50.0, 1.0, 1.0, 28800.0),
+            },
+            sf_params={},
+            bom={},
+            initial_stock={},
+            orders=[o],
+            planning_dates=["10/12"],
+        )
+        plan = build_requirement_plan(snap)
+        rule_set = RuleSet(
+            "REG09_SET",
+            "WL",
+            1,
+            [RuleGroup("G0_PHYSICAL", 0, GroupMode.HARD)],
+            [
+                RuleInstance("MB", "min_batch", Scope(), Nature.HARD, 1, "G0_PHYSICAL", 0, {}),
+                RuleInstance("TW", "time_window", Scope(), Nature.HARD, 1, "G0_PHYSICAL", 0, {"allowed_shifts": "早班"}),
+            ],
+        )
+
+        sched = APSScheduler(
+            plan,
+            start_datetime=datetime(2026, 10, 12, 7, 0, 0),
+            planning_days=1,
+            site="WL",
+            enforce_mpq_batch=False,  # Legacy flag False
+            rule_set=rule_set,
+        )
+        model, x, aux = sched._build_model("hard", hard_due=True)
+
+        compiled = getattr(sched, "_compiled_kernel_templates", set())
+        self.assertIn("min_batch", compiled, "min_batch was blocked by legacy boolean flag")
+        self.assertIn("time_window", compiled, "time_window was not compiled into scheduler")
+
 
 if __name__ == "__main__":
     unittest.main()

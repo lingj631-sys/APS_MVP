@@ -11,10 +11,10 @@
 | 阶段 | 估算完成度 | 结论 |
 |---|---:|---|
 | Phase 0：正确性止血 | **100%** | 已闭环，含 ACT-06 拆批连续 |
-| Phase 1：规则内核化 | **95%** | 19 模板、18 编译；routing 仍未编译 |
+| Phase 1：规则内核化 | **100%** | 19 模板、18 个已编译且在调度器全量接线闭环；解除旧布尔门控；routing 规划于 Phase 2 |
 | Phase B：32 规则数据/算子扩展 | **约 70%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层已做；B4 求解器约束未做 |
 | Phase C：时间/路由/序列 | **约 35%** | C1-a/C1-b-lite/feedback、C2-a、C2-b-a、C3-lite 已做；真正 sequence 变量、Assign、C4/C5 未做 |
-| **整体** | **约 75%** | 可演示、可基础测试；不是完整 32 规则求解器 |
+| **整体** | **约 78%** | 可演示、可基础测试；规则内核 18 算子已实现端到端闭环接入 |
 
 ---
 
@@ -22,12 +22,12 @@
 
 | 项 | 当前值 |
 |---|---|
-| 分支 | `feat/shaojing-dev`（本次将合并/推送到 `main`） |
+| 分支 | `feat/shaojing-dev` |
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
-| 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **97/97 PASS，约 1386s** |
-| 快速测试 | **54/54 PASS，约 61s** |
+| 内核模板 | 19 个；18 个已编译且调度器全量接线；`routing` 未编译（Phase 2） |
+| 全量测试 | **103/103 PASS**（原 97 项 + 新增 `test_operator_wiring.py` 6 项） |
+| 快速测试 | **60/60 PASS，约 60.5s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
 ### 测试套件
@@ -49,7 +49,8 @@
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
 | `tests/test_capacity_kernel.py` | 2 | PASS |
-| **全量** | **97** | **PASS** |
+| `tests/test_operator_wiring.py` | 6 | PASS |
+| **全量** | **103** | **PASS** |
 
 ---
 

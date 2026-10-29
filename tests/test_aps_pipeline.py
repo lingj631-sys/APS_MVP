@@ -206,6 +206,31 @@ class TestApsPipeline(unittest.TestCase):
         self.assertGreater(len(result.get("compliance_matrix", [])), 0)
         self.assertGreater(len(result.get("checks", [])), 0)
 
+    def test_09_pipeline_rule_set_active_solve(self):
+        """Test full pipeline solve with active rule set and Stage 2 micro-scheduled clock times."""
+        from src.rule_sets import active_rule_set
+        snap_wl = load_aps_database(DATA_DIR, site_filter="WL")
+        horizon_end = START_DT + timedelta(days=4)
+        snap_wl.orders = [o for o in snap_wl.orders if o.due_datetime <= horizon_end]
+        plan = build_requirement_plan(snap_wl)
+        rule_set, _ = active_rule_set("WL")
+
+        sched = APSScheduler(
+            plan,
+            start_datetime=START_DT,
+            planning_days=4,
+            calendar_mode=CalendarMode.SEVEN_ZERO,
+            site="WL",
+            rule_set=rule_set,
+        )
+        res = sched.solve(time_limit_seconds=30.0)
+        self.assertIsNotNone(res)
+        self.assertIn(res.status_name, ("OPTIMAL", "FEASIBLE"))
+        self.assertGreater(len(res.tasks), 0)
+        # Verify continuous physical clock times were generated
+        for t in res.tasks:
+            self.assertGreater(t.end_dt, t.start_dt)
+
 
 if __name__ == "__main__":
     unittest.main()

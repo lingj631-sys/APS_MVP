@@ -467,6 +467,24 @@ class TestGoldenBaseline(unittest.TestCase):
         self.assertIn("G1_DELIVERY", active_groups)
         self.assertIn("G2_CAPACITY", active_groups)
 
+    def test_14_kernel_active_rule_set_wiring_and_micro_scheduling(self):
+        """Active rule set populates all implemented templates and compiles model cleanly."""
+        from src.rule_sets import active_rule_set
+        rule_set, warnings = active_rule_set("WL")
+        self.assertIsNotNone(rule_set)
+        sched = APSScheduler(
+            self.plan,
+            start_datetime=START_DT,
+            planning_days=HORIZON_DAYS,
+            calendar_mode=CalendarMode.SEVEN_ZERO,
+            site="WL",
+            rule_set=rule_set,
+        )
+        self.assertGreater(len(sched.kernel_templates), 5)
+        model, x, aux = sched._build_model("hard", hard_due=True)
+        self.assertIsNotNone(model)
+        self.assertGreater(len(sched._compiled_kernel_templates), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

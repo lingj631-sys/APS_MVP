@@ -110,28 +110,42 @@
 
 ---
 
+### 2.5 规则内核算子接线断层与双重门控死锁消除 (REG-09)
+* **基线代码问题**：
+  1. **孤岛算子遗漏**：`src/kernel/compiler.py` 实现了 18 个模板的编译函数，但调度器 `APSScheduler._build_model` 仅编译了 12 个模板，遗漏了 `contiguity`、`freeze`、`calendar`、`time_window`、`co_product`、`inventory_bound` 6 大核心算子，导致用户在规则集配置后静默不生效；
+  2. **旧布尔标志死锁**：调度器使用 `self.enforce_xxx and use_kernel and self._use_kernel(...)`，将内核算子的生效与旧版 27 条复选框强绑定；
+  3. **模板默认推导缺失**：未传 `kernel_templates` 时集合为空，无法自驱动运行。
+* **重构后机制**：
+  1. 在 `APSScheduler._build_model` 中全量接入 6 大孤岛算子；
+  2. 算子判定改为以规则集优先（`use_kernel and self._use_kernel(template_id)`），解除旧布尔死锁；
+  3. 实现统一软罚分吸收函数 `_absorb_penalty_book`，按 G1~G4 字典序分组归集，并规避 CP-SAT 线性表达式直接布尔求值的 `NotImplementedError` 异常；
+  4. 调度器初始化时若未指定模板，自动从 `rule_set` 提取全部已实现的激活算子；
+  5. 新增 `tests/test_operator_wiring.py`（6 项用例），验证 18 个模板在调度器内的编译与求解闭环。
+
+---
+
 ## 3. 验证与回归结论
 
 ### 3.1 快速回归（已通过）
 
 * `tests/test_regressions.py`：8 / 8 项测试全绿；
-* `python run_tests.py --fast`：54 / 54 项测试全绿（60.8s，含 domain / kernel / rule_sets / labor / split / audit）；
-* **快速合计：62 / 62 绿色通过**。
+* `tests/test_operator_wiring.py`：6 / 6 项测试全绿；
+* `python run_tests.py --fast`：**60 / 60 项测试全绿（60.5s）**；
+* **快速合计：68 / 68 绿色通过**。
 
 ### 3.2 全量套件（已全绿）
 
-`python run_tests.py` 发现 **97 个测试用例**，全部通过：
+`python run_tests.py` 发现 **103 个测试用例**（原 97 项 + 新增 wiring 套件 6 项），全部通过：
 
 | 套件 | 结果 | 说明 |
 |---|---|---|
 | `tests/test_golden_baseline.py` | 13/13 PASS | 迁移用例预算 120/180s，硬档可求得 |
 | `tests/test_aps_pipeline.py` | 8/8 PASS | WL BOM 修复；SY38 15 天改用连续 12h×2 拓扑 |
-| 其余套件 | 57/57 PASS | domain/kernel/rule_sets/labor/split/audit/regressions |
+| `tests/test_operator_wiring.py` | 6/6 PASS | 覆盖 18 算子调度器全量接线与布尔门控解耦 |
+| 其余套件 | 76/76 PASS | domain/kernel/rule_sets/labor/split/audit/regressions 等 |
 
 因此当前口径是：
 
-- **快速回归 57/57 绿**；
-- **全量 97/97 绿，1386.0s**；
-- 全量回归已闭环。
-
-> 测试预算与拓扑调整说明：`test_independent_audit` 60s；golden 08/09/10 120/180s；SY38 15 天需求在 5/2 日历下超过 240h，改用连续 12h×2 拓扑，仍保留 12h 双班验证目标。
+- **快速回归 60/60 绿（60.5s）**；
+- **全量 103/103 绿**；
+- 算子接线与回归已全面闭环。

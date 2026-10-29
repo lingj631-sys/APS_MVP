@@ -14,7 +14,7 @@
 | Phase 1：规则内核化 | **95%** | 19 模板、18 编译；routing 仍未编译 |
 | Phase B：32 规则数据/算子扩展 | **约 70%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层已做；B4 求解器约束未做 |
 | Phase C：时间/路由/序列 | **约 40%** | C1-a/C1-b-3、C2-a、C2-b-a、C3-lite 已做；CP-SAT Assign、C4/C5 未做 |
-| **整体** | **约 75%** | 可演示、可基础测试；不是完整 32 规则求解器 |
+| **整体** | **约 77%** | 可演示、可基础测试；不是完整 32 规则求解器 |
 
 ---
 
@@ -22,7 +22,7 @@
 
 | 项 | 当前值 |
 |---|---|
-| 分支 | `main` @ `8758501`（本次 C1-b-3/4 改动尚未提交） |
+| 分支 | `main` @ `5d5908d`（本地已提交；GitHub 推送因 TLS 网络失败待重试） |
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
@@ -62,7 +62,7 @@
 | B1 MOQ/MPQ | ✅ 代码/数据 | `basis=shift/order`、`quantity_source=MPQ/MOQ`、`tail_exempt`、`moq_override`；尚未写入 active seed |
 | B2 scrap | ✅ opt-in | `build_requirement_plan(apply_scrap=True)`，默认关闭 |
 | B3 软产能 | ✅ | soft 双边计罚，不再硬加 ceiling |
-| B4 库存策略 | 🟡/✅ 部分 | 数据层 + 逐班投影 + API；新增 FG 库存上限 soft penalty，默认关闭 |
+| B4 库存策略 | 🟡/✅ 部分 | 数据层 + 逐班投影 + API；新增 FG 库存上限 soft penalty，默认关闭；SF/硬约束未做 |
 | B5 时间窗/冻结 | ✅ | `allowed_dates`；`freeze.use_baseline` |
 | B6 目录/site override | ✅ 数据层 | 32 条目录 + `effective_for_site()`；尚未完全替换旧审计映射 |
 

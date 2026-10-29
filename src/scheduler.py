@@ -1434,6 +1434,16 @@ class APSScheduler:
             minutes = float(edge.minutes) if edge is not None else 60.0
             return int(round(minutes * 60 * TIME_SCALE))
 
+        def setup_tech_for(from_task, to_task):
+            from_mold = str(getattr(from_task, "mold_id", "") or getattr(from_task, "part_no", ""))
+            to_mold = str(getattr(to_task, "mold_id", "") or getattr(to_task, "part_no", ""))
+            if from_mold == to_mold:
+                return 0
+            edge = self.setup_matrix.get((self.site, line, from_mold, to_mold))
+            if edge is None:
+                edge = self.setup_matrix.get((self.site, line, to_mold, from_mold))
+            return max(0, int(getattr(edge, "technicians", 1) or 1)) if edge is not None else 1
+
         seq_index = 0
         setup_overflow_terms = []
         setup_intervals_by_shift = defaultdict(list)
@@ -1447,6 +1457,7 @@ class APSScheduler:
             starts_by_slot = {}
             ends_by_slot = {}
             incoming_by_slot = {}
+            incoming_tech_by_slot = {}
 
             for s in range(self.num_shifts):
                 tasks = [
@@ -1485,6 +1496,7 @@ class APSScheduler:
                 slot_max = max(1, base_max - reserve_ms)
                 time_max = slot_max if self.sequence_setup_hard else slot_max + 2 * base_max
                 incoming = {t.task_id: [] for t in tasks}
+                incoming_tech = {t.task_id: [] for t in tasks}
                 starts = {}
                 ends = {}
                 for t in tasks:
@@ -1504,6 +1516,7 @@ class APSScheduler:
                         term = setup_ms_for(a, b)
                         if term:
                             incoming[b.task_id].append(trans[a.task_id, b.task_id] * term)
+                            incoming_tech[b.task_id].append(trans[a.task_id, b.task_id] * setup_tech_for(a, b))
                         model.Add(
                             starts[b.task_id]
                             >= ends[a.task_id] + term
@@ -1516,6 +1529,7 @@ class APSScheduler:
                 starts_by_slot[s] = starts
                 ends_by_slot[s] = ends
                 incoming_by_slot[s] = incoming
+                incoming_tech_by_slot[s] = incoming_tech
                 seq_index += 1
 
             # Cross-shift carry-over: last mold of s-1 -> first mold of s.
@@ -1550,6 +1564,7 @@ class APSScheduler:
                         term = setup_ms_for(a, b)
                         if term:
                             incoming_by_slot[s][b.task_id].append(carry[a.task_id, b.task_id] * term)
+                            incoming_tech_by_slot[s][b.task_id].append(carry[a.task_id, b.task_id] * setup_tech_for(a, b))
                             model.Add(starts_by_slot[s][b.task_id] >= carry[a.task_id, b.task_id] * term)
 
             for s, tasks in tasks_by_slot.items():
@@ -1560,16 +1575,20 @@ class APSScheduler:
                     setup_var = model.NewIntVar(0, big_m, f"seq_setup.{line}.{s}.{b.task_id}")
                     terms = incoming_by_slot[s][b.task_id]
                     model.Add(setup_var == (sum(terms) if terms else 0))
+                    tech_terms = incoming_tech_by_slot[s][b.task_id]
+                    tech_var = model.NewIntVar(0, 10, f"seq_tech.{line}.{s}.{b.task_id}")
+                    model.Add(tech_var == (sum(tech_terms) if tech_terms else 0))
                     model.Add(starts_by_slot[s][b.task_id] <= setup_var + big_m * (1 - first_by_slot[s][b.task_id]))
                     setup_vars.append(setup_var)
                     setup_start = model.NewIntVar(0, big_m, f"seq_setup_start.{line}.{s}.{b.task_id}")
                     model.Add(setup_start == starts_by_slot[s][b.task_id] - setup_var)
-                    setup_intervals_by_shift[s].append(
+                    setup_intervals_by_shift[s].append((
                         model.NewOptionalIntervalVar(
                             setup_start, setup_var, starts_by_slot[s][b.task_id],
                             active[b.task_id, s], f"seq_setup_interval.{line}.{s}.{b.task_id}",
-                        )
-                    )
+                        ),
+                        tech_var,
+                    ))
                     self._sequence_vars[(b.task_id, s)] = {
                         "active": active[b.task_id, s],
                         "start": starts_by_slot[s][b.task_id],
@@ -1588,9 +1607,11 @@ class APSScheduler:
                     setup_overflow_terms.append(over)
 
         if self.setup_technicians_available > 0:
-            for s, intervals in setup_intervals_by_shift.items():
-                if intervals:
-                    model.AddCumulative(intervals, [1] * len(intervals), self.setup_technicians_available)
+            for s, pairs in setup_intervals_by_shift.items():
+                if pairs:
+                    intervals = [pair[0] for pair in pairs]
+                    demands = [pair[1] for pair in pairs]
+                    model.AddCumulative(intervals, demands, self.setup_technicians_available)
 
         if setup_overflow_terms:
             return 200 * sum(setup_overflow_terms)

@@ -643,7 +643,7 @@ python -m unittest discover -s tests -v
 
 - `APSScheduler(setup_technicians_available=N)` 在 sequence 开启时为每个 setup 建立可选区间 `[start-setup, start]`，按班次做 `AddCumulative`，限制同时进行的换模数量。
 - 站点设置增加 `setup_technicians_available`（默认 0 = 不启用），第六页可配置；`/api/solve` 可传同名字段。
-- 当前仍是“一个 setup 占一个技术员”的近似；Setup-Matrix 的 `Technicians Required` 尚未按边区分。
+- 技术员需求已按 Setup-Matrix 边的 `Technicians Required` 计，不再统一按 1 人；能力不足仍可能不可行。
 - 新增 `tests/test_capacity_kernel.py` 第 3 项；全量 98/98、快速 55/55。
 
 ### B4-b FG 库存软约束

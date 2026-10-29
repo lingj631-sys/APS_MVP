@@ -74,7 +74,7 @@
 | C1-b-lite setup 占容量 | ✅ | `setup_minutes_per_start` |
 | C1-b-3 班内 sequence + start/end | ✅ 可选 | `sequence_setup=True` 时构建 `first/last/trans` + MTZ + `start/end/setup`；Gantt 页展示 sequence/setup；默认关闭 |
 | C1-b 跨班 carry-over | ✅ 可选 | 上一班 last mold → 下一班 first mold |
-| C1-b-4 技术员 setup 区间 | ✅ 可选 | `setup_technicians_available` + `AddCumulative`；仍按每个 setup 占 1 人近似；过小会不可行 |
+| C1-b-4 技术员 setup 区间 | ✅ 可选 | `setup_technicians_available` + `AddCumulative`；技术员数按 Setup-Matrix 边需求；过小会不可行 |
 | C2-a Routing 数据层 | ✅ | 候选线/机台、认证、优先级 |
 | C2-b-a 路线重指派 | ✅ 启发式 | 主线过载移备线；已接站点开关与 `/api/solve.routing_decisions`；非 CP-SAT Assign |
 | C2-b CP-SAT Assign | ❌ | 未实现 |

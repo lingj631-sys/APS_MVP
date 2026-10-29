@@ -46,6 +46,7 @@ from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
 from src.metric_labels import labels_for
 from src.rule_catalog import load_catalog
+from src.routing import assign_routing_lines, load_routing
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -140,6 +141,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "sequence_setup": False,
         "setup_technicians_available": 0,
         "inventory_policy_enabled": False,
+        "routing_assign_enabled": False,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -158,6 +160,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "sequence_setup": False,
         "setup_technicians_available": 0,
         "inventory_policy_enabled": False,
+        "routing_assign_enabled": False,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -525,6 +528,7 @@ class SiteSettingsPayload(BaseModel):
     sequence_setup: Optional[bool] = False
     setup_technicians_available: Optional[int] = 0
     inventory_policy_enabled: Optional[bool] = False
+    routing_assign_enabled: Optional[bool] = False
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -551,6 +555,7 @@ class SolvePayload(BaseModel):
     sequence_setup: bool = False
     setup_technicians_available: Optional[int] = None
     inventory_policy_enabled: Optional[bool] = None
+    routing_assign_enabled: Optional[bool] = None
 
 
 class RuleSetSavePayload(BaseModel):
@@ -607,6 +612,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["setup_technicians_available"] = max(0, int(payload.setup_technicians_available))
     if payload.inventory_policy_enabled is not None:
         cfg["inventory_policy_enabled"] = payload.inventory_policy_enabled
+    if payload.routing_assign_enabled is not None:
+        cfg["routing_assign_enabled"] = payload.routing_assign_enabled
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -1750,6 +1757,24 @@ def run_solver(payload: SolvePayload):
     for error in labor_data.errors:
         print(f"  [labor] {error}")
 
+    routing_enabled = (
+        payload.routing_assign_enabled
+        if payload.routing_assign_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("routing_assign_enabled", False)
+    )
+    routing_decisions = []
+    if routing_enabled:
+        routing_path = os.path.join(DATA_DIR, "master", "Routing-Machines.csv")
+        routing_table = load_routing(routing_path)
+        topology = get_topology(payload.site.upper())
+        capacity_hours = {
+            line: float(horizon_days * topology.shifts_per_day * topology.shift_hours)
+            for line in {getattr(t, "line", "") for t in plan.tasks}
+        }
+        routing_decisions = assign_routing_lines(
+            plan.tasks, routing_table, site=payload.site.upper(),
+            capacity_hours_by_line=capacity_hours, max_ratio=0.95,
+        )
     inventory_enabled = (
         payload.inventory_policy_enabled
         if payload.inventory_policy_enabled is not None
@@ -2231,6 +2256,7 @@ def run_solver(payload: SolvePayload):
         "sf_balance": sf_balance_data,
         "tasks": task_schedule_list,
         "sequence_plan": result.sequence_plan or [],
+        "routing_decisions": routing_decisions,
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
         "inventory_projection": inventory_data,

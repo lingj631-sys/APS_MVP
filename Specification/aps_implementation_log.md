@@ -653,6 +653,12 @@ python -m unittest discover -s tests -v
 - 当前只做 FG，SF 仍由 material_balance 账本约束；库存策略仍是 mock 值。
 - 新增 `tests/test_capacity_kernel.py` 第 4 项；全量 99/99、快速 56/56。
 
+### C2-b-a 路线重指派接线
+
+- `routing_assign_enabled` 站点开关接入 `/api/solve`；服务端在建 plan 后调用 `assign_routing_lines()`，返回 `routing_decisions`。
+- 这是 preprocessor：主线负荷超过 95% 时移备线，不是 CP-SAT Assign(i,m)。
+- WL 5 天实测 `status=success`，当前数据无过载决策（0 条）；功能路径已通。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

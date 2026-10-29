@@ -3450,6 +3450,13 @@
                 </div>
                 <input v-model="siteSettings.inventory_policy_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
               </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用路线重指派 (C2-b-a)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">主候选线过载时按 Routing-Machines 移到较低负荷备线；当前是 preprocessor，不是 CP-SAT Assign。</div>
+                </div>
+                <input v-model="siteSettings.routing_assign_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -4861,6 +4868,7 @@
                 sequence_setup: !!siteSettings.value.sequence_setup,
                 setup_technicians_available: Number(siteSettings.value.setup_technicians_available || 0),
                 inventory_policy_enabled: !!siteSettings.value.inventory_policy_enabled,
+                routing_assign_enabled: !!siteSettings.value.routing_assign_enabled,
                 lookahead_enabled: siteSettings.value.lookahead_enabled,
                 lookahead_days: siteSettings.value.lookahead_days,
                 max_pull_forward_days: siteSettings.value.max_pull_forward_days,

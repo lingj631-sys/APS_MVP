@@ -53,6 +53,8 @@ class CompileContext(Protocol):
     def labor_pool(self, line: str) -> str: ...
     def shift_weekday(self, slot: int) -> int: ...
     def shift_name(self, slot: int) -> str: ...
+    def shift_date_str(self, slot: int) -> str: ...
+    def baseline_units(self, task, slot: int) -> int: ...
     def shifts_per_day(self) -> int: ...
     def co_product_partner(self, task) -> Optional[Any]: ...
 
@@ -144,6 +146,7 @@ def _compile_capacity(ctx: CompileContext, rule: RuleInstance, params: Dict[str,
     min_util = float(params["min_util"])
     max_util = float(params["max_util"])
     tail_exempt = bool(params["tail_exempt"])
+    setup_ms = int(round(float(params.get("setup_minutes_per_start", 0.0) or 0.0) * 60 * 1000))
     # Capacity is line-level, but the rule may be stage-scoped. Apply it only to
     # lines that carry a matching task, so an FG rule cannot widen the SF line.
     applicable_lines = {
@@ -158,22 +161,45 @@ def _compile_capacity(ctx: CompileContext, rule: RuleInstance, params: Dict[str,
         cap = ctx.capacity_ms(line)
         floor = int(round(min_util * cap))
         ceiling = int(round(max_util * cap))
+        line_tasks = [
+            task for task in ctx.tasks()
+            if str(getattr(task, "line", "")) == str(line)
+            and rule.scope.matches(_target(site, task))
+        ]
         for slot in range(ctx.num_shifts):
             load = ctx.load(line, slot)
-            # Only add the ceiling when the load variable's own domain is wider:
-            # a redundant bound changes CP-SAT's search for no benefit.
-            if ceiling < ctx.load_upper_bound(line):
-                ctx.model.Add(load <= ceiling)
             tail = ctx.tail(line, slot) if tail_exempt else 0
             opened = ctx.open(line, slot)
-            lhs = load + floor * tail if tail_exempt else load
+            if setup_ms > 0:
+                started_here = sum(
+                    ctx.started(task, slot)
+                    for task in line_tasks
+                    if ctx.window(task)[0] <= slot <= ctx.window(task)[1]
+                )
+                occupied = load + setup_ms * started_here
+            else:
+                occupied = load
+            lhs = occupied + floor * tail if tail_exempt else occupied
             rhs = floor * opened
             if rule.nature is Nature.HARD:
+                # Only add the ceiling when needed; a redundant bound changes
+                # CP-SAT search. With setup time, occupied can exceed the load
+                # variable's own domain, so always add it.
+                if setup_ms > 0 or ceiling < ctx.load_upper_bound(line):
+                    ctx.model.Add(occupied <= ceiling)
                 ctx.model.Add(lhs >= rhs)
             else:
+                # SC-02: soft bilateral target. Keep >100% possible, but price it;
+                # do not add a hard ceiling. The floor and ceiling are both penalties.
                 gap = ctx.model.NewIntVar(0, floor, f"gap.{rule.rule_id}.{line}.{slot}")
                 ctx.model.Add(gap >= rhs - lhs)
                 book.add(rule, gap)
+                over = ctx.model.NewIntVar(
+                    0, max(1, ctx.load_upper_bound(line) + setup_ms * max(1, len(line_tasks))),
+                    f"over.{rule.rule_id}.{line}.{slot}"
+                )
+                ctx.model.Add(over >= occupied - ceiling)
+                book.add(rule, over)
     return warnings, rule.nature is Nature.HARD
 
 
@@ -181,16 +207,39 @@ def _compile_min_batch(ctx: CompileContext, rule: RuleInstance, params: Dict[str
     warnings: List[str] = []
     unit = params["unit"]
     minimum = int(params["min_multiple"])
+    basis = str(params.get("basis", "shift"))
+    source = str(params.get("quantity_source", "MPQ"))
+    tail_exempt = bool(params.get("tail_exempt", False))
+    moq_override = float(params.get("moq_override", 0.0) or 0.0)
     for task in ctx.tasks():
         if not rule.scope.matches(_target(site, task)):
             continue
         lot_size = max(1, int(getattr(task, "lot_size", 1)))
         mpq = max(1, int(getattr(task, "mpq", 1)))
         splittable = hasattr(ctx, "is_splittable") and ctx.is_splittable(task)
-        min_lots = 1 if splittable else (max(1, mpq // lot_size) if unit == "MPQ" else max(1, minimum))
+        if splittable:
+            min_lots = 1
+        elif source == "MOQ":
+            moq = max(1, int(moq_override or getattr(task, "moq", 0) or mpq))
+            unit_pieces = max(1, int(ctx.unit_pieces(task)))
+            min_lots = max(1, int(math.ceil(moq / unit_pieces)))
+        else:
+            min_lots = max(1, mpq // lot_size) if unit == "MPQ" else max(1, minimum)
+
         lo, hi = ctx.window(task)
-        for slot in range(lo, hi + 1):
-            ctx.model.Add(ctx.x(task, slot) >= min_lots * ctx.active(task, slot))
+        if basis == "order":
+            # Order/campaign-level MOQ: the task total must clear the threshold.
+            # A final/urgent tail may be exempted by the rule author.
+            units = min_lots * max(1, int(ctx.unit_pieces(task)))
+            if tail_exempt and float(getattr(task, "quantity", 0.0)) < units:
+                continue
+            ctx.model.Add(
+                sum(ctx.x(task, slot) for slot in range(lo, hi + 1))
+                * max(1, int(ctx.unit_pieces(task))) >= units
+            )
+        else:
+            for slot in range(lo, hi + 1):
+                ctx.model.Add(ctx.x(task, slot) >= min_lots * ctx.active(task, slot))
     return warnings, True
 
 
@@ -428,6 +477,8 @@ def _compile_labor_capacity(ctx: CompileContext, rule: RuleInstance, params: Dic
     """
     warnings: List[str] = []
     fallback = max(0, int(params.get("available_headcount") or 0))
+    setup_required = max(0, int(params.get("setup_technicians_required") or 0))
+    setup_available = max(0, int(params.get("setup_technicians_available") or 0))
     crews: Dict[int, List[Tuple[str, str, Any, int]]] = defaultdict(list)
 
     for line in ctx.lines():
@@ -456,7 +507,30 @@ def _compile_labor_capacity(ctx: CompileContext, rule: RuleInstance, params: Dic
 
     if not crews:
         warnings.append(f"{rule.rule_id}: 无可用人力数据，labor_capacity 跳过")
-        return warnings, False
+        if not (setup_required > 0 and setup_available > 0):
+            return warnings, False
+
+    # HC-02 approximation: count setup starts per shift, not exact setup intervals.
+    if setup_required > 0 and setup_available > 0:
+        for slot in range(ctx.num_shifts):
+            starts = sum(
+                ctx.started(task, slot)
+                for task in ctx.tasks()
+                if rule.scope.matches(_target(site, task))
+                and ctx.window(task)[0] <= slot <= ctx.window(task)[1]
+            )
+            if rule.nature is Nature.HARD:
+                ctx.model.Add(starts * setup_required <= setup_available)
+            else:
+                excess = ctx.model.NewIntVar(
+                    0, max(1, setup_required * max(1, len(list(ctx.tasks())))),
+                    f"setup_tech_excess.{rule.rule_id}.{slot}",
+                )
+                ctx.model.Add(excess >= starts * setup_required - setup_available)
+                book.add(rule, excess)
+
+    if not crews:
+        return warnings, rule.nature is Nature.HARD
 
     for slot, items in crews.items():
         available = min(item[3] for item in items)
@@ -554,7 +628,8 @@ def _compile_calendar(ctx: CompileContext, rule: RuleInstance, params: Dict[str,
 def _compile_time_window(ctx: CompileContext, rule: RuleInstance, params: Dict[str, Any], book: PenaltyBook, site: str):
     warnings: List[str] = []
     allowed = {part.strip() for part in str(params["allowed_shifts"]).split(",") if part.strip()}
-    if not allowed:
+    allowed_dates = {part.strip() for part in str(params.get("allowed_dates", "")).split(",") if part.strip()}
+    if not allowed and not allowed_dates:
         return [], False
     if float(params["min_duration_hours"]) > 0:
         warnings.append(f"{rule.rule_id}: min_duration_hours 暂未实现（班次粒度）")
@@ -563,12 +638,13 @@ def _compile_time_window(ctx: CompileContext, rule: RuleInstance, params: Dict[s
             continue
         lo, hi = ctx.window(task)
         for slot in range(lo, hi + 1):
-            if ctx.shift_name(slot) in allowed:
-                continue
-            if rule.nature is Nature.HARD:
-                ctx.model.Add(ctx.active(task, slot) == 0)
-            else:
-                book.add(rule, ctx.active(task, slot))
+            shift_bad = bool(allowed) and ctx.shift_name(slot) not in allowed
+            date_bad = bool(allowed_dates) and ctx.shift_date_str(slot) not in allowed_dates
+            if shift_bad or date_bad:
+                if rule.nature is Nature.HARD:
+                    ctx.model.Add(ctx.active(task, slot) == 0)
+                else:
+                    book.add(rule, ctx.active(task, slot))
     return warnings, rule.nature is Nature.HARD
 
 
@@ -605,12 +681,25 @@ def _compile_freeze(ctx: CompileContext, rule: RuleInstance, params: Dict[str, A
     fence = int(params["fence_shifts"])
     if fence <= 0:
         return [], False
+    use_baseline = bool(params.get("use_baseline", False))
     for task in ctx.tasks():
         if not rule.scope.matches(_target(site, task)):
             continue
         lo, hi = ctx.window(task)
         for slot in range(lo, min(fence, hi + 1)):
-            if rule.nature is Nature.HARD:
+            if use_baseline:
+                target = int(ctx.baseline_units(task, slot))
+                if rule.nature is Nature.HARD:
+                    ctx.model.Add(ctx.x(task, slot) == target)
+                else:
+                    diff = ctx.model.NewIntVar(
+                        0, 1_000_000_000,
+                        f"freeze_diff.{rule.rule_id}.{getattr(task, 'task_id', '?')}.{slot}",
+                    )
+                    ctx.model.Add(diff >= ctx.x(task, slot) - target)
+                    ctx.model.Add(diff >= target - ctx.x(task, slot))
+                    book.add(rule, diff)
+            elif rule.nature is Nature.HARD:
                 ctx.model.Add(ctx.active(task, slot) == 0)
             else:
                 book.add(rule, ctx.active(task, slot))

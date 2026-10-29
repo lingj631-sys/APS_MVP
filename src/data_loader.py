@@ -38,6 +38,8 @@ class ProductParam:
     lead_time_days: float = 0.0
     scrap_rate: float = 0.0
     headcount: float = 0.0
+    moq: float = 0.0  # minimum order/start quantity; distinct from packaging MPQ
+    max_stock: float = 0.0
 
 
 @dataclass
@@ -150,6 +152,7 @@ class ProductionTask:
     customer_tier: str = "A"
     line_pm_slots: List[int] = field(default_factory=list)
     crew_required: float = 0.0
+    moq: int = 0
 
 
 @dataclass
@@ -294,6 +297,7 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                 ct = _to_float(row.get("Cycle time"))
                 trp = _to_float(row.get("Line TRP"), 0.71)
                 mpq = _to_float(row.get("Mini Production QTY(MPQ)"), 1.0)
+                moq = _to_float(row.get("MOQ (Minimum Order Qty)") or row.get("MOQ"), mpq) or mpq
                 hours = _to_float(row.get("No. of hours/shift"), 8.0 if site_filter == "WL" else 12.0)
                 shifts = int(_to_float(row.get("No. of shift/day"), 3 if site_filter == "WL" else 2))
                 output_shift = _to_float(row.get("Output per shift")) or (hours * 3600.0 / ct * trp if ct > 0 else 0.0)
@@ -311,6 +315,8 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                     shifts_per_day=shifts,
                     target_stock=target_stock,
                     headcount=_to_float(row.get("Headcount")),
+                    max_stock=_to_float(row.get("Max stock") or row.get("Max Stock")),
+                    moq=moq,
                 )
 
     # 2. Load Parameters-SFN.csv
@@ -329,6 +335,7 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                 ct = _to_float(row.get("Cycle time(S)") or row.get("Cycle time"))
                 trp = _to_float(row.get("Line TRP"), 0.85)
                 mpq = _to_float(row.get("Mini Production QTY(MPQ)"), 100.0)
+                moq = _to_float(row.get("MOQ (Minimum Order Qty)") or row.get("MOQ"), mpq) or mpq
                 hours = _to_float(row.get("No. of hours/shift"), 8.0 if site_filter == "WL" else 12.0)
                 shifts = int(_to_float(row.get("No. of shift/day"), 3 if site_filter == "WL" else 2))
                 output_shift = _to_float(row.get("Output per shift")) or (hours * 3600.0 / ct * trp if ct > 0 else 0.0)
@@ -351,6 +358,8 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                     lead_time_days=lead_days,
                     scrap_rate=scrap,
                     headcount=_to_float(row.get("Head count") or row.get("Headcount")),
+                    max_stock=_to_float(row.get("Max stock") or row.get("Max Stock")),
+                    moq=moq,
                 )
 
     # 3. Load BOM-List.csv
@@ -785,6 +794,11 @@ def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: 
     hours_col = 11 if semi_finished else 9
     shifts_col = 12 if semi_finished else 10
     headcount_col = 14 if semi_finished else 12
+    headers = {
+        str(ws.cell(1, c).value).strip(): c
+        for c in range(1, ws.max_column + 1)
+    }
+    moq_col = headers.get("MOQ (Minimum Order Qty)") or headers.get("MOQ") or (16 if semi_finished else 13)
     for r in range(2, ws.max_row + 1):
         if str(ws.cell(r, 1).value or "").strip() != site_filter:
             continue
@@ -794,6 +808,8 @@ def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: 
         ct = _to_float(ws.cell(r, 7).value) or ct_map.get(pn, default_ct)
         trp = _to_float(ws.cell(r, 3).value, default_trp) or default_trp
         mpq = _to_float(ws.cell(r, 6).value, default_mpq) or default_mpq
+        max_stock_col = headers.get("Max stock") or headers.get("Max Stock") or (15 if semi_finished else 0)
+        moq = _to_float(ws.cell(r, moq_col).value, mpq) or mpq
         hours = _to_float(ws.cell(r, hours_col).value, 8.0) or 8.0
         params[pn] = ProductParam(
             site=site_filter,
@@ -811,6 +827,8 @@ def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: 
             lead_time_days=_to_float(ws.cell(r, 9).value) if semi_finished else 0.0,
             scrap_rate=_to_float(ws.cell(r, 10).value) if semi_finished else 0.0,
             headcount=_to_float(ws.cell(r, headcount_col).value),
+            max_stock=_to_float(ws.cell(r, max_stock_col).value) if max_stock_col else 0.0,
+            moq=moq,
         )
     return params
 
@@ -823,13 +841,17 @@ def lot_millis(lot_size: float, ct_seconds: float, trp: float) -> int:
     return max(1, int(round(lot_size * ct_seconds / trp * TIME_SCALE)))
 
 
-def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan:
+def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bool = False) -> RequirementPlan:
     """Net customer demand against opening and safety stock, then explode BOM.
 
     Finished goods are produced in whole MPQ batches, so the rounding surplus stays
     on hand and offsets the next order for the same part. Semi-finished output only
     has to clear the MPQ start quantity, so an order of 120 pieces costs 120 pieces
     instead of two batches of 100.
+
+    ``apply_scrap=True`` applies the SF ``scrap_rate`` as an input-yield recovery:
+    required_input = gross_need / (1 - scrap_rate). It is opt-in so the legacy
+    baseline remains reproducible.
     """
     site = next((p.site for p in snapshot.fg_params.values()), "WL")
     topology = get_topology(site)
@@ -960,6 +982,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
             customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
             line_pm_slots=line_pm_slots.get(param.line, []),
             crew_required=param.headcount,
+            moq=int(round(param.moq or param.mpq)),
         )
         fg_tasks.append(fg_task)
 
@@ -974,8 +997,13 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
                 crew_warned.add(sf_pn)
 
             gross_need = qty * ratio
+            if apply_scrap and sf_param.scrap_rate > 0:
+                yield_factor = max(0.01, 1.0 - float(sf_param.scrap_rate))
+                required_input = gross_need / yield_factor
+            else:
+                required_input = gross_need
             sf_usable = max(0.0, sf_avail[sf_pn] - sf_param.target_stock)
-            sf_net = max(0.0, gross_need + sf_param.target_stock - sf_avail[sf_pn])
+            sf_net = max(0.0, required_input + sf_param.target_stock - sf_avail[sf_pn])
             sf_consumed[sf_pn] = sf_consumed.get(sf_pn, 0.0) + gross_need
 
             if sf_net <= 0:
@@ -1011,6 +1039,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot) -> RequirementPlan
                 customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
                 line_pm_slots=line_pm_slots.get(sf_param.line, []),
                 crew_required=sf_param.headcount,
+                moq=int(round(sf_param.moq or sf_param.mpq)),
             ))
 
     movements = [

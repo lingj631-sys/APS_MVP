@@ -1,209 +1,340 @@
 {
-  "rule_set_id": "WL_PHASE1",
-  "site": "WL",
-  "version": 2,
+  "effective_from": null,
+  "effective_to": null,
   "groups": [
     {
       "id": "G0_PHYSICAL",
-      "priority": 0,
-      "mode": "hard"
+      "mode": "hard",
+      "priority": 0
     },
     {
       "id": "G1_DELIVERY",
-      "priority": 10,
-      "mode": "lexicographic"
+      "mode": "lexicographic",
+      "priority": 10
     },
     {
       "id": "G2_CAPACITY",
-      "priority": 20,
-      "mode": "lexicographic"
+      "mode": "lexicographic",
+      "priority": 20
     },
     {
       "id": "G3_CHANGEOVER",
-      "priority": 30,
-      "mode": "weighted"
+      "mode": "weighted",
+      "priority": 30
     },
     {
       "id": "G4_INVENTORY",
-      "priority": 40,
-      "mode": "weighted"
+      "mode": "weighted",
+      "priority": 40
     }
   ],
+  "rule_set_id": "WL_PHASE1",
   "rules": [
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G0_PHYSICAL",
       "id": "WL_MPQ_FG",
-      "template": "min_batch",
+      "inherit": "replace",
+      "nature": "hard",
+      "params": {
+        "basis": "shift",
+        "min_multiple": 1,
+        "moq_override": 0.0,
+        "quantity_source": "MPQ",
+        "rounding": "ceil",
+        "tail_exempt": false,
+        "unit": "MPQ"
+      },
+      "priority": 0,
       "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
         "stage": "FG"
       },
-      "nature": "hard",
-      "weight": 1,
-      "group": "G0_PHYSICAL",
-      "priority": 0,
-      "params": {
-        "unit": "MPQ"
-      }
+      "template": "min_batch",
+      "weight": 1.0
     },
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G0_PHYSICAL",
       "id": "WL_MPQ_SF",
-      "template": "min_batch",
+      "inherit": "replace",
+      "nature": "hard",
+      "params": {
+        "basis": "shift",
+        "min_multiple": 1,
+        "moq_override": 0.0,
+        "quantity_source": "MPQ",
+        "rounding": "ceil",
+        "tail_exempt": false,
+        "unit": "piece"
+      },
+      "priority": 0,
       "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
         "stage": "SF"
       },
-      "nature": "hard",
-      "weight": 1,
-      "group": "G0_PHYSICAL",
-      "priority": 0,
-      "params": {
-        "unit": "piece",
-        "min_multiple": 1
-      }
+      "template": "min_batch",
+      "weight": 1.0
     },
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G0_PHYSICAL",
       "id": "WL_SEQ",
+      "inherit": "replace",
+      "nature": "hard",
+      "params": {
+        "order_by": "due",
+        "tolerance_shifts": 0
+      },
+      "priority": 0,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
       "template": "sequence",
-      "scope": {},
-      "nature": "hard",
-      "weight": 1,
-      "group": "G0_PHYSICAL",
-      "priority": 0,
-      "params": {
-        "order_by": "due"
-      }
+      "weight": 1.0
     },
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G0_PHYSICAL",
       "id": "WL_TOOL",
+      "inherit": "replace",
+      "nature": "hard",
+      "params": {
+        "available_qty": 1,
+        "resource": "mold"
+      },
+      "priority": 0,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
       "template": "tooling_exclusivity",
-      "scope": {},
-      "nature": "hard",
-      "weight": 1,
-      "group": "G0_PHYSICAL",
-      "priority": 0,
-      "params": {
-        "available_qty": 1
-      }
+      "weight": 1.0
     },
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G0_PHYSICAL",
       "id": "WL_PM",
-      "template": "pm_block",
-      "scope": {},
+      "inherit": "replace",
       "nature": "hard",
-      "weight": 1,
-      "group": "G0_PHYSICAL",
-      "priority": 0,
       "params": {
+        "capacity_rate": 0.0,
         "handling": "avoid"
-      }
+      },
+      "priority": 0,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
+      "template": "pm_block",
+      "weight": 1.0
     },
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G0_PHYSICAL",
       "id": "WL_READY",
-      "template": "material_ready",
-      "scope": {},
+      "inherit": "replace",
       "nature": "hard",
-      "weight": 1,
-      "group": "G0_PHYSICAL",
-      "priority": 0,
       "params": {
+        "qc_release_hours": 2.0,
         "source": "PO"
-      }
+      },
+      "priority": 0,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
+      "template": "material_ready",
+      "weight": 1.0
     },
     {
-      "id": "WL_MBAL",
-      "template": "material_balance",
-      "scope": {},
-      "nature": "hard",
-      "weight": 1,
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
       "group": "G0_PHYSICAL",
-      "priority": 0,
+      "id": "WL_MBAL",
+      "inherit": "replace",
+      "nature": "hard",
       "params": {
         "buffer_shifts": 0,
         "include_stock": true
-      }
+      },
+      "priority": 0,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
+      "template": "material_balance",
+      "weight": 1.0
     },
     {
-      "id": "WL_DUE",
-      "template": "due_date",
-      "scope": {
-        "stage": "FG"
-      },
-      "nature": "hard",
-      "weight": 1,
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
       "group": "G1_DELIVERY",
-      "priority": 10,
+      "id": "WL_DUE",
+      "inherit": "replace",
+      "nature": "hard",
       "params": {
-        "mode": "hard"
-      }
-    },
-    {
-      "id": "WL_CAP_FG",
-      "template": "capacity_utilization",
+        "cutoff_time": "15:00",
+        "mode": "hard",
+        "tolerance_minutes": 0.0
+      },
+      "priority": 10,
       "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
         "stage": "FG"
       },
-      "nature": "soft",
-      "weight": 100,
-      "group": "G2_CAPACITY",
-      "priority": 20,
-      "params": {
-        "min_util": 0.95,
-        "max_util": 1.05,
-        "tail_exempt": true
-      }
+      "template": "due_date",
+      "weight": 1.0
     },
     {
-      "id": "WL_CAP_SF",
-      "template": "capacity_utilization",
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G2_CAPACITY",
+      "id": "WL_CAP_FG",
+      "inherit": "replace",
+      "nature": "soft",
+      "params": {
+        "include_setup": false,
+        "max_util": 1.05,
+        "min_util": 0.95,
+        "setup_minutes_per_start": 0.0,
+        "tail_exempt": true
+      },
+      "priority": 20,
       "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "FG"
+      },
+      "template": "capacity_utilization",
+      "weight": 100.0
+    },
+    {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G2_CAPACITY",
+      "id": "WL_CAP_SF",
+      "inherit": "replace",
+      "nature": "soft",
+      "params": {
+        "include_setup": false,
+        "max_util": 1.0,
+        "min_util": 0.95,
+        "setup_minutes_per_start": 0.0,
+        "tail_exempt": true
+      },
+      "priority": 20,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
         "stage": "SF"
       },
-      "nature": "soft",
-      "weight": 100,
-      "group": "G2_CAPACITY",
-      "priority": 20,
-      "params": {
-        "min_util": 0.95,
-        "max_util": 1.0,
-        "tail_exempt": true
-      }
+      "template": "capacity_utilization",
+      "weight": 100.0
     },
     {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G3_CHANGEOVER",
       "id": "WL_CO",
-      "template": "changeover",
-      "scope": {},
+      "inherit": "replace",
       "nature": "soft",
-      "weight": 100,
-      "group": "G3_CHANGEOVER",
-      "priority": 30,
       "params": {
-        "setup_minutes": 0,
-        "count_by": "run_start"
-      }
-    },
-    {
-      "id": "WL_CC",
-      "template": "concurrency",
-      "scope": {},
-      "nature": "hard",
-      "weight": 100,
-      "group": "G3_CHANGEOVER",
+        "count_by": "run_start",
+        "cross_shift_inherit": true,
+        "setup_minutes": 0
+      },
       "priority": 30,
-      "params": {
-        "max_models": 3
-      }
-    },
-    {
-      "id": "WL_CUST",
-      "template": "customer_priority",
       "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
+      "template": "changeover",
+      "weight": 100.0
+    },
+    {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G3_CHANGEOVER",
+      "id": "WL_CC",
+      "inherit": "replace",
+      "nature": "hard",
+      "params": {
+        "max_models": 3,
+        "window": "shift"
+      },
+      "priority": 30,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
+        "stage": "*"
+      },
+      "template": "concurrency",
+      "weight": 100.0
+    },
+    {
+      "effective_from": null,
+      "effective_to": null,
+      "enabled": true,
+      "group": "G1_DELIVERY",
+      "id": "WL_CUST",
+      "inherit": "replace",
+      "nature": "soft",
+      "params": {
+        "due_window_days": 1,
+        "tier_weights": "STRATEGIC:10,A:3,B:1"
+      },
+      "priority": 10,
+      "scope": {
+        "line": "*",
+        "part": "*",
+        "site": "*",
         "stage": "FG"
       },
-      "nature": "soft",
-      "weight": 100,
-      "group": "G1_DELIVERY",
-      "priority": 10,
-      "params": {
-        "tier_weights": "STRATEGIC:10,A:3,B:1"
-      }
+      "template": "customer_priority",
+      "weight": 100.0
     }
-  ]
+  ],
+  "site": "WL",
+  "version": 4
 }

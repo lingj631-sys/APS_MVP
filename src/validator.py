@@ -474,9 +474,15 @@ def _check_material_balance(plan, tasks, index_of) -> Check:
                 if key in index_of and qty > 0:
                     sf_produced_by_shift[t.part_no][index_of[key]] += qty
 
-    # 2. Extract BOM mapping from plan or snapshot
+    # 2. Extract BOM mapping from the plan first (RequirementPlan carries the
+    # same BOM used by the scheduler); fall back to the snapshot/pairwise path.
     bom_map = defaultdict(list)
-    if hasattr(plan, "snapshot") and hasattr(plan.snapshot, "bom"):
+    plan_bom = getattr(plan, "bom", None)
+    if plan_bom:
+        for fg_pn, entries in plan_bom.items():
+            for sf_pn, ratio in entries:
+                bom_map[fg_pn].append((sf_pn, ratio))
+    elif hasattr(plan, "snapshot") and hasattr(plan.snapshot, "bom"):
         bom_map = plan.snapshot.bom
     else:
         for fg_task in getattr(plan, "fg_tasks", []):
@@ -499,9 +505,14 @@ def _check_material_balance(plan, tasks, index_of) -> Check:
                         sf_consumed_by_shift[sf_pn][s_idx] += needed
                         sf_consumed_fg_sources[sf_pn][s_idx].append(f"{t.part_no}({qty}件)")
 
-    # 4. Initial stock per SF part
+    # 4. Initial stock per SF part (use the plan ledger first; do not double count
+    # stock_covered across multiple tasks of the same part).
     sf_initial_stock = defaultdict(float)
-    if hasattr(plan, "snapshot") and hasattr(plan.snapshot, "initial_stock"):
+    plan_stock = getattr(plan, "initial_stock", None)
+    if plan_stock:
+        for pn, stk in plan_stock.items():
+            sf_initial_stock[pn] = float(stk)
+    elif hasattr(plan, "snapshot") and hasattr(plan.snapshot, "initial_stock"):
         for pn, stk in plan.snapshot.initial_stock.items():
             sf_initial_stock[pn] = float(stk)
     else:

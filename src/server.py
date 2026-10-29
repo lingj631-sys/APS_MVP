@@ -42,8 +42,10 @@ from src.data_loader import (
 )
 from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.kernel.rule_mapping import describe_legacy_rule
+from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
 from src.metric_labels import labels_for
+from src.rule_catalog import load_catalog
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -61,11 +63,19 @@ from src.shift_manager import (
 from src.validator import validate_schedule, diagnose_empty_shifts
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+
+def uploaded_source_path(site: str) -> str:
+    return os.path.join(UPLOAD_DIR, f"current_{site}.xlsx")
 DEFAULT_EXCEL = os.path.join(BASE_DIR, "dataSource.xlsx")
 if not os.path.exists(DEFAULT_EXCEL):
     DEFAULT_EXCEL = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
 EXCEL_PATH = DEFAULT_EXCEL
-SITE = "WL"
+# Each factory runs its own instance. FACTORY_SITE pins one instance to one site;
+# DEFAULT_SITE is the fallback for a shared development instance.
+FACTORY_SITE = os.getenv("FACTORY_SITE", "").strip().upper()
+SITE = FACTORY_SITE or os.getenv("DEFAULT_SITE", "WL").strip().upper()
+SINGLE_FACTORY = bool(FACTORY_SITE)
 
 
 @asynccontextmanager
@@ -127,6 +137,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "start_date": "2026-10-12",
         "baseline_date": "2026-10-11",
         "calendar_mode": "SEVEN_ZERO",
+        "sequence_setup": False,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -142,6 +153,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "start_date": "2026-10-12",
         "baseline_date": "2026-10-11",
         "calendar_mode": "FIVE_TWO",
+        "sequence_setup": False,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -278,6 +290,12 @@ session_state = {
 
 
 def get_fresh_snapshot(site: str = "WL") -> ProductionInputSnapshot:
+    # A planner-uploaded workbook takes precedence over the checked-in CSV/Excel
+    # fixture, so "upload -> smart solve" uses exactly what was uploaded.
+    # Each site has its own uploaded file: WL and SY38 do not overwrite each other.
+    uploaded = uploaded_source_path(site)
+    if os.path.isfile(uploaded):
+        return load_aps_database(uploaded, site_filter=site)
     source = DATA_DIR if os.path.exists(DATA_DIR) else EXCEL_PATH
     return load_aps_database(source, site_filter=site)
 
@@ -500,6 +518,7 @@ class SiteSettingsPayload(BaseModel):
     start_date: Optional[str] = "2026-10-12"
     baseline_date: Optional[str] = "2026-10-11"
     calendar_mode: Optional[str] = "SEVEN_ZERO"
+    sequence_setup: Optional[bool] = False
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -523,6 +542,7 @@ class SolvePayload(BaseModel):
     lookahead_days: Optional[int] = None
     max_pull_forward_days: Optional[int] = None
     use_rule_set: bool = True
+    sequence_setup: bool = False
 
 
 class RuleSetSavePayload(BaseModel):
@@ -573,6 +593,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["baseline_date"] = payload.baseline_date
     if payload.calendar_mode is not None:
         cfg["calendar_mode"] = payload.calendar_mode
+    if payload.sequence_setup is not None:
+        cfg["sequence_setup"] = payload.sequence_setup
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -598,6 +620,8 @@ def update_site_settings(payload: SiteSettingsPayload):
 @app.post("/api/sites/switch")
 def switch_site(site: str = Body(..., embed=True)):
     site_key = "WL" if site in ["WL", "WE34"] else site
+    if SINGLE_FACTORY and site_key != SITE:
+        raise HTTPException(status_code=400, detail=f"该实例固定为 {SITE} 工厂，不能切换到 {site_key}")
     session_state["site"] = site_key
     session_state["snapshot"] = get_fresh_snapshot(site)
     session_state["plan"] = build_requirement_plan(session_state["snapshot"])
@@ -621,6 +645,37 @@ def switch_site(site: str = Body(..., embed=True)):
         "site": site,
         "settings": cfg,
     }
+
+
+def _master_rows(sheet_name: str, site: str, limit: int = 500):
+    """Read one planner-facing master-data sheet from the current per-site source."""
+    source = uploaded_source_path(site) if os.path.isfile(uploaded_source_path(site)) else EXCEL_PATH
+    if not os.path.isfile(source):
+        return []
+    wb = openpyxl.load_workbook(source, read_only=True, data_only=True)
+    try:
+        if sheet_name not in wb.sheetnames:
+            return []
+        ws = wb[sheet_name]
+        headers = [str(c.value).strip() if c.value is not None else "" for c in ws[1]]
+        site_idx = next((i for i, h in enumerate(headers) if h.lower() == "site"), None)
+        rows = []
+        for values in ws.iter_rows(min_row=2, values_only=True):
+            if site_idx is not None and str(values[site_idx] or "").strip() != site:
+                continue
+            item = {}
+            for i, header in enumerate(headers):
+                if not header:
+                    continue
+                value = values[i] if i < len(values) else None
+                item[header] = value.isoformat(sep=" ") if hasattr(value, "isoformat") else value
+            if any(v not in (None, "") for v in item.values()):
+                rows.append(item)
+            if len(rows) >= limit:
+                break
+        return rows
+    finally:
+        wb.close()
 
 
 @app.get("/api/inputs")
@@ -679,6 +734,11 @@ def get_inputs(site: Optional[str] = None):
             "shifts_per_day": p.shifts_per_day,
             "output_per_shift": round(p.output_per_shift, 1),
             "target_stock": p.target_stock,
+            "moq": p.moq,
+            "lead_time_days": p.lead_time_days,
+            "scrap_rate": p.scrap_rate,
+            "max_stock": p.max_stock,
+            "headcount": p.headcount,
         }
         for p in snap.fg_params.values()
     ]
@@ -696,9 +756,20 @@ def get_inputs(site: Optional[str] = None):
             "shifts_per_day": p.shifts_per_day,
             "output_per_shift": round(p.output_per_shift, 1),
             "target_stock_days": p.target_stock_days,
+            "moq": p.moq,
+            "lead_time_days": p.lead_time_days,
+            "scrap_rate": p.scrap_rate,
+            "max_stock": p.max_stock,
+            "headcount": p.headcount,
         }
         for p in snap.sf_params.values()
     ]
+
+    # New master-data tables for UI tabs (current site, current uploaded source)
+    routing_rows = _master_rows("Routing-Machines", session_state["site"])
+    setup_matrix_rows = _master_rows("Setup-Matrix", session_state["site"])
+    inventory_policy_rows = _master_rows("Inventory-Policy", session_state["site"])
+    operation_leadtime_rows = _master_rows("Operation-LeadTime", session_state["site"])
 
     # Format BOM
     bom_list = []
@@ -896,6 +967,10 @@ def get_inputs(site: Optional[str] = None):
         "fg_params": fg_params_list,
         "sf_params": sf_params_list,
         "bom": bom_list,
+        "routing": routing_rows,
+        "setup_matrix": setup_matrix_rows,
+        "inventory_policy": inventory_policy_rows,
+        "operation_leadtime": operation_leadtime_rows,
         "calendar_info": calendar_info,
         "tooling_molds": tooling_molds_list,
         "pm_schedules": pm_schedules_list,
@@ -1010,6 +1085,143 @@ def update_inputs(payload: UpdateInputsPayload):
     return {"status": "success", "message": "输入数据已更新"}
 
 
+
+@app.get("/api/inputs/template")
+def download_data_source_template():
+    if not os.path.isfile(EXCEL_PATH):
+        raise HTTPException(status_code=404, detail="dataSource.xlsx 模板不存在")
+    return FileResponse(
+        EXCEL_PATH,
+        filename="APS_DataSource_Template.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _validate_template_schema(uploaded_path: str) -> int:
+    """Reject uploads whose sheet set or row-1 schema differs from dataSource.xlsx."""
+    if not os.path.isfile(EXCEL_PATH):
+        raise ValueError("服务端缺少 dataSource.xlsx 标准模板")
+    canonical = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
+    uploaded = openpyxl.load_workbook(uploaded_path, read_only=True, data_only=True)
+    try:
+        expected_sheets = list(canonical.sheetnames)
+        actual_sheets = list(uploaded.sheetnames)
+        missing = [name for name in expected_sheets if name not in actual_sheets]
+        extra = [name for name in actual_sheets if name not in expected_sheets]
+        if missing or extra:
+            detail = []
+            if missing:
+                detail.append("缺少 sheet: " + ", ".join(missing))
+            if extra:
+                detail.append("多出 sheet: " + ", ".join(extra))
+            raise ValueError("; ".join(detail))
+        for sheet in expected_sheets:
+            expected_ws = canonical[sheet]
+            actual_ws = uploaded[sheet]
+            expected = [str(expected_ws.cell(1, c).value or "").strip() for c in range(1, expected_ws.max_column + 1)]
+            actual = [str(actual_ws.cell(1, c).value or "").strip() for c in range(1, actual_ws.max_column + 1)]
+            if expected != actual:
+                for idx, (a, b) in enumerate(zip(expected, actual), start=1):
+                    if a != b:
+                        raise ValueError(f"sheet [{sheet}] 表头第 {idx} 列不一致: 模板={a!r}, 上传={b!r}")
+                raise ValueError(f"sheet [{sheet}] 表头列数不一致: 模板={len(expected)}, 上传={len(actual)}")
+        return len(expected_sheets)
+    finally:
+        canonical.close()
+        uploaded.close()
+
+
+@app.post("/api/inputs/upload")
+async def upload_data_source(file: UploadFile = File(...)):
+    """Upload a planner-facing dataSource.xlsx and make it the active source.
+
+    The workbook is validated by the same loader used by /api/solve, then kept as
+    data/uploads/current.xlsx. The checked-in data is never overwritten.
+    """
+    filename = (file.filename or "").strip()
+    if not filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="只接受 .xlsx 文件")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件为空")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件超过 25MB 限制")
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    temp_path = os.path.join(UPLOAD_DIR, "upload.tmp.xlsx")
+    with open(temp_path, "wb") as fh:
+        fh.write(content)
+
+    required_sheets = [
+        "Parameters-FG", "Parameters-SFN", "BOM List", "Initial Stock",
+        "Customer Demand", "Tooling-Mold", "Preventive-Maintenance",
+        "Material-Arrival-ETA", "Customer-Priority",
+    ]
+    optional_sheets = [
+        "Routing-Machines", "Setup-Matrix", "Operation-LeadTime",
+        "Inventory-Policy", "Customer-Orders", "Trial-Windows", "Baseline-Schedule",
+        "Calendar-Patterns", "Campaign-Families", "Setup-Technicians",
+        "Crew-Pool", "Labor-Availability", "Line-Staffing",
+    ]
+    wb = None
+    try:
+        schema_sheet_count = _validate_template_schema(temp_path)
+        wb = openpyxl.load_workbook(temp_path, read_only=True, data_only=True)
+        sheetnames = set(wb.sheetnames)
+        missing = [name for name in required_sheets if name not in sheetnames]
+        if missing:
+            raise ValueError("缺少必要 sheet: " + ", ".join(missing))
+        site = session_state["site"]
+        site_counts = {}
+        for pn, ws in (("fg", wb["Parameters-FG"]), ("sf", wb["Parameters-SFN"])):
+            count = 0
+            for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+                if str(row[0] or "").strip() == site:
+                    count += 1
+            site_counts[pn] = count
+        if not site_counts["fg"] and not site_counts["sf"]:
+            raise ValueError(f"上传文件中没有 {site} 工厂的 Parameters-FG/SFN 数据")
+        try:
+            loaded = load_aps_database(temp_path, site_filter=site)
+        except Exception as exc:
+            raise ValueError(f"工作簿结构无法被 APS 解析: {exc}") from exc
+    except Exception as exc:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if wb is not None:
+            try:
+                wb.close()
+            except Exception:
+                pass
+
+    site = session_state["site"]
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.replace(temp_path, uploaded_source_path(site))
+    session_state["snapshot"] = loaded
+    session_state["plan"] = build_requirement_plan(loaded)
+    session_state["result"] = None
+    session_state["matrix"] = None
+    session_state["checks"] = None
+    session_state["compliance"] = None
+    return {
+        "status": "success",
+        "filename": filename,
+        "site": site,
+        "site_counts": site_counts,
+        "fg_params": len(loaded.fg_params),
+        "sf_params": len(loaded.sf_params),
+        "orders": len(loaded.orders),
+        "sheets": sorted(sheetnames),
+        "missing_optional_sheets": [name for name in optional_sheets if name not in sheetnames],
+        "schema_sheet_count": schema_sheet_count,
+        "message": f"已载入 {filename}，当前站点 {site} 数据已刷新",
+    }
+
+
 @app.delete("/api/inputs/orders/{order_id}")
 def delete_order(order_id: str):
     snap = session_state["snapshot"]
@@ -1108,6 +1320,31 @@ def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SE
         current_calendar_mode=calendar_mode,
         site=session_state["site"],
     )
+
+
+@app.get("/api/rule-catalog")
+def get_rule_catalog():
+    path = os.path.join(BASE_DIR, "config", "rule_catalog", "aps_32_rules.json")
+    rules = load_catalog(path)
+    return {
+        "count": len(rules),
+        "rules": [
+            {
+                "id": r.id,
+                "class": r.rule_class,
+                "category": r.category,
+                "scope": r.scope,
+                "name": r.name,
+                "constraint": r.constraint,
+                "weight": r.weight,
+                "logic": r.logic,
+                "legacy_ref": r.legacy_ref,
+                "status": r.status,
+                "phase": r.phase,
+            }
+            for r in rules
+        ],
+    }
 
 
 @app.get("/api/rules")
@@ -1526,6 +1763,7 @@ def run_solver(payload: SolvePayload):
         rule_set=kernel_rule_set,
         kernel_templates=kernel_templates,
         labor_data=labor_data,
+        sequence_setup=bool(payload.sequence_setup or site_settings_store.get(payload.site.upper(), {}).get("sequence_setup", False)),
     )
 
     # Solve with capacity overload diagnosis
@@ -1887,6 +2125,32 @@ def run_solver(payload: SolvePayload):
     # Shift Idle Diagnostic Engine (Why shifts are empty)
     empty_shift_reasons = diagnose_empty_shifts(result.tasks, scheduler.shifts, plan)
 
+    # B4-b-a: inventory policy projection is an audit surface, not a hard model
+    # constraint yet. Keep it optional and side-effect free.
+    inventory_policies = load_inventory_policy(
+        os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"), site=payload.site.upper()
+    )
+    inventory_projection = project_inventory(
+        result.tasks, solve_snap, scheduler.shifts, inventory_policies, site=payload.site.upper()
+    )
+    inventory_data = {
+        "metrics": inventory_projection.metrics,
+        "violations": inventory_projection.violations[:50],
+        "points": [
+            {
+                "part_no": p.part_no,
+                "shift_key": p.shift_key,
+                "day": p.day,
+                "production": p.production,
+                "demand": p.demand,
+                "inventory": p.inventory,
+                "period": p.policy.period_type if p.policy else None,
+                "violation": p.violation,
+            }
+            for p in inventory_projection.points
+        ],
+    }
+
     return {
         "status": "success",
         "solve_time": session_state["last_solve_time"],
@@ -1941,6 +2205,7 @@ def run_solver(payload: SolvePayload):
         "tasks": task_schedule_list,
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
+        "inventory_projection": inventory_data,
         "empty_shift_reasons": empty_shift_reasons,
         "lookahead_summary": lookahead_summary,
         "calendar_summary": {

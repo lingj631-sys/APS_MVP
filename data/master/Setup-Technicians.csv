@@ -1,0 +1,6 @@
+﻿Site,Shift,Technician ID,Skill,Available From,Available To
+WL,早班,TECH-WL-早班-01,模具/调机,07:00,15:00
+WL,中班,TECH-WL-中班-01,模具/调机,19:00,07:00
+WL,晚班,TECH-WL-晚班-01,模具/调机,19:00,07:00
+SY38,白班,TECH-SY38-白班-01,模具/调机,07:00,15:00
+SY38,夜班,TECH-SY38-夜班-01,模具/调机,19:00,07:00

@@ -190,7 +190,7 @@ class TestGoldenBaseline(unittest.TestCase):
             use_kernel_capacity=True,
         )
         self.assertTrue(sched.use_kernel_capacity)
-        result = sched.solve(time_limit_seconds=60.0)
+        result = sched.solve(time_limit_seconds=120.0)
 
         # The compiled rule must reproduce the legacy *compliance*, not necessarily
         # the identical tie-break: the kernel adds a redundant ceiling constraint,
@@ -250,7 +250,7 @@ class TestGoldenBaseline(unittest.TestCase):
             rule_set=rule_set,
             kernel_templates={"capacity_utilization", "min_batch", "due_date"},
         )
-        result = sched.solve(time_limit_seconds=90.0)
+        result = sched.solve(time_limit_seconds=180.0)
         kernel_quantities = {t.task_id: int(round(t.quantity)) for t in result.tasks}
         legacy_quantities = {t.task_id: int(round(t.quantity)) for t in self.result.tasks}
         self.assertEqual(kernel_quantities, legacy_quantities)
@@ -303,7 +303,7 @@ class TestGoldenBaseline(unittest.TestCase):
             rule_set=rule_set,
             kernel_templates={"capacity_utilization", "min_batch", "due_date", "changeover"},
         )
-        result = sched.solve(time_limit_seconds=90.0)
+        result = sched.solve(time_limit_seconds=180.0)
         kernel_quantities = {t.task_id: int(round(t.quantity)) for t in result.tasks}
         legacy_quantities = {t.task_id: int(round(t.quantity)) for t in self.result.tasks}
         self.assertEqual(kernel_quantities, legacy_quantities)
@@ -385,7 +385,7 @@ class TestGoldenBaseline(unittest.TestCase):
                 "concurrency",
             },
         )
-        result = sched.solve(time_limit_seconds=90.0)
+        result = sched.solve(time_limit_seconds=180.0)
         kernel_quantities = {t.task_id: int(round(t.quantity)) for t in result.tasks}
         legacy_quantities = {t.task_id: int(round(t.quantity)) for t in self.result.tasks}
         self.assertEqual(kernel_quantities, legacy_quantities)

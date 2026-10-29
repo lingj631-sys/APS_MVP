@@ -123,7 +123,7 @@
 
 ## 3. 测试表面与回归矩阵 (The Interface is the Test Surface)
 
-根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 9 大自动化测试套件与系统接缝的映射关系如下：
+根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 15 大自动化测试套件与系统接缝的映射关系如下：
 
 | 测试套件文件 | 覆盖的模块接缝 | 核心验证不变量 |
 |---|---|---|
@@ -136,6 +136,11 @@
 | `tests/test_labor.py` | `src/labor.py` 主数据 | 产线定员定额、考勤日历可用工时校验、异常数据防御拦截 |
 | `tests/test_aps_pipeline.py` | 端到端流水线集成 | 双工厂加载、10 天全流程排程、17 项硬校验、Excel 冻结窗回写与手工上传闭环 |
 | `tests/test_regressions.py` | REG-01~08 缺陷回归 | 时序物料账本、日历槽位、安全库存补产、未知料号、冻结期、FIFO 交期、计划窗口、xlsx 路径 |
+| `tests/test_sequence.py` | `src/sequence.py` C1-a | 同模优先、SDST 换模矩阵、班内/跨班序列原语 |
+| `tests/test_routing.py` | `src/routing.py` C2-a | 路线表加载、候选/认证机台、主候选线 |
+| `tests/test_rule_catalog.py` | `src/rule_catalog.py` | 32 条目录唯一性、HC/SC/BS 分类、site override 不污染全局 |
+| `tests/test_inventory_policy.py` | `src/inventory_policy.py` B4-a | NORMAL/MONTH_END 策略、月末窗口、双工厂覆盖 |
+| `tests/test_capacity_kernel.py` | `src/scheduler.py` + active rule set | capacity kernel 目标接线（P0 回归）、C1-b-1 sequence/setup 求解 |
 
 ---
 

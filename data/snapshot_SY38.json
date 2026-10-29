@@ -15,7 +15,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 70.0,
+      "max_stock": 0.0
     },
     "L755392S": {
       "site": "SY38",
@@ -32,7 +34,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 70.0,
+      "max_stock": 0.0
     },
     "LA96403S": {
       "site": "SY38",
@@ -49,7 +53,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 70.0,
+      "max_stock": 0.0
     },
     "LA96404S": {
       "site": "SY38",
@@ -66,7 +72,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 70.0,
+      "max_stock": 0.0
     },
     "LA83453S": {
       "site": "SY38",
@@ -83,7 +91,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     },
     "L755548S": {
       "site": "SY38",
@@ -100,7 +110,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     },
     "LA96445S": {
       "site": "SY38",
@@ -117,7 +129,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     },
     "LCC4666ZO04": {
       "site": "SY38",
@@ -134,7 +148,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     },
     "LCC4690ZO04": {
       "site": "SY38",
@@ -151,7 +167,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 12.0
+      "headcount": 12.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     },
     "LCC4710ZN04": {
       "site": "SY38",
@@ -168,7 +186,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 15.0
+      "headcount": 15.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     },
     "LCC4725ZN04": {
       "site": "SY38",
@@ -185,7 +205,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.0,
       "scrap_rate": 0.0,
-      "headcount": 15.0
+      "headcount": 15.0,
+      "moq": 24.0,
+      "max_stock": 0.0
     }
   },
   "sf_params": {
@@ -204,7 +226,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.5,
       "scrap_rate": 0.0,
-      "headcount": 1.0
+      "headcount": 1.0,
+      "moq": 100.0,
+      "max_stock": 1680.0
     },
     "L782264": {
       "site": "SY38",
@@ -221,7 +245,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.5,
       "scrap_rate": 0.0,
-      "headcount": 1.0
+      "headcount": 1.0,
+      "moq": 100.0,
+      "max_stock": 1680.0
     },
     "L755774": {
       "site": "SY38",
@@ -238,7 +264,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.5,
       "scrap_rate": 0.0,
-      "headcount": 1.0
+      "headcount": 1.0,
+      "moq": 100.0,
+      "max_stock": 1680.0
     },
     "LAC3180": {
       "site": "SY38",
@@ -255,7 +283,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.5,
       "scrap_rate": 0.0,
-      "headcount": 1.0
+      "headcount": 1.0,
+      "moq": 100.0,
+      "max_stock": 400.0
     },
     "LAC3181": {
       "site": "SY38",
@@ -272,7 +302,9 @@
       "target_stock_days": 0.0,
       "lead_time_days": 0.5,
       "scrap_rate": 0.0,
-      "headcount": 1.0
+      "headcount": 1.0,
+      "moq": 100.0,
+      "max_stock": 400.0
     }
   },
   "bom": {

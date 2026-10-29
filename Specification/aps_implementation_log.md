@@ -180,7 +180,9 @@
 | 开班利用率 | 97.0% |
 | 交付 | 7/7 = 100%（无 105% 收尾） |
 | 人力工时 | 552.0h，峰值 3 人（轴套6 缺数据按 0 计） |
-| 换型块 | 19 + 34 = 53（与 R-WL-12 的权衡见 §3.6） |\n\n> 当前 active WL v1（11 条）的 `/api/solve` 实测：200，19 单，0 项校验失败，55 块，90.6s 请求；拆分版 v3 在版本列表里，未自动激活。
+| 换型块 | 19 + 34 = 53（与 R-WL-12 的权衡见 §3.6） |
+
+> 当前 active WL v1（11 条）的 `/api/solve` 实测：200，19 单，0 项校验失败，55 块，90.6s 请求；拆分版 v3 在版本列表里，未自动激活。
 
 ### 4.2 单元测试（2026-10-26 Phase 1 基线，历史）
 
@@ -194,7 +196,7 @@
 | `test_golden_baseline` | 13 项 PASS（内核迁移 + 105 口径 + 组目标） |
 | **合计** | **57 项 PASS，375.0s** |
 
-> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **77 项（72 绿 / 5 红，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
+> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **97 项（97 绿，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
 
 ### 4.3 独立审计（ACT-09 / ACT-10）
 
@@ -458,8 +460,8 @@ CLI `python src/main.py`（active WL_PHASE1，180s）
 
 ```bash
 python src/main.py                 # CLI 全流程 + 17 项校验
-python run_tests.py --fast         # 快速单元/回归（48 项，约 61s）
-python run_tests.py                # 全量 9 套件（77 项，含黄金基线与端到端）
+python run_tests.py --fast         # 快速单元/回归（49 项，约 61s）
+python run_tests.py                # 全量 15 套件（97 项，含黄金基线与端到端）
 python -m unittest discover -s tests -v
 ```
 
@@ -474,6 +476,164 @@ python -m unittest discover -s tests -v
 
 ### 8.1 当前测试口径
 
-- 快速回归：`run_tests.py --fast` 48/48 + `test_regressions` 8/8 = **56/56 绿**；
-- 全量：**77 项，72 绿 / 5 红**（golden 08/09/10；pipeline 03/04）；
-- 未闭环前不要宣称“全量 100% 绿色”。
+- 快速回归：`run_tests.py --fast` 54/54 + `test_regressions` 8/8 = **62/62 绿**；
+- 全量：**97/97 绿，1386.0s**；
+- 全量回归已闭环。
+
+---
+
+## 9. 扩展主数据（2026-10-28）
+
+- Parameters-FG/SFN 追加 MOQ (Minimum Order Qty)；ProductParam.moq / ProductionTask.moq 已加载，但 min_batch 仍按 MPQ，MOQ 尚未参与约束。
+- 新增 data/master/：Routing、Setup Matrix、Operation LeadTime、Customer Orders、Inventory Policy、Trial Windows、Baseline、Calendar Patterns、Campaign Families、Setup Technicians、labor mock。
+- dataSource.xlsx 同步追加 MOQ 列与新 sheet；字段定义见 data/master/README.md。
+- 其余扩展表为 mock/待接线；现有求解器行为不变。
+
+---
+
+## 10. Phase B/C 启动（2026-10-29）
+
+### B1 MOQ / MPQ 解耦（已开始）
+
+- min_batch 新增参数：asis=shift|order、quantity_source=MPQ|MOQ、	ail_exempt、moq_override；默认值保持现有班次 MPQ 行为。
+- asis=order 时按工单总量约束；quantity_source=MOQ 读取 ProductionTask.moq；	ail_exempt 仅对总量低于门槛的收尾/急单放行。
+- 主数据 Parameters-FG/SFN 已追加 MOQ；ProductParam.moq/ProductionTask.moq 已加载。
+- 快速回归 54/54 仍绿；尚未把新 MOQ 规则写入 active seed，因此当前排产行为不变。
+
+### B3 软产能（已开始）
+
+- `capacity_utilization` 的 soft 规则已改为**双边软目标**：低于 95% 与高于 `max_util` 都计罚，不再加硬上限；hard 规则保持原硬约束。
+- `_compile_capacity_kernel` 不再强制 hard，尊重 rule nature；`tests/test_kernel.py::test_10b_soft_capacity_prices_over_target` 验证 soft 可行、hard 不可行。
+
+### B5 时间窗日期（已开始）
+
+- `time_window` 新增 `allowed_dates`（MM/DD 逗号分隔），可按日期 + 班次双重限制；hard 禁排、soft 计罚。
+- 默认空字符串，不改变现有规则行为。
+- `freeze` 新增 `use_baseline`：true 时冻结窗按基线数量锁定，false 保留原“禁止排产”语义。
+- 新增 `tests/test_kernel.py::test_10c_time_window_allowed_dates_are_hard`；快速回归 50/50。
+
+### C1-a 班内序列原语（已开始）
+
+- 新增 `src/sequence.py`：把已决定的班次产量转成建议顺序，按 `Setup-Matrix` 做同模优先/SDST 换模时间，并用 DP（≤10 个任务）或贪心（更多）求解。
+- 当前是 side-effect-free 的 C1-a 原语，尚未把 sequence 变量回灌到 CP-SAT 数量分配；下一步 C1-b 才做 solver 内约束。
+- 新增 `tests/test_sequence.py` 2 项测试；C1-a 同时输出 production/setup/total minutes 与 exceed capacity 的 `overload_shifts`，为 C1-b 的容量反馈做输入。
+
+### B2 报废率投料放大（已开始）
+
+- `build_requirement_plan(..., apply_scrap=True)` 按 `gross/(1-scrap_rate)` 放大 SF 投料；默认 `False`，不影响现有基线。
+- 新增 `tests/test_scrap.py`，验证 3% 报废时 SF 总投料增加。
+- 尚未接 UI/规则集；当前仅数据与算法入口可用。
+
+### C1-b-lite setup 占用容量（已开始）
+
+- `capacity_utilization` 新增 `setup_minutes_per_start`：每个 run start 额外占用容量；0 保持旧 TRP 口径。
+- hard 规则把 load + setup 一起纳入 ceiling/floor；soft 规则把 over 一起计罚。
+- 新增 `tests/test_kernel.py::test_10d_capacity_charges_setup_per_start`。
+- 这是 C1-b 的容量入口；sequence-dependent SDST 仍由 C1-a 原语计算，下一步做真正的班内顺序变量。
+
+### C3-lite 换模技术员容量（已开始）
+
+- `labor_capacity` 新增 `setup_technicians_required` / `setup_technicians_available`：按班次 run start 数限制换模技术员；HC-02 的班次级近似。
+- 可在没有人力 CSV 时独立启用；未配置时保持原行为。
+- 新增 `tests/test_kernel.py::test_10e_setup_technician_capacity`（hard 不可行 / soft 计罚）。
+
+### C1-b 容量反馈接缝（已开始）
+
+- `APSScheduler` 新增 `setup_reserve: Dict[(line,shift), minutes]`：按班次预留 sequence/setup 时间，容量上限相应扣减。
+- 该接缝可由 C1-a 的 `setup_minutes_by_shift` 填充；默认空，不改变现有行为。
+- 下一步把 C1-a 计划自动回灌到 reserve，并处理跨班 carry-over。
+
+### C1-b 自动反馈（已开始）
+
+- `APSScheduler(sequence_feedback=True)`：初始解后由 C1-a 计算每班 setup，填充 `setup_reserve`，再在剩余预算内复解。
+- 反馈结果只有“缺口数/总缺口/延期单数不劣于初始解”才接受，否则保留原计划；避免 setup reserve 把硬档逼成软档大幅降级。
+- 实测 WL 10 天：初始 49 块/0 缺口；反馈 45 缺口 → **rejected**，返回初始解。
+- 预算分配：启用 feedback 时初始 70%、反馈 30%。
+
+### C2-a 路线数据层（已开始）
+
+- 新增 `src/routing.py`：加载 `data/master/Routing-Machines.csv`，按 site/part/operation 返回候选线/机台、认证标记、优先序。
+- 新增 `tests/test_routing.py` 3 项，验证主/备候选与 53 料号覆盖。
+- 尚未把 Assign(i,m) 变量接进 CP-SAT；C2-b 才做 assignment。
+
+### C-governance：32 条目录与站点覆盖（已开始）
+
+- 新增 `config/rule_catalog/aps_32_rules.json`：32 条规则元数据、HC/SC/BS 分类、能力状态。
+- 新增 `src/rule_catalog.py`：加载校验、`effective_for_site()` 全局目录 + site override（不污染全局）。
+- 新增 `tests/test_rule_catalog.py` 3 项。
+
+### C2-b-a 路线重指派启发式（已开始）
+
+- `src/routing.py` 新增 `assign_routing_lines()`：按候选优先级/认证/当前线负荷，把过载主线的任务移到较低负荷备线。
+- 这是 preprocessor，不是 CP-SAT Assign；默认不接入调度器。
+- 新增 `tests/test_routing.py` 第 4 项，验证 PU07 过载时移到 PU22。
+
+### B4-a 分时段库存数据层（已开始）
+
+- 新增 `src/inventory_policy.py`：加载 `Inventory-Policy.csv`，支持 NORMAL/MONTH_END、from/to day、target/max days。
+- `policy_for_day()` 优先返回月末窗口。
+- 新增 `tests/test_inventory_policy.py` 3 项；尚未接 CP-SAT 库存约束。
+
+### B4-b-a 库存投影审计（已开始）
+
+- `src/inventory_policy.py` 新增 `project_inventory()`：按班次前向推演 FG/SF 库存，按 due 放置需求、按 BOM 生成 SF 消耗，并按 NORMAL/MONTH_END 策略比较上限。
+- 输出 `InventoryPoint` / `InventoryProjection`，列出超库存违规。
+- 新增 `tests/test_inventory_policy.py` 第 4 项，验证超库存被标记。
+- 仍是审计/投影，未接 CP-SAT 硬/软约束。
+
+### B4-b-a 库存投影 API（已开始）
+
+- `/api/solve` 返回 `inventory_projection`：`metrics`、`violations`、逐班 `points`。
+- 这是审计面，不是 CP-SAT 约束；不改变排产。
+
+### 2026-10-29 hotfix：capacity kernel objective 二次调用
+
+- 现象：`POST /api/solve` 在 active WL 规则集下 500，`AttributeError: 'SumArray' object has no attribute 'total_objective'`。
+- 原因：`_compile_capacity_kernel` 写成 `compiled.total_objective().total_objective()`；`total_objective()` 已直接返回 OR-Tools `SumArray`。
+- 修复：改为 `return compiled.total_objective()`。
+- 验证：`POST /api/solve` 返回 `status=success`、19 tasks、17 checks；快速回归 54/54。
+- 说明：自动化套件此前未覆盖 hard kernel capacity 的非空目标路径，实际 active rule set 才触发。
+
+### C1-b-1 / C1-b-2 班内 sequence + SDST + 跨班 carry-over（已开始）
+
+- `APSScheduler(sequence_setup=True)` / `POST /api/solve.sequence_setup=true` 开启班内 sequence 变量：`first/last/trans` + MTZ 子环消除，setup 时间从 `Setup-Matrix.csv` 读取。
+- setup 直接进入该线/班次容量约束：`load + sum(trans × setup_min) <= slot_max`；开启时不再叠加旧的 `changeover_minutes` 固定扣减。
+- C1-b-2 已补跨班 carry-over：上一班 last mold -> 下一班 first mold，空闲班次用 `both` 互锁避免误约束；技术员真实 setup 区间仍未做。
+- 新增 `tests/test_capacity_kernel.py`：P0 capacity kernel 回归 + sequence_setup 求解；快速套件 54/54。
+
+### 2026-10-29 UI/主数据/规则版本更新
+
+- WL 基于 v3 新建并激活 v4：13 条拆分规则，补齐最新模板参数（MOQ/setup 等，默认保守）。
+- 第三页旧版 27 条配置块移除，改为 32 条规则目录（HC/SC/BS），旧版审计数据暂留用于 17 项检查。
+- 输入主数据新增 Routing / Setup-Matrix / Inventory-Policy / Operation-LeadTime 页签。
+- 第六页新增班内 sequence/SDST 开关；站点设置持久化。
+- Excel 上传改为严格模板校验（sheet 名称/顺序与第 1 行 Schema 必须与 dataSource.xlsx 一致），按站点保存 current_WL.xlsx / current_SY38.xlsx。
+- 支持 FACTORY_SITE 固定单厂实例；两厂各起一个进程即可隔离内存状态。
+
+### 2026-10-29 hotfix：sequence_setup 的 site NameError
+
+- 现象：接入站点级 `sequence_setup` 后，`/api/solve` 500，`NameError: name 'site' is not defined`。
+- 原因：`run_solver` 中误用局部变量 `site`，实际只有 `payload.site`。
+- 修复：改为 `site_settings_store.get(payload.site.upper(), {})`。
+- 验证：`POST /api/solve` 返回 success、19 tasks、17 checks。
+- 另修复：删除旧 27 条配置块时多删了第三页容器的闭合 `</div>`，导致第 3 页之后全部空白；已补回并通过 HTML 标签平衡检查。
+
+### 2026-10-29 阶段性收口
+
+- WL 已基于 v3 新建并激活 v4（13 条拆分规则）；SY38 保持 v2（13 条）。
+- 第三页旧 27 条配置块删除，改为 32 条规则目录（HC/SC/BS）；旧版 27 条审计映射暂留第 5 页。
+- 输入主数据新增 Routing / Setup-Matrix / Inventory-Policy / Operation-LeadTime 页签，WL 当前分别加载 37 / 36 / 74 / 37 行。
+- `/api/inputs/upload` 改为严格模板校验：Sheet 名称/顺序 + 第 1 行表头必须与 `dataSource.xlsx` 一致；错误表头直接 400。
+- 上传文件按站点保存为 `data/uploads/current_WL.xlsx` / `current_SY38.xlsx`，不覆盖仓库模板。
+- 第六页新增站点级 `sequence_setup` 开关；`FACTORY_SITE` 支持每厂独立实例。
+- 最终验证：全量 97/97，快速 54/54；真实 API `/api/solve` success / 19 tasks / 17 checks。
+- 仍待完成：C1-b 真正班内 sequence 变量、C2-b CP-SAT Assign(i,m)、B4-b CP-SAT 库存约束、C4/C5。
+
+### 待做
+
+- C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。
+- C2-b CP-SAT Assign(i,m)：Routing 仍是数据层 + 启发式。
+- B4-b CP-SAT 库存约束：当前只有库存投影审计。
+- C4 Operation LeadTime / Transfer Batch；C5 Campaign/Pull/Slack。
+- 32 条规则目录与 17 项审计项的正式映射；旧版 `/api/rules` 兼容层迁移。
+- 真实 Setup-Matrix / Inventory-Policy / Routing 数据替换 mock。

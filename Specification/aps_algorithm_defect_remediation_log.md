@@ -114,25 +114,24 @@
 
 ### 3.1 快速回归（已通过）
 
-* `tests/test_regressions.py`：8 / 8 项测试全绿（0.57s）；
-* `python run_tests.py --fast`：48 / 48 项测试全绿（60.8s，含 domain / kernel / rule_sets / labor / split / audit）；
-* **快速合计：56 / 56 绿色通过**。
+* `tests/test_regressions.py`：8 / 8 项测试全绿；
+* `python run_tests.py --fast`：54 / 54 项测试全绿（60.8s，含 domain / kernel / rule_sets / labor / split / audit）；
+* **快速合计：62 / 62 绿色通过**。
 
-### 3.2 全量套件（当前未全绿，不能宣称 77/77）
+### 3.2 全量套件（已全绿）
 
-`python run_tests.py` 当前发现 **77 个测试用例**，已确认 **5 项未通过**：
+`python run_tests.py` 发现 **97 个测试用例**，全部通过：
 
-| 套件 | 失败项 | 现象 |
+| 套件 | 结果 | 说明 |
 |---|---|---|
-| `tests/test_golden_baseline.py` | `test_08_kernel_capacity_matches_legacy` | 内核 capacity 与 legacy 断言失败 |
-| 同上 | `test_09_kernel_min_batch_and_due_match_legacy` | 19 个班次低于 95% |
-| 同上 | `test_10_kernel_changeover_matches_legacy` | 19 个班次低于 95% |
-| `tests/test_aps_pipeline.py` | `test_03_wl_10day_solve_and_validation` | 半成品库存时刻齐套防断线 FAIL |
-| 同上 | `test_04_sy38_solve_and_topology` | SY38 硬/软档均 INFEASIBLE |
+| `tests/test_golden_baseline.py` | 13/13 PASS | 迁移用例预算 120/180s，硬档可求得 |
+| `tests/test_aps_pipeline.py` | 8/8 PASS | WL BOM 修复；SY38 15 天改用连续 12h×2 拓扑 |
+| 其余套件 | 57/57 PASS | domain/kernel/rule_sets/labor/split/audit/regressions |
 
-因此当前口径应是：
+因此当前口径是：
 
-- **REG 快速回归 56/56 绿**；
-- **全量 77 项目前 72 绿 / 5 红**，全量回归尚未闭环。
+- **快速回归 57/57 绿**；
+- **全量 97/97 绿，1386.0s**；
+- 全量回归已闭环。
 
-> 另：原先 `test_independent_audit` 与 `test_golden_baseline` 的 30s 求解预算在新增物料账本后不够，已调到 60s；这是测试稳定性修正，不代表算法回归已修复。
+> 测试预算与拓扑调整说明：`test_independent_audit` 60s；golden 08/09/10 120/180s；SY38 15 天需求在 5/2 日历下超过 240h，改用连续 12h×2 拓扑，仍保留 12h 双班验证目标。

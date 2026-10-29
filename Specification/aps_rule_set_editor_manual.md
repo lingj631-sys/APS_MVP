@@ -217,6 +217,7 @@ B 的系数 = 1   / (100+1) × scale ≈ 0.010 × scale
 | `max_util` | ratio 1.0 | 班次上限倍数；1.0 = 100%，1.05 = 105% |
 | `tail_exempt` | bool true | 每条线最后一个开班免 95%（收尾班） |
 | `include_setup` | bool false | 【预留】换型工时是否另计入容量；TRP 已含换型时保持 false |
+| `setup_minutes_per_start` | number 0 | C1-b-lite：每个 run start 额外占用容量的分钟数；0 = 沿用 TRP 已含换型 |
 
 示例：
 
@@ -229,7 +230,9 @@ B 的系数 = 1   / (100+1) × scale ≈ 0.010 × scale
 - **规则集的 `max_util` 是 100/105 的唯一开关**；旧规则页的 95%~105% 单选在规则集模式下不生效。
 - 当前 WL 拆成 `WL_CAP_FG`（1.05）和 `WL_CAP_SF`（1.0）：**105% 只允许成品用于 MPQ 拼单；半成品最高 100%**。
 - 95% 是**下限**；105% 是**上限**，不是"允许低于 95%"，也不是"越高越好"。
+- **soft 规则**：当前内核已支持双边软目标，低于 95% 和高于 `max_util` 都计罚，但**不再加硬上限**；hard 规则仍保持 95% 下限 + 上限硬约束（SC-02 / 新规则）。
 - `tail_exempt` 只豁免每条线**最后一个开班**；中间的 22.5% 不是 tail，是异常/软档。
+- `soft` 产能规则用于 SC-02 的 95%~100% 双边目标；`hard` 产能规则仍用于硬性 95% 合规。
 
 ### 4.2 `min_batch` — 最小投产批量 / MPQ
 
@@ -238,14 +241,25 @@ B 的系数 = 1   / (100+1) × scale ≈ 0.010 × scale
 | `unit` | enum MPQ | `MPQ` = 按 MPQ 整批；`piece` = 按件 |
 | `rounding` | enum ceil | 【预留】取整方式 |
 | `min_multiple` | int 1 | `unit=piece` 时的最小件数倍数 |
+| `basis` | enum shift | `shift` = 每班门槛；`order` = 工单总量门槛 |
+| `quantity_source` | enum MPQ | `MPQ` = 用包装模数；`MOQ` = 用主数据 MOQ |
+| `tail_exempt` | bool false | `basis=order` 时，尾数/急单总量低于 MOQ 允许豁免 |
+| `moq_override` | number 0 | 临时覆盖主数据 MOQ；0 表示用 `ProductionTask.moq` |
 
 示例（WL 当前拆分）：成品 `{"unit":"MPQ"}`；半成品 `{"unit":"piece","min_multiple":1}`。
 
+HC-11 的 MOQ 示例：
+
+```json
+{"unit":"piece","basis":"order","quantity_source":"MOQ","tail_exempt":true}
+```
+
 要点：
 
-- 成品：单班必须凑满 MPQ 整倍；超班拆批（ACT-06）时，拆分段免 MPQ 下限，总量仍需 ≥ MPQ。
-- 半成品：**MPQ 是订单总量门槛，不是单班门槛**；总量 ≥ MPQ 后，单班可以生产任意正整数件（甚至 1 件）。当前 WL 的 `WL_MPQ_SF` 就是 `unit=piece, min_multiple=1`。
-- 不要再把成品和半成品共用一条 `unit=MPQ` 的规则；这会把半成品单班推到 105% 去凑批量。
+- 默认 `basis=shift, quantity_source=MPQ`，保持现有排产行为不变。
+- `basis=order` 只加“工单总量 ≥ 门槛”约束，不要求每班 ≥ MOQ；`tail_exempt=true` 时，工单总量低于门槛直接放行（用于收尾/急单）。
+- `quantity_source=MOQ` 读取 `ProductParam.moq` / `ProductionTask.moq`；当前主数据 mock 的 MOQ 暂等于 MPQ，替换真实数据后生效。
+- `moq_override > 0` 可临时覆盖主数据，便于规则试验。
 
 ### 4.3 `contiguity` — 连续生产 / 块数上限
 
@@ -379,9 +393,14 @@ B 的系数 = 1   / (100+1) × scale ≈ 0.010 × scale
 | 参数 | 类型/默认 | 含义 |
 |---|---|---|
 | `allowed_shifts` | str `早班,中班` | 只允许这些班次生产 |
+| `allowed_dates` | str 空 | 只允许这些日期（`MM/DD`，逗号分隔）；空=不限制日期 |
 | `min_duration_hours` | number 0 | 【预留】最短持续时间 |
 
-示例：`{"allowed_shifts":"早班,中班"}`
+示例：
+
+```json
+{"allowed_shifts":"早班,中班","allowed_dates":"10/15,10/16"}
+```
 
 ### 4.16 `co_product` — 联产品 / 共模同步
 
@@ -407,10 +426,14 @@ B 的系数 = 1   / (100+1) × scale ≈ 0.010 × scale
 
 | 参数 | 类型/默认 | 含义 |
 |---|---|---|
-| `fence_shifts` | int 3 | 计划开始后的前 N 个班次不允许生产 |
+| `fence_shifts` | int 3 | 计划开始后的前 N 个班次 |
 | `mode` | enum hard | 兼容字段；内核以 nature 为准 |
+| `use_baseline` | bool false | true = 冻结窗内锁定基线数量；false = 只禁止排产 |
 
-要点：v1 是"冻结前 N 班"，不是"锁定基线计划"；基线锁定属于 Phase 2。
+要点：
+
+- `use_baseline=false`：v1 的“冻结前 N 班禁止生产”；
+- `use_baseline=true`：冻结窗内按基线任务 `shift_breakdown` 保持数量，未在基线中的任务为 0；需要传入 `baseline_tasks`。
 
 ### 4.19 `labor_capacity` — 人力上限 / 共享班组
 
@@ -420,11 +443,14 @@ B 的系数 = 1   / (100+1) × scale ≈ 0.010 × scale
 | `crew_source` | enum line | 【预留】line/part |
 | `allow_overtime` | bool false | 【预留】 |
 | `overtime_max_hours` | number 0 | 【预留】 |
+| `setup_technicians_required` | int 0 | 每个 run start 需要的换模技术员数 |
+| `setup_technicians_available` | int 0 | 每班可用的换模技术员数；0 = 不启用 |
 
 要点：
 
 - 有 `data/Labor-Availability.csv` 时按 CSV 的站点/日期/班次可用人数；
-- 无数据时 `available_headcount=0` → 算子自动跳过；
+- 无数据时 `available_headcount=0` → 人力部分自动跳过；
+- `setup_technicians_*` 可在无人力 CSV 时独立启用，按班次 run start 数限制换模技术员（HC-02 近似）；
 - 共享班组来自 `Crew-Pool.csv`；同池两条线不能同班同时开；
 - `hard` 人力不足会无解；建议先 `soft` 观察。
 

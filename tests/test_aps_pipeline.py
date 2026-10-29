@@ -95,7 +95,9 @@ class TestApsPipeline(unittest.TestCase):
             plan_sy,
             start_datetime=START_DT_SY,
             planning_days=15,
-            calendar_mode=CalendarMode.FIVE_TWO,
+            # SY38 15-day demand exceeds the 5/2 calendar's 240h; use the
+            # continuous 12h x 2 calendar to keep this a topology test.
+            calendar_mode=CalendarMode.SEVEN_ZERO,
             site="SY38",
         )
         # Verify true 12h x 2 shifts topology

@@ -25,6 +25,7 @@ delivery both hard, then delivery hard with utilisation penalised, then delivery
 itself penalised. The validator reports whichever violations survive.
 """
 import math
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -163,7 +164,13 @@ class _SchedulerCompileContext:
         return self._tails[line, slot]
 
     def capacity_ms(self, line):
-        return self._scheduler.shift_ms
+        reserves = [
+            float(value) for (reserved_line, _slot), value in
+            getattr(self._scheduler, "setup_reserve", {}).items()
+            if reserved_line == line
+        ]
+        reserve_ms = int(round(max(reserves, default=0.0) * 60 * TIME_SCALE))
+        return max(1, self._scheduler.shift_ms - reserve_ms)
 
     def min_shift_ms(self, line):
         return self._scheduler.min_shift_ms
@@ -237,6 +244,19 @@ class _SchedulerCompileContext:
     def shift_name(self, slot):
         return self._scheduler.shifts[slot].shift_name
 
+    def shift_date_str(self, slot):
+        return self._scheduler.shifts[slot].date_str
+
+    def baseline_units(self, task, slot):
+        baseline = getattr(self._scheduler, "baseline_tasks", None) or []
+        base = next((t for t in baseline if t.task_id == getattr(task, "task_id", None)), None)
+        if base is None:
+            return 0
+        shift = self._scheduler.shifts[slot]
+        key = (shift.date_str, shift.shift_name)
+        qty = getattr(base, "shift_breakdown", {}).get(key, 0)
+        return int(qty // max(1, self.unit_pieces(task)))
+
     def shifts_per_day(self):
         return int(getattr(self._scheduler.topology, "shifts_per_day", 3))
 
@@ -280,6 +300,11 @@ class APSScheduler:
         allow_105_utilization_fg: bool = False,
         allow_105_utilization_sf: bool = False,
         changeover_minutes: float = DEFAULT_CHANGEOVER_MINUTES,
+        setup_reserve: Optional[Dict[Tuple[str, int], float]] = None,
+        sequence_setup: bool = False,
+        sequence_feedback: bool = False,
+        setup_matrix: Optional[Dict[Any, Any]] = None,
+        setup_matrix_path: Optional[str] = None,
         max_blocks_per_task: int = 0,
         max_blocks_per_task_sf: int = 0,
         rule_set: Optional[Any] = None,
@@ -330,6 +355,26 @@ class APSScheduler:
         self.allow_105_utilization_sf = allow_105_utilization_sf
         self.changeover_minutes = changeover_minutes
         self.setup_ms = max(0, int(round(changeover_minutes * 60 * TIME_SCALE)))
+        self.setup_reserve = dict(setup_reserve or {})
+        self.sequence_feedback = bool(sequence_feedback)
+        self.setup_matrix = dict(setup_matrix or {})
+        self.setup_matrix_path = setup_matrix_path
+        self.sequence_setup = bool(sequence_setup)
+        if self.sequence_setup:
+            try:
+                from src.sequence import load_setup_matrix
+                if not self.setup_matrix:
+                    path = self.setup_matrix_path or os.path.join(
+                        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "master", "Setup-Matrix.csv",
+                    )
+                    self.setup_matrix = load_setup_matrix(path)
+                if not self.setup_matrix:
+                    print("  [sequence] setup matrix empty; sequence_setup disabled")
+                    self.sequence_setup = False
+            except Exception as exc:
+                print(f"  [sequence] setup matrix load failed: {exc}")
+                self.sequence_setup = False
         self.max_blocks_per_task = max(0, int(max_blocks_per_task))
         self.max_blocks_per_task_sf = max(0, int(max_blocks_per_task_sf))
         self.rule_set = rule_set
@@ -338,6 +383,7 @@ class APSScheduler:
             templates.add("capacity_utilization")
         self.kernel_templates = templates
         self.use_kernel_capacity = rule_set is not None and "capacity_utilization" in templates
+        self.sequence_setup_hard = True
         if self.rule_set is not None and self.use_kernel_capacity:
             # The rule set is the source of truth for the load ceiling. Keeping the
             # legacy 105% flag here would widen the load domains/hint while the
@@ -348,6 +394,11 @@ class APSScheduler:
                 if rule.enabled and rule.template_id == "capacity_utilization"
             ]
             if capacity_rules:
+                self.sequence_setup_hard = all(
+                    str(getattr(rule.nature, "value", rule.nature)) == "hard"
+                    for rule in capacity_rules
+                )
+
                 def _allow_for(stage: str) -> bool:
                     values = [
                         float(rule.params.get("max_util", 1.0))
@@ -456,6 +507,7 @@ class APSScheduler:
         # second, whole models per line third.
         start = time.perf_counter()
         deadline = start + time_limit_seconds
+        initial_deadline = start + time_limit_seconds * (0.70 if self.sequence_feedback else 1.0)
         # A due-date-feasible packing is hard for CP-SAT to *find* and cheap to
         # improve, so one is solved for up front and used to seed every tier;
         # without it the budget goes on search rather than on filling.
@@ -464,11 +516,77 @@ class APSScheduler:
         # The 95%~100% vs 95%~105% choice belongs to the plant (rule option), so the
         # engine never escalates the ceiling on its own: it either finds a plan inside
         # the selected band or reports infeasibility.
-        result = self._run_tiers(self._tiers(), deadline, hint)
-        if result is not None:
-            return result
+        result = self._run_tiers(self._tiers(), initial_deadline, hint)
+        if result is None:
+            raise RuntimeError("Solver found no feasible schedule in any tier.")
 
-        raise RuntimeError("Solver found no feasible schedule in any tier.")
+        if self.sequence_feedback and time.perf_counter() < deadline - 10.0:
+            reserves = self._sequence_reserves(result)
+            if reserves:
+                previous = self.setup_reserve
+                self.setup_reserve = reserves
+                print(f"  [sequence] setup reserve feedback: {len(reserves)} line-shifts")
+                initial_gaps = self._gap_metrics(result)
+                initial_blocks, initial_late = self._plan_metrics(result)
+                try:
+                    feedback = self._run_tiers(self._tiers(), deadline, hint)
+                    if feedback is not None:
+                        feedback_gaps = self._gap_metrics(feedback)
+                        feedback_blocks, feedback_late = self._plan_metrics(feedback)
+                        if (
+                            feedback_gaps[2] <= initial_gaps[2]
+                            and feedback_gaps[0] <= initial_gaps[0] + 60_000
+                            and feedback_late <= initial_late
+                        ):
+                            result = feedback
+                            print(
+                                f"  [sequence] feedback accepted: gaps {feedback_gaps[2]}, "
+                                f"blocks {feedback_blocks}, late {feedback_late}"
+                            )
+                        else:
+                            print(
+                                f"  [sequence] feedback rejected: gaps {feedback_gaps[2]} "
+                                f"vs {initial_gaps[2]}, late {feedback_late} vs {initial_late}"
+                            )
+                except Exception as exc:  # keep the first feasible result
+                    print(f"  [sequence] feedback skipped: {exc}")
+                finally:
+                    self.setup_reserve = previous
+        return result
+
+    def _sequence_reserves(self, result: ScheduleResult) -> Dict[Tuple[str, int], float]:
+        """C1-b feedback: turn C1-a setup minutes into per-shift capacity reserves."""
+        try:
+            from src.sequence import load_setup_matrix, segments_from_schedule, sequence_segments
+            matrix = self.setup_matrix
+            if not matrix:
+                path = self.setup_matrix_path or os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "data", "master", "Setup-Matrix.csv",
+                )
+                matrix = load_setup_matrix(path)
+            if not matrix:
+                return {}
+            index_of = {(s.date_str, s.shift_name): s.index for s in self.shifts}
+            key_index = {f"{date_str} {shift_name}": idx for (date_str, shift_name), idx in index_of.items()}
+            by_line = segments_from_schedule(result, index_of)
+            reserves: Dict[Tuple[str, int], float] = {}
+            for line, by_shift in by_line.items():
+                capacity = {
+                    key: float(self.shifts[idx].duration_hours * 60.0)
+                    for key, idx in key_index.items()
+                }
+                plan = sequence_segments(
+                    by_shift, matrix, site=self.site, line=line,
+                    capacity_minutes_by_shift=capacity,
+                )
+                for key, minutes in plan.setup_minutes_by_shift.items():
+                    if minutes > 0 and key in key_index:
+                        reserves[(line, key_index[key])] = minutes
+            return reserves
+        except Exception as exc:
+            print(f"  [sequence] reserve calculation skipped: {exc}")
+            return {}
 
     def _compact(self, result: ScheduleResult, hard_due: bool, budget: float) -> ScheduleResult:
         """Restore 95% where it slipped, then group the models around it.
@@ -833,6 +951,9 @@ class APSScheduler:
         shortfall, violations, overloads, opening, tails, loads, kernel_objective = self._add_line_capacity(
             model, x, active, started, end_of, utilization_mode, gap_cap, use_kernel=use_kernel
         )
+        sequence_setup_penalty = None
+        if self.sequence_setup:
+            sequence_setup_penalty = self._add_sequence_constraints(model, x, active, loads)
         kernel_due = hard_due and use_kernel and self._use_kernel("due_date")
 
         # R-SF-02 & R-FG-05: 顺位紧邻前拉硬约束（同产线同型号按交期先后严格顺位排产，禁止跳序挑单）
@@ -1034,6 +1155,8 @@ class APSScheduler:
             group_terms["G1_DELIVERY"].append(self._lateness_weight() * customer_objective)
         if kernel_objective is not None:
             group_terms["G2_CAPACITY"].append(kernel_objective)
+        if sequence_setup_penalty is not None:
+            group_terms["G2_CAPACITY"].append(sequence_setup_penalty)
         all_terms = [term for group in group_terms.values() for term in group]
         model.Minimize(sum(all_terms))
         return model, x, {"open": opening, "tail": tails, "load": loads, "group_terms": group_terms}
@@ -1219,10 +1342,140 @@ class APSScheduler:
             print(f"  [kernel] {warning}")
         return compiled
 
+    def _add_sequence_constraints(self, model, x, active, loads):
+        """C1-b-2: optional intra-shift sequence + SDST + cross-shift carry-over.
+
+        For each line/shift, active tasks form one path (first -> ... -> last).
+        ``trans[a,b]`` carries setup time inside the shift; ``carry[a,b]`` carries
+        the last mold of shift s-1 into the first mold of shift s. The initial
+        setup before the first planned shift is still 0 (no known previous mold).
+        """
+        if not self.sequence_setup or not self.setup_matrix:
+            return
+
+        def setup_ms_for(from_task, to_task):
+            from_mold = str(getattr(from_task, "mold_id", "") or getattr(from_task, "part_no", ""))
+            to_mold = str(getattr(to_task, "mold_id", "") or getattr(to_task, "part_no", ""))
+            if from_mold == to_mold:
+                return 0
+            edge = self.setup_matrix.get((self.site, line, from_mold, to_mold))
+            if edge is None:
+                edge = self.setup_matrix.get((self.site, line, to_mold, from_mold))
+            minutes = float(edge.minutes) if edge is not None else 60.0
+            return int(round(minutes * 60 * TIME_SCALE))
+
+        seq_index = 0
+        setup_overflow_terms = []
+        for line in self.lines:
+            line_tasks = [t for t in self.tasks if t.line == line]
+            base_max = self._get_line_max_shift_ms(line)
+            tasks_by_slot = {}
+            first_by_slot = {}
+            last_by_slot = {}
+            setup_terms_by_slot = defaultdict(list)
+
+            for s in range(self.num_shifts):
+                tasks = [
+                    t for t in line_tasks
+                    if (t.task_id, s) in active and (t.task_id, s) in x
+                    and self.windows[t.task_id][0] <= s <= self.windows[t.task_id][1]
+                ]
+                if not tasks:
+                    continue
+                n = len(tasks)
+                first = {t.task_id: model.NewBoolVar(f"seq_first.{seq_index}.{t.task_id}") for t in tasks}
+                last = {t.task_id: model.NewBoolVar(f"seq_last.{seq_index}.{t.task_id}") for t in tasks}
+                trans = {
+                    (a.task_id, b.task_id): model.NewBoolVar(f"seq_tr.{seq_index}.{a.task_id}.{b.task_id}")
+                    for a in tasks for b in tasks if a.task_id != b.task_id
+                }
+                order = {t.task_id: model.NewIntVar(0, max(0, n - 1), f"seq_u.{seq_index}.{t.task_id}") for t in tasks}
+                for a in tasks:
+                    aid = a.task_id
+                    model.Add(sum(trans[aid, b.task_id] for b in tasks if b.task_id != aid) + last[aid] == active[aid, s])
+                    model.Add(sum(trans[b.task_id, aid] for b in tasks if b.task_id != aid) + first[aid] == active[aid, s])
+                model.Add(sum(first.values()) == sum(last.values()))
+                model.Add(
+                    sum(trans.values()) + sum(first.values())
+                    == sum(active[t.task_id, s] for t in tasks)
+                )
+                for a in tasks:
+                    for b in tasks:
+                        if a.task_id == b.task_id:
+                            continue
+                        model.Add(
+                            order[a.task_id] - order[b.task_id] + n * trans[a.task_id, b.task_id] <= n - 1
+                        )
+                for a in tasks:
+                    for b in tasks:
+                        if a.task_id == b.task_id:
+                            continue
+                        term = setup_ms_for(a, b)
+                        if term:
+                            setup_terms_by_slot[s].append(trans[a.task_id, b.task_id] * term)
+                tasks_by_slot[s] = tasks
+                first_by_slot[s] = first
+                last_by_slot[s] = last
+                seq_index += 1
+
+            # Cross-shift carry-over: last mold of s-1 -> first mold of s.
+            for s in range(1, self.num_shifts):
+                previous = tasks_by_slot.get(s - 1, [])
+                current = tasks_by_slot.get(s, [])
+                if not previous or not current:
+                    continue
+                carry = {
+                    (a.task_id, b.task_id): model.NewBoolVar(f"seq_carry.{line}.{s}.{a.task_id}.{b.task_id}")
+                    for a in previous for b in current
+                }
+                prev_any = sum(last_by_slot[s - 1][a.task_id] for a in previous)
+                curr_any = sum(first_by_slot[s][b.task_id] for b in current)
+                both = model.NewBoolVar(f"seq_both.{line}.{s}")
+                model.Add(both <= prev_any)
+                model.Add(both <= curr_any)
+                model.Add(both >= prev_any + curr_any - 1)
+                model.Add(sum(carry.values()) == both)
+                for a in previous:
+                    model.Add(
+                        sum(carry[a.task_id, b.task_id] for b in current)
+                        <= last_by_slot[s - 1][a.task_id]
+                    )
+                for b in current:
+                    model.Add(
+                        sum(carry[a.task_id, b.task_id] for a in previous)
+                        <= first_by_slot[s][b.task_id]
+                    )
+                for a in previous:
+                    for b in current:
+                        term = setup_ms_for(a, b)
+                        if term:
+                            setup_terms_by_slot[s].append(carry[a.task_id, b.task_id] * term)
+
+            for s, terms in setup_terms_by_slot.items():
+                if not terms:
+                    continue
+                reserve_ms = int(round(float(self.setup_reserve.get((line, s), 0.0)) * 60 * TIME_SCALE))
+                slot_max = max(1, base_max - reserve_ms)
+                if self.sequence_setup_hard:
+                    model.Add(loads[line, s] + sum(terms) <= slot_max)
+                else:
+                    over = model.NewIntVar(0, base_max, f"seq_setup_over.{line}.{s}")
+                    model.Add(loads[line, s] + sum(terms) <= slot_max + over)
+                    setup_overflow_terms.append(over)
+
+        if setup_overflow_terms:
+            return 200 * sum(setup_overflow_terms)
+        return None
+
     def _compile_capacity_kernel(self, model, x, active, started, end_of, opening, tails, loads):
-        """Compile the capacity rules (hard tier only for now)."""
+        """Compile capacity rules, respecting each rule's hard/soft nature.
+
+        A soft capacity rule (SC-02) becomes a bilateral penalty, not a hard
+        ceiling; a hard rule keeps the 95%/ceiling constraints.
+        """
         compiled = self._compile_rules_for(
-            "capacity_utilization", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            "capacity_utilization", model, x, active, started, end_of, opening, tails, loads,
+            force_hard=False,
         )
         if not compiled.book.terms:
             return None
@@ -1260,6 +1513,7 @@ class APSScheduler:
         tails: Dict[Tuple[str, int], object] = {}
         loads: Dict[Tuple[str, int], object] = {}
 
+        setup_ms = 0 if self.sequence_setup else self.setup_ms
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
             max_line_ms = self._get_line_max_shift_ms(line)
@@ -1268,16 +1522,18 @@ class APSScheduler:
             for s in range(self.num_shifts):
                 proc = [x[t.task_id, s] * self._unit_millis(t) for t in line_tasks if (t.task_id, s) in x]
                 setup = [
-                    started[t.task_id, s] * self.setup_ms
+                    started[t.task_id, s] * setup_ms
                     for t in line_tasks
                     if (t.task_id, s) in started
                 ]
-                var = model.NewIntVar(0, max_line_ms, f"load.{line}.{s}")
+                reserve_ms = int(round(float(self.setup_reserve.get((line, s), 0.0)) * 60 * TIME_SCALE))
+                slot_max = max(1, max_line_ms - reserve_ms)
+                var = model.NewIntVar(0, slot_max, f"load.{line}.{s}")
                 model.Add(var == (sum(proc) + sum(setup) if proc or setup else 0))
                 o = model.NewBoolVar(f"open.{line}.{s}")
                 # o == 1 exactly when the shift carries load.
                 model.Add(var >= 1).OnlyEnforceIf(o)
-                model.Add(var <= max_line_ms * o)
+                model.Add(var <= slot_max * o)
                 opening[line, s] = o
                 loads[line, s] = var
                 line_open.append(o)

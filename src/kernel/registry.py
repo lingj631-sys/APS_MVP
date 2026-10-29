@@ -98,15 +98,23 @@ SETUP = ParamSpec("include_setup", "bool", False, description="换型工时是�
 
 TEMPLATES: Dict[str, TemplateSpec] = {
     "capacity_utilization": TemplateSpec(
-        "capacity_utilization", "班次产能利用率区间（开班决策 + 95% 下限）",
-        (CAP, CAP_MAX, TAIL, SETUP), "soft", "G2_CAPACITY",
+        "capacity_utilization", "班次产能利用率区间（开班决策 + 95% 下限 / setup 占用）",
+        (
+            CAP, CAP_MAX, TAIL, SETUP,
+            ParamSpec("setup_minutes_per_start", "number", 0.0, 0.0, 480.0),
+        ),
+        "soft", "G2_CAPACITY",
     ),
     "min_batch": TemplateSpec(
-        "min_batch", "最小投产批量 / MPQ 整倍",
+        "min_batch", "最小投产批量 / MPQ 整倍 / MOQ 启动门槛",
         (
             ParamSpec("unit", "enum", "MPQ", choices=("MPQ", "piece")),
             ParamSpec("rounding", "enum", "ceil", choices=("ceil", "floor", "nearest")),
             ParamSpec("min_multiple", "int", 1, 1, 100),
+            ParamSpec("basis", "enum", "shift", choices=("shift", "order")),
+            ParamSpec("quantity_source", "enum", "MPQ", choices=("MPQ", "MOQ")),
+            ParamSpec("tail_exempt", "bool", False),
+            ParamSpec("moq_override", "number", 0.0, 0.0),
         ),
         "hard", "G0_PHYSICAL",
     ),
@@ -210,9 +218,10 @@ TEMPLATES: Dict[str, TemplateSpec] = {
         "soft", "G1_DELIVERY",
     ),
     "time_window": TemplateSpec(
-        "time_window", "受控时间窗（首批/试制）",
+        "time_window", "受控时间窗（首批/试制：日期 + 班次）",
         (
             ParamSpec("allowed_shifts", "str", "早班,中班"),
+            ParamSpec("allowed_dates", "str", ""),
             ParamSpec("min_duration_hours", "number", 0.0, 0.0, 24.0),
         ),
         "hard", "G0_PHYSICAL",
@@ -234,20 +243,23 @@ TEMPLATES: Dict[str, TemplateSpec] = {
         "hard", "G0_PHYSICAL",
     ),
     "freeze": TemplateSpec(
-        "freeze", "冻结期锁定",
+        "freeze", "冻结期锁定 / 基线保持",
         (
             ParamSpec("fence_shifts", "int", 3, 0, 200),
             ParamSpec("mode", "enum", "hard", choices=("hard", "soft")),
+            ParamSpec("use_baseline", "bool", False),
         ),
         "hard", "G0_PHYSICAL",
     ),
     "labor_capacity": TemplateSpec(
-        "labor_capacity", "人力上限 / 共享班组",
+        "labor_capacity", "人力上限 / 共享班组 / 换模技术员",
         (
             ParamSpec("available_headcount", "int", 0, 0, 10000),
             ParamSpec("crew_source", "enum", "line", choices=("line", "part")),
             ParamSpec("allow_overtime", "bool", False),
             ParamSpec("overtime_max_hours", "number", 0.0, 0.0, 24.0),
+            ParamSpec("setup_technicians_required", "int", 0, 0, 100),
+            ParamSpec("setup_technicians_available", "int", 0, 0, 10000),
         ),
         "hard", "G2_CAPACITY",
     ),

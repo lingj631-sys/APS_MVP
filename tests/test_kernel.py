@@ -201,6 +201,12 @@ class ToyContext:
     def shift_name(self, slot):
         return ["早班", "中班", "晚班"][slot % 3]
 
+    def shift_date_str(self, slot):
+        return f"10/{12 + slot:02d}"
+
+    def baseline_units(self, task, slot):
+        return 0
+
     def shifts_per_day(self):
         return 3
 
@@ -394,6 +400,42 @@ class TestRuleKernel(unittest.TestCase):
         self.assertIn(status, (cp_model.OPTIMAL, cp_model.FEASIBLE))
         self.assertGreater(solver.ObjectiveValue(), 0.0, "4h in each shift must trigger the 95% gap")
 
+    def test_10b_soft_capacity_prices_over_target(self):
+        """SC-02 soft capacity: >target is priced, not made infeasible."""
+        task = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=4, due_slot=0, window=(0, 0))
+
+        def build(nature):
+            return RuleSet(
+                "CAP_SOFT",
+                "WL",
+                1,
+                [RuleGroup("G2_CAPACITY", 20, GroupMode.WEIGHTED)],
+                [
+                    RuleInstance(
+                        "CAP",
+                        "capacity_utilization",
+                        Scope(line="L1"),
+                        nature,
+                        100,
+                        "G2_CAPACITY",
+                        20,
+                        {"min_util": 0.0, "max_util": 0.5, "tail_exempt": False},
+                    )
+                ],
+            )
+
+        ctx_soft = ToyContext([task])
+        compiled_soft = compile_rules(ctx_soft, build(Nature.SOFT))
+        solver_soft, status_soft = _solve(ctx_soft, compiled_soft)
+        self.assertIn(status_soft, (cp_model.OPTIMAL, cp_model.FEASIBLE))
+        self.assertGreater(solver_soft.ObjectiveValue(), 0.0)
+
+        task_hard = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=4, due_slot=0, window=(0, 0))
+        ctx_hard = ToyContext([task_hard])
+        compiled_hard = compile_rules(ctx_hard, build(Nature.HARD))
+        _, status_hard = _solve(ctx_hard, compiled_hard)
+        self.assertEqual(status_hard, cp_model.INFEASIBLE)
+
     def test_10_due_is_hard(self):
         task = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=4, due_slot=0, window=(0, 1))
         ctx = ToyContext([task])
@@ -401,6 +443,105 @@ class TestRuleKernel(unittest.TestCase):
         solver, status = _solve(ctx, compiled)
         self.assertIn(status, (cp_model.OPTIMAL, cp_model.FEASIBLE))
         self.assertEqual(solver.Value(ctx.end_of(task)), 0)
+
+    def test_10d_capacity_charges_setup_per_start(self):
+        """C1-b-lite: setup time per run consumes capacity."""
+        task = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=4, due_slot=0, window=(0, 0))
+
+        def build(nature):
+            return RuleSet(
+                "CAP_SETUP",
+                "WL",
+                1,
+                [RuleGroup("G2_CAPACITY", 20, GroupMode.WEIGHTED)],
+                [
+                    RuleInstance(
+                        "CAP",
+                        "capacity_utilization",
+                        Scope(line="L1"),
+                        nature,
+                        100,
+                        "G2_CAPACITY",
+                        20,
+                        {"min_util": 0.0, "max_util": 1.0, "tail_exempt": False, "setup_minutes_per_start": 60},
+                    )
+                ],
+            )
+
+        ctx_soft = ToyContext([task])
+        compiled_soft = compile_rules(ctx_soft, build(Nature.SOFT))
+        solver_soft, status_soft = _solve(ctx_soft, compiled_soft)
+        self.assertIn(status_soft, (cp_model.OPTIMAL, cp_model.FEASIBLE))
+        self.assertGreater(solver_soft.ObjectiveValue(), 0.0)
+
+        task_hard = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=4, due_slot=0, window=(0, 0))
+        ctx_hard = ToyContext([task_hard])
+        compiled_hard = compile_rules(ctx_hard, build(Nature.HARD))
+        _, status_hard = _solve(ctx_hard, compiled_hard)
+        self.assertEqual(status_hard, cp_model.INFEASIBLE)
+
+    def test_10c_time_window_allowed_dates_are_hard(self):
+        task = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=4, due_slot=1, window=(0, 1))
+        rule_set = RuleSet(
+            "TW_DATE",
+            "WL",
+            1,
+            [RuleGroup("G0", 0, GroupMode.HARD)],
+            [
+                RuleInstance(
+                    "TW",
+                    "time_window",
+                    Scope(),
+                    Nature.HARD,
+                    1,
+                    "G0",
+                    0,
+                    {"allowed_shifts": "早班,中班,晚班", "allowed_dates": "10/12"},
+                )
+            ],
+        )
+        ctx = ToyContext([task])
+        compiled = compile_rules(ctx, rule_set)
+        solver, status = _solve(ctx, compiled)
+        self.assertIn(status, (cp_model.OPTIMAL, cp_model.FEASIBLE))
+        self.assertEqual(solver.Value(ctx.active(task, 1)), 0)
+        self.assertEqual(solver.Value(ctx.active(task, 0)), 1)
+
+    def test_10e_setup_technician_capacity(self):
+        """HC-02 approximation: setup starts consume the technician pool."""
+        t1 = ToyTask("T1", "FG", "L1", "P1", mpq=10, lot_size=10, lots=1, due_slot=1, window=(0, 0))
+        t2 = ToyTask("T2", "FG", "L1", "P2", mpq=10, lot_size=10, lots=1, due_slot=1, window=(0, 0))
+
+        def build(nature):
+            return RuleSet(
+                "SETUP_TECH",
+                "WL",
+                1,
+                [RuleGroup("G2_CAPACITY", 20, GroupMode.WEIGHTED)],
+                [
+                    RuleInstance(
+                        "TECH",
+                        "labor_capacity",
+                        Scope(line="L1"),
+                        nature,
+                        100,
+                        "G2_CAPACITY",
+                        20,
+                        {"setup_technicians_required": 1, "setup_technicians_available": 1},
+                    )
+                ],
+            )
+
+        ctx_hard = ToyContext([t1, t2])
+        compiled_hard = compile_rules(ctx_hard, build(Nature.HARD))
+        _, status_hard = _solve(ctx_hard, compiled_hard)
+        self.assertEqual(status_hard, cp_model.INFEASIBLE)
+
+        ctx_soft = ToyContext([t1, t2])
+        compiled_soft = compile_rules(ctx_soft, build(Nature.SOFT))
+        solver_soft, status_soft = _solve(ctx_soft, compiled_soft)
+        self.assertIn(status_soft, (cp_model.OPTIMAL, cp_model.FEASIBLE))
+        self.assertGreater(solver_soft.ObjectiveValue(), 0.0)
 
     def test_11_unimplemented_template_warns(self):
         rule_set = RuleSet(

@@ -36,6 +36,7 @@ def main():
             "tests.test_labor",
             "tests.test_split_batch",
             "tests.test_independent_audit",
+            "tests.test_capacity_kernel",
         ]
         suite = unittest.TestSuite()
         for mod in fast_modules:

@@ -30,10 +30,12 @@ APS_MVP/
 ├── requirements.txt                     # Python 依赖项 (openpyxl, ortools, fastapi, uvicorn, ...)
 ├── run_web.py                           # Web 服务一键启动入口 (支持代码热重载)
 ├── run_tests.py                         # 统一自动化测试运行器 (支持 --fast 极速单测模式)
-├── config/                              # 工厂排产规则集配置库
+├── config/                              # 工厂排产规则配置库
+│   ├── rule_catalog/                    # 32 条全局规则目录 / 能力状态
 │   └── rule_sets/                       # 双工厂 Phase 1 基线与 Q4 规则集 (JSON)
 ├── data/                                # 主数据与业务输入源
 │   ├── *.csv                            # BOM、需求、期初库存、参数、模具、PM与到货
+│   ├── master/                          # 扩展主数据 mock：Routing/Setup/LeadTime/Inventory/Calendar/...
 │   └── templates/labor/                 # 人工劳动力定员三阶模板 (Crew-Pool, Availability, Line-Staffing)
 ├── Specification/                       # 业务功能规格与工程治理规范 (14 份专业文档)
 │   ├── aps_diagnosis_and_architecture_gap_report.md  # 架构差距与缺陷诊断报告 (66 项差距评估)
@@ -49,6 +51,9 @@ APS_MVP/
 │   ├── rule_sets/                       # 规则集服务深模块 (SQLite 版本库、Excel 双向转换、冲突诊断)
 │   ├── static/                          # 前端工程控制台 (Vue + Tailwind 工业级工作台与规则编辑器)
 │   ├── scheduler.py                     # Google OR-Tools CP-SAT 核心求解器 (开班决策、大单拆批连续)
+│   ├── routing.py                       # Phase C 工艺路线/候选机台数据层 (C2-a)
+│   ├── inventory_policy.py              # Phase B 分时段库存策略数据层 (B4-a)
+│   ├── sequence.py                      # Phase C 班内换型/序列原语 (C1-a)
 │   ├── validator.py                     # 求解器内置合规校验器与穿透明细矩阵
 │   ├── data_loader.py                   # 主数据加载、BOM 展开、净需求计算与快照管理
 │   ├── shift_manager.py                 # 双工厂物理拓扑 (WE34 8h×3班 vs SY38 12h×2班) 与动态日历解耦
@@ -58,12 +63,25 @@ APS_MVP/
 │   ├── prechecker.py                    # 前置粗能力宏观可行性预检
 │   ├── balance_builder.py               # 生产动态平衡与 PSI 数据构建
 │   └── server.py                        # FastAPI 接入层（手工审计编排仍暂留此文件，待下沉 src/services/manual_audit.py）
-└── tests/                               # 9 大自动化测试套件 (覆盖领域实体、内核、独立审计、黄金基线、拆批、REG 回归等)
+└── tests/                               # 15 大自动化测试套件 (增加 capacity kernel/库存策略测试)
     ├── fixtures/                        # 黄金基线快照 (wl_10d_baseline.json)
     └── test_*.py                        # 单元与集成测试用例
 ```
 
 ## 3. 环境准备与运行
+
+### 扩展主数据（2026-10-28）
+
+`data/master/` 已补 32 条新规则所需的 mock 主数据：
+
+- `Parameters-FG.csv` / `Parameters-SFN.csv`：新增 `MOQ (Minimum Order Qty)`，与既有 `MPQ` 区分；
+- `Routing-Machines.csv`、`Setup-Matrix.csv`、`Operation-LeadTime.csv`；
+- `Customer-Orders.csv`、`Inventory-Policy.csv`、`Trial-Windows.csv`、`Baseline-Schedule.csv`；
+- `Calendar-Patterns.csv`、`Campaign-Families.csv`、`Setup-Technicians.csv`；
+- `labor/` 下三张人力 mock 表。
+
+说明与字段定义见 **[data/master/README.md](data/master/README.md)**。  
+当前只有 MOQ 进入 `ProductParam/ProductionTask`；其余表是待接线 mock，不会改变现有排产。
 
 ### 安装依赖
 ```bash
@@ -75,6 +93,23 @@ pip install -r requirements.txt
 python run_web.py
 ```
 启动后在浏览器打开：**`http://127.0.0.1:8000`** 或 **`http://localhost:8000`**
+
+### 单工厂实例部署（推荐）
+
+每个工厂一个独立进程，使用 `FACTORY_SITE` 固定站点，避免共享内存状态：
+
+```powershell
+# WL / WE34
+$env:FACTORY_SITE="WL"; $env:PORT="8000"; python run_web.py
+
+# SY38
+$env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
+```
+
+- WL: `http://127.0.0.1:8000`
+- SY38: `http://127.0.0.1:8001`
+- 固定实例会拒绝对其他站点的切换；
+- 上传文件按站点保存：`data/uploads/current_WL.xlsx` / `current_SY38.xlsx`。
 
 ### Docker / 环境变量部署
 ```bash
@@ -88,8 +123,8 @@ docker run --env-file .env -p 8000:8000 aps-mvp
 
 ### 自动化测试
 ```bash
-python run_tests.py --fast   # 快速单元/回归（不含黄金基线与端到端）
-python run_tests.py          # 全量 9 个套件
+python run_tests.py --fast   # 快速单元/回归（54 项，约 61s）
+python run_tests.py          # 全量 15 个套件（97 项，含黄金基线与端到端，约 23 分钟）
 ```
 
 Web 界面主要特性：
@@ -110,6 +145,7 @@ Web 界面主要特性：
   - 在网页中直接维护订单需求数量、交期、期初库存；
   - 包含模具工装约束看板、设备 PM 维保看板、关键物料到货看板与客户战略评级看板；
 - **⑤ 规则合规审计矩阵与手工 Excel 上传闭环**：
+  - `/api/solve` 额外返回 `inventory_projection`（B4-b-a）：按班次推演 FG/SF 库存并按 NORMAL/MONTH_END 策略标违规；
   - **核心计算数据穿透**：无论 PASS 还是 FAIL，17 项独立硬指标验证器与规则均支持展开查看公式算式、核心 KPI 徽章及 step-by-step 逐班验算底表（如 R-WL-11 跨班连续生产继承免换模计算）；
   - **手工调整排产 Excel 上传独立二次审计**：支持将导出的排产文件在本地手工调整后重新上传，一键执行独立合规审计并即时标红违规，支持与算法原方案自由比对；
 - **⑥ ⚙️ 生产策略与系统设置 (全新专属工作台)**：

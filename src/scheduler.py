@@ -1406,9 +1406,67 @@ class APSScheduler:
                 )
                 model.Add(over >= inventory - ceiling)
                 penalties.append(over)
-        if not penalties:
+        sf_penalty = self._add_sf_inventory_penalties(model, cumulative)
+        if not penalties and sf_penalty is None:
             return None
-        return 50 * sum(penalties)
+        return 50 * sum(penalties) + (sf_penalty if sf_penalty is not None else 0)
+
+    def _add_sf_inventory_penalties(self, model, cumulative):
+        """B4-b extension: soft time-phased SF inventory cap.
+
+        SF demand is the variable FG production multiplied by the BOM ratio;
+        supply is cumulative SF production plus opening stock.
+        """
+        from src.inventory_policy import policy_for_day
+        if not cumulative:
+            return None
+        shifts_per_day = max(1, int(getattr(self.topology, "shifts_per_day", 3)))
+        horizon_days = max(1.0, self.num_shifts / shifts_per_day)
+        fg_by_part = {}
+        for task in self.plan.fg_tasks:
+            fg_by_part.setdefault(str(task.part_no), []).append(task)
+        consumers = {}
+        for fg_pn, entries in getattr(self.plan, "bom", {}).items():
+            for sf_pn, ratio in entries:
+                consumers.setdefault(str(sf_pn), []).extend(
+                    (task, ratio) for task in fg_by_part.get(str(fg_pn), [])
+                )
+        sf_parts = {str(t.part_no) for t in self.plan.sf_tasks} | set(consumers)
+        penalties = []
+        for part in sorted(sf_parts):
+            supply_tasks = [t for t in self.plan.sf_tasks if str(t.part_no) == part]
+            if not supply_tasks:
+                continue
+            total = sum(int(round(float(t.quantity))) for t in supply_tasks)
+            if total <= 0:
+                continue
+            daily = total / horizon_days
+            opening = int(round(float(getattr(self.plan, "initial_stock", {}).get(part, 0.0))))
+            for s in range(self.num_shifts):
+                policy = policy_for_day(self.inventory_policies, self.site, part, s // shifts_per_day + 1)
+                if policy is None:
+                    continue
+                supply = []
+                for task in supply_tasks:
+                    slots = cumulative.get(task.task_id, {})
+                    eligible = [idx for idx in slots if idx <= s]
+                    if eligible:
+                        supply.append(slots[max(eligible)] * self._unit_pieces(task) * 1000)
+                if not supply:
+                    continue
+                demand = []
+                for fg_task, ratio in consumers.get(part, []):
+                    slots = cumulative.get(fg_task.task_id, {})
+                    eligible = [idx for idx in slots if idx <= s]
+                    if eligible:
+                        coeff = int(round(float(ratio) * 1000))
+                        demand.append(slots[max(eligible)] * self._unit_pieces(fg_task) * coeff)
+                ceiling = int(round((policy.max_days * daily + max(0.0, policy.max_stock)) * 1000))
+                inventory = opening * 1000 + sum(supply) - sum(demand)
+                over = model.NewIntVar(0, max(1, total * 2000 + 1), f"sf_inv_over.{part}.{s}")
+                model.Add(over >= inventory - ceiling)
+                penalties.append(over)
+        return 50 * sum(penalties) if penalties else None
 
     def _add_sequence_constraints(self, model, x, active, loads):
         """C1-b-3: optional intra-shift sequence, SDST, start/end and carry-over.

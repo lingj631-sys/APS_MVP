@@ -14,6 +14,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from src.data_loader import build_requirement_plan, load_aps_database
+from src.inventory_policy import load_inventory_policy
 from src.kernel.types import GroupMode, Nature, RuleGroup, RuleInstance, RuleSet, Scope
 from src.scheduler import APSScheduler
 from src.shift_manager import CalendarMode
@@ -76,6 +77,44 @@ class TestCapacityKernelWiring(unittest.TestCase):
         )
         result = sched.solve(time_limit_seconds=10.0)
         self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
+        self.assertIsNotNone(result.sequence_plan)
+        self.assertTrue(result.sequence_plan)
+        self.assertTrue(all(item["end_min"] >= item["start_min"] >= 0 for item in result.sequence_plan))
+        self.assertGreater(sum(item["setup_min"] for item in result.sequence_plan), 0)
+
+    def test_sequence_technician_interval_capacity_solves(self):
+        snap, plan, start = _wl_plan(5)
+        sched = APSScheduler(
+            plan,
+            start_datetime=start,
+            planning_days=5,
+            calendar_mode=CalendarMode.SEVEN_ZERO,
+            site="WL",
+            rule_set=_soft_capacity_rule_set(),
+            sequence_setup=True,
+            setup_technicians_available=1,
+        )
+        result = sched.solve(time_limit_seconds=10.0)
+        self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
+        self.assertIsNotNone(result.sequence_plan)
+
+
+    def test_inventory_policy_soft_constraint_solves(self):
+        snap, plan, start = _wl_plan(5)
+        policies = load_inventory_policy(
+            os.path.join(BASE_DIR, "data", "master", "Inventory-Policy.csv"), site="WL"
+        )
+        sched = APSScheduler(
+            plan,
+            start_datetime=start,
+            planning_days=5,
+            calendar_mode=CalendarMode.SEVEN_ZERO,
+            site="WL",
+            inventory_policies=policies,
+        )
+        result = sched.solve(time_limit_seconds=10.0)
+        self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
+
 
 
 if __name__ == "__main__":

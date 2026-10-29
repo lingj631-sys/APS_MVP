@@ -138,6 +138,8 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "baseline_date": "2026-10-11",
         "calendar_mode": "SEVEN_ZERO",
         "sequence_setup": False,
+        "setup_technicians_available": 0,
+        "inventory_policy_enabled": False,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -154,6 +156,8 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "baseline_date": "2026-10-11",
         "calendar_mode": "FIVE_TWO",
         "sequence_setup": False,
+        "setup_technicians_available": 0,
+        "inventory_policy_enabled": False,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -519,6 +523,8 @@ class SiteSettingsPayload(BaseModel):
     baseline_date: Optional[str] = "2026-10-11"
     calendar_mode: Optional[str] = "SEVEN_ZERO"
     sequence_setup: Optional[bool] = False
+    setup_technicians_available: Optional[int] = 0
+    inventory_policy_enabled: Optional[bool] = False
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -543,6 +549,8 @@ class SolvePayload(BaseModel):
     max_pull_forward_days: Optional[int] = None
     use_rule_set: bool = True
     sequence_setup: bool = False
+    setup_technicians_available: Optional[int] = None
+    inventory_policy_enabled: Optional[bool] = None
 
 
 class RuleSetSavePayload(BaseModel):
@@ -595,6 +603,10 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["calendar_mode"] = payload.calendar_mode
     if payload.sequence_setup is not None:
         cfg["sequence_setup"] = payload.sequence_setup
+    if payload.setup_technicians_available is not None:
+        cfg["setup_technicians_available"] = max(0, int(payload.setup_technicians_available))
+    if payload.inventory_policy_enabled is not None:
+        cfg["inventory_policy_enabled"] = payload.inventory_policy_enabled
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -1738,6 +1750,15 @@ def run_solver(payload: SolvePayload):
     for error in labor_data.errors:
         print(f"  [labor] {error}")
 
+    inventory_enabled = (
+        payload.inventory_policy_enabled
+        if payload.inventory_policy_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("inventory_policy_enabled", False)
+    )
+    inventory_policies = (
+        load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"), site=payload.site.upper())
+        if inventory_enabled else {}
+    )
     scheduler = APSScheduler(
         plan=plan,
         start_datetime=start_dt,
@@ -1764,6 +1785,12 @@ def run_solver(payload: SolvePayload):
         kernel_templates=kernel_templates,
         labor_data=labor_data,
         sequence_setup=bool(payload.sequence_setup or site_settings_store.get(payload.site.upper(), {}).get("sequence_setup", False)),
+        setup_technicians_available=(
+            payload.setup_technicians_available
+            if payload.setup_technicians_available is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("setup_technicians_available", 0)
+        ),
+        inventory_policies=inventory_policies,
     )
 
     # Solve with capacity overload diagnosis
@@ -2203,6 +2230,7 @@ def run_solver(payload: SolvePayload):
         "fg_balance": fg_balance_data,
         "sf_balance": sf_balance_data,
         "tasks": task_schedule_list,
+        "sequence_plan": result.sequence_plan or [],
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
         "inventory_projection": inventory_data,

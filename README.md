@@ -37,12 +37,15 @@ APS_MVP/
 │   ├── *.csv                            # BOM、需求、期初库存、参数、模具、PM与到货
 │   ├── master/                          # 扩展主数据 mock：Routing/Setup/LeadTime/Inventory/Calendar/...
 │   └── templates/labor/                 # 人工劳动力定员三阶模板 (Crew-Pool, Availability, Line-Staffing)
-├── Specification/                       # 业务功能规格与工程治理规范 (14 份专业文档)
-│   ├── aps_diagnosis_and_architecture_gap_report.md  # 架构差距与缺陷诊断报告 (66 项差距评估)
-│   ├── aps_remediation_action_plan.md   # 整改行动计划 (Phase 0 ~ Phase 2 路线图)
-│   ├── aps_implementation_log.md        # 实施日志与代码变更记录台账
+├── Specification/                       # 业务功能规格与工程治理规范 (5 份现行文档)
+│   ├── aps_functional_spec.md           # 业务功能规格书 (v0.7 工业级数据闭环)
+│   ├── aps_new_rule_set_gap_analysis.md # 32 条新规则清单与规则内核能力对账
 │   ├── aps_rule_set_editor_manual.md    # 规则集编辑器操作手册与 19 个模板参数详表
-│   └── aps_rules_registry.md            # 排产规则全景注册台账与语义解析
+│   ├── aps_implementation_log.md        # 实施日志与代码变更记录台账
+│   └── aps_progress_dashboard.md        # 当前进度、能力矩阵与关键缺口
+├── archive/                             # 历史归档 (只读留存，不参与构建)
+│   ├── Specification/                   # 已被取代的 10 份规格/评审/整改文档
+│   └── data/                            # 旧版 APS Database 三份草稿备份
 ├── src/                                 # 系统核心源代码
 │   ├── domain/                          # 核心领域实体层 (Site, Line, ShiftSlot 值对象, Routing 多线工艺路线, Part)
 │   ├── services/                        # 应用编排服务层 (手工排产 Excel 审计解析、DTO 转换)
@@ -123,8 +126,8 @@ docker run --env-file .env -p 8000:8000 aps-mvp
 
 ### 自动化测试
 ```bash
-python run_tests.py --fast   # 快速单元/回归（54 项，约 61s）
-python run_tests.py          # 全量 15 个套件（97 项，含黄金基线与端到端，约 23 分钟）
+python run_tests.py --fast   # 快速单元/回归（56 项，约 61s）
+python run_tests.py          # 全量 15 个套件（99 项，含黄金基线与端到端，约 23 分钟）
 ```
 
 Web 界面主要特性：

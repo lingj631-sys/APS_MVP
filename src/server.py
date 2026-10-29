@@ -46,7 +46,7 @@ from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
 from src.metric_labels import labels_for
 from src.rule_catalog import load_catalog
-from src.routing import assign_routing_lines, load_routing
+from src.routing import assign_routing_lines, load_routing, solve_routing_assignment
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -1767,14 +1767,23 @@ def run_solver(payload: SolvePayload):
         routing_path = os.path.join(DATA_DIR, "master", "Routing-Machines.csv")
         routing_table = load_routing(routing_path)
         topology = get_topology(payload.site.upper())
+        line_names = {getattr(t, "line", "") for t in plan.tasks}
+        for (_site, _part, _op), options in routing_table.items():
+            if _site == payload.site.upper():
+                line_names.update(o.candidate_line for o in options if o.candidate_line)
         capacity_hours = {
             line: float(horizon_days * topology.shifts_per_day * topology.shift_hours)
-            for line in {getattr(t, "line", "") for t in plan.tasks}
+            for line in line_names
         }
-        routing_decisions = assign_routing_lines(
+        routing_decisions = solve_routing_assignment(
             plan.tasks, routing_table, site=payload.site.upper(),
-            capacity_hours_by_line=capacity_hours, max_ratio=0.95,
+            capacity_hours_by_line=capacity_hours, time_limit_seconds=5.0,
         )
+        if not routing_decisions:
+            routing_decisions = assign_routing_lines(
+                plan.tasks, routing_table, site=payload.site.upper(),
+                capacity_hours_by_line=capacity_hours, max_ratio=0.95,
+            )
     inventory_enabled = (
         payload.inventory_policy_enabled
         if payload.inventory_policy_enabled is not None

@@ -484,7 +484,7 @@ BS-01~06 不是普通约束，应该拆成：
 本次分析基于 `5727e4c`。当前全量测试已修绿：
 
 - 快速回归 58/58 绿（fast 52 + regressions 8，含新增模块单测另计）；
-- 全量 99/99 绿（1386.4s）；
+- 全量 100/100 绿（1385.9s）；
 - WL BOM 校验修复、SY38 拓扑测试改用可行日历、golden 迁移预算调整；
 - `src/services/manual_audit.py` 仍已抽取但未接线；
 - `src/domain/` 仍是 Phase 2 骨架，尚未被 scheduler/server 使用。

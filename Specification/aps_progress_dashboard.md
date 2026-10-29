@@ -26,7 +26,7 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **99/99 PASS，约 1386.4s** |
+| 全量测试 | **100/100 PASS，约 1385.9s** |
 | 快速测试 | **56/56 PASS，约 61s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
@@ -45,11 +45,11 @@
 | `tests/test_regressions.py` | 8 | PASS |
 | `tests/test_sequence.py` | 2 | PASS |
 | `tests/test_scrap.py` | 1 | PASS |
-| `tests/test_routing.py` | 4 | PASS |
+| `tests/test_routing.py` | 5 | PASS |
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
 | `tests/test_capacity_kernel.py` | 4 | PASS |
-| **全量** | **99** | **PASS** |
+| **全量** | **100** | **PASS** |
 
 ---
 
@@ -77,6 +77,7 @@
 | C1-b-4 技术员 setup 区间 | ✅ 可选 | `setup_technicians_available` + `AddCumulative`；技术员数按 Setup-Matrix 边需求；过小会不可行 |
 | C2-a Routing 数据层 | ✅ | 候选线/机台、认证、优先级 |
 | C2-b-a 路线重指派 | ✅ 启发式 | 主线过载移备线；已接站点开关与 `/api/solve.routing_decisions`；非 CP-SAT Assign |
+| C2-b-0 CP-SAT 路线分配阶段 | ✅ 可选 | `solve_routing_assignment()` 独立 CP-SAT 选址 + 容量；仍未与主排产模型联立 |
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
 | C4 Operation LeadTime/Transfer | ❌ | 仅 UI 展示 |
@@ -175,7 +176,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 | 当前单实例是全局 `session_state` | 多人同时操作会互相影响 | 正式使用按每厂一个实例；或后续做 per-user session |
 | Setup Matrix 仍是 mock | sequence 开关效果不代表真实换型 | 先用 mock 验证模型，再替换业务数据 |
 | Routing/Inventory/LeadTime 未全接求解器 | UI 能看到，但排产不完全使用 | 明确标注数据层/审计层；下一阶段接 CP-SAT |
-| 99 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
+| 100 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
 | 工作区改动未提交前不可复现 | 交接风险 | 本次提交/推送后以 Git 版本为准 |
 
 ---
@@ -183,7 +184,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 ## 8. 验证记录
 
 ```text
-全量：99/99 PASS，约 1386.4s（C1-b-3/4/B4-b 后）
+全量：100/100 PASS，约 1385.9s（C1-b-3/4/B4-b/C2-b-0 后）
 快速：56/56 PASS，约 61s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules

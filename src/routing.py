@@ -145,3 +145,95 @@ def assign_routing_lines(
             setattr(task, "line", target)
             decisions.append({"task_id": getattr(task, "task_id", ""), "from": current, "to": target})
     return decisions
+
+
+def solve_routing_assignment(
+    tasks: Iterable[Any],
+    routing: Dict[Tuple[str, str, int], List[RoutingOption]],
+    *,
+    site: str,
+    capacity_hours_by_line: Optional[Dict[str, float]] = None,
+    time_limit_seconds: float = 5.0,
+) -> List[Dict[str, Any]]:
+    """C2-b-0: solve the line-assignment stage with CP-SAT.
+
+    This is a small assignment model upstream of the scheduler. It does not yet
+    couple with intra-shift sequence; schedule feasibility is still checked by the
+    main APS scheduler after the selected lines are applied.
+    """
+    from ortools.sat.python import cp_model
+
+    tasks = list(tasks)
+    if not tasks:
+        return []
+    capacity = {str(k): float(v) for k, v in (capacity_hours_by_line or {}).items()}
+    model = cp_model.CpModel()
+    choices: Dict[Tuple[str, str], Any] = {}
+    hours: Dict[str, int] = {}
+    primary: Dict[str, str] = {}
+    alternatives: Dict[str, List[str]] = {}
+    for task in tasks:
+        tid = str(getattr(task, "task_id", ""))
+        part = str(getattr(task, "part_no", ""))
+        stage = str(getattr(task, "stage", ""))
+        op = 10 if stage == "SF" else 20
+        options = candidates_for(routing, site, part, op)
+        lines = []
+        for option in options:
+            line = str(option.candidate_line or "")
+            if line and line not in lines:
+                lines.append(line)
+        current = str(getattr(task, "line", ""))
+        if len(lines) <= 1:
+            continue
+        primary[tid] = lines[0]
+        alternatives[tid] = lines
+        qty = float(getattr(task, "quantity", 0.0))
+        ct = float(getattr(task, "ct_seconds", 0.0))
+        trp = max(1e-9, float(getattr(task, "trp", 1.0)))
+        hours[tid] = max(1, int(round(qty * ct / trp / 3600.0 * 1000.0)))
+        for line in lines:
+            choices[(tid, line)] = model.NewBoolVar(f"route.{tid}.{line}")
+        model.Add(sum(choices[tid, line] for line in lines) == 1)
+
+    if not choices:
+        return []
+
+    over_terms = []
+    for line in {line for _tid, line in choices}:
+        terms = [
+            hours[tid] * var
+            for (tid, candidate), var in choices.items()
+            if candidate == line
+        ]
+        cap = max(1, int(round(capacity.get(line, 0.0) * 1000.0)))
+        over = model.NewIntVar(0, max(cap, 1), f"route_over.{line}")
+        model.Add(sum(terms) <= cap + over)
+        over_terms.append(over)
+
+    penalty = []
+    for (tid, line), var in choices.items():
+        if line != primary[tid]:
+            penalty.append(10 * var)
+    for over in over_terms:
+        penalty.append(1000 * over)
+    model.Minimize(sum(penalty) if penalty else 0)
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = max(0.5, float(time_limit_seconds))
+    solver.parameters.num_search_workers = 1
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return []
+    decisions = []
+    by_task = {str(getattr(t, "task_id", "")): t for t in tasks}
+    for task in tasks:
+        tid = str(getattr(task, "task_id", ""))
+        if tid not in alternatives:
+            continue
+        selected = next(line for line in alternatives[tid] if solver.Value(choices[tid, line]) > 0.5)
+        old = str(getattr(task, "line", ""))
+        if selected != old:
+            setattr(task, "line", selected)
+        decisions.append({"task_id": tid, "from": old, "to": selected})
+    return decisions

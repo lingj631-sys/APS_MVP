@@ -659,6 +659,13 @@ python -m unittest discover -s tests -v
 - 这是 preprocessor：主线负荷超过 95% 时移备线，不是 CP-SAT Assign(i,m)。
 - WL 5 天实测 `status=success`，当前数据无过载决策（0 条）；功能路径已通。
 
+### 2026-10-29 hotfix：排产后页面空白（sequencePlan 未 expose）
+
+- 现象：排产 80s 后页面空白，Vue 报 `Cannot read properties of undefined (reading 'length')`。
+- 原因：`sequencePlan` 被误插入 `backupAutoScheduleData`，但未加入 Vue setup return；模板 `sequencePlan.length` 读取 undefined。
+- 修复：从 backup object 移除，加入真正 setup return；`sequencePlan` 初始化为 `[]`。
+- 验证：Playwright headless 加载页面 + mock `/api/solve` 响应，`pageerror=0`；页面正常显示生产平衡。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

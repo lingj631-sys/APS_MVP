@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from src.routing import RoutingOption, assign_routing_lines, candidates_for, load_routing, primary_line, solve_routing_assignment
+from src.routing import RoutingOption, assign_routing_lines, capability_violations, candidates_for, load_routing, primary_line, solve_routing_assignment
 
 
 class TestRoutingCandidates(unittest.TestCase):
@@ -76,6 +76,23 @@ class TestRoutingCandidates(unittest.TestCase):
         )
         self.assertEqual(task.line, "PU22")
         self.assertEqual(decisions[0]["to"], "PU22")
+
+
+    def test_capability_violation_detects_uncertified_line(self):
+        class Task:
+            task_id = "T1"
+            part_no = "P1"
+            stage = "FG"
+            line = "BAD"
+
+        routing = {
+            ("SY38", "P1", 20): [
+                RoutingOption("SY38", "P1", "FG", 20, "总装", "PU07", "PU07", "PU07-M1", True, 72, 1.0, 30, 1),
+            ]
+        }
+        bad = capability_violations([Task()], routing, site="SY38")
+        self.assertEqual(len(bad), 1)
+        self.assertEqual(bad[0]["line"], "BAD")
 
 
 

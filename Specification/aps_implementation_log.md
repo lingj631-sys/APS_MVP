@@ -714,6 +714,12 @@ python -m unittest discover -s tests -v
 - `needs_model` 剩余：HC-05、SC-01、SC-08、SC-09、SC-10、BS-04（以目录为准）。
 - 仅状态校准，不代表已全部接入主求解器。
 
+### HC-05 合格机台校验
+
+- 新增 `capability_violations()`：检查任务当前 line 是否在 Routing-Machines 的认证候选中；不匹配返回违规清单。
+- 新增 `tests/test_routing.py` 第 6 项；全量 106（新增测试后未重跑全量），快速 59。
+- 当前是审计能力，尚未在求解器里硬拒绝或自动改线。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

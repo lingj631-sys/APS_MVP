@@ -237,3 +237,18 @@ def solve_routing_assignment(
             setattr(task, "line", selected)
         decisions.append({"task_id": tid, "from": old, "to": selected})
     return decisions
+
+
+def capability_violations(tasks: Iterable[Any], routing: Dict[Tuple[str, str, int], List[RoutingOption]], *, site: str) -> List[Dict[str, Any]]:
+    """HC-05: report task lines that are not certified candidate machines."""
+    violations = []
+    for task in tasks:
+        part = str(getattr(task, "part_no", ""))
+        stage = str(getattr(task, "stage", ""))
+        op = 10 if stage == "SF" else 20
+        options = candidates_for(routing, site, part, op)
+        certified = {o.candidate_line for o in options if o.certified}
+        line = str(getattr(task, "line", ""))
+        if certified and line not in certified:
+            violations.append({"task_id": getattr(task, "task_id", ""), "line": line, "certified": sorted(certified)})
+    return violations

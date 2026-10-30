@@ -1,0 +1,1969 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APS 模块化多场景推演工作台 | Valeo</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <script src="/static/tailwind.js"></script>
+  <script src="/static/vue.global.prod.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            valeo: {
+              50: '#eaf6f0',
+              100: '#d5eee1',
+              500: '#00a36c',
+              600: '#00875a',
+              700: '#086c4a',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', '"Geist Mono Variable"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+          },
+          borderRadius: {
+            'none': '0',
+            'sm': '2px',
+            DEFAULT: '3px',
+            'md': '4px',
+            'lg': '6px',
+            'xl': '8px',
+            '2xl': '10px',
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    [v-cloak] { display: none !important; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    :root {
+      --bg: #fbfbfa;
+      --panel: #ffffff;
+      --line: #e4e4e0;
+    }
+    body { background-color: var(--bg); }
+    .font-mono, td, th, .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum', 'zero'; }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+  <div id="app" v-cloak class="flex flex-col flex-1 h-screen overflow-hidden">
+
+    <!-- Top Navigation Bar (Unified Header) -->
+    <header class="bg-white border-b border-[#e4e4e0] shrink-0 sticky top-0 z-40">
+      <div class="max-w-[98%] mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-3">
+        <!-- Logo & Title -->
+        <div class="flex items-center space-x-3">
+          <img src="/static/valeo_logo.png" alt="Valeo" class="h-7 w-auto object-contain shrink-0" />
+          <div>
+            <h1 class="text-sm font-bold text-[#111827] tracking-tight">APS 模块化多场景推演工作台</h1>
+            <p class="font-mono text-[10.5px] text-slate-500 font-normal tracking-tight">统一全景 · 积木装配 · 生产平衡 · 协同甘特 · 17项合规审计</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <!-- Segmented Mode Control (推演工坊 vs 资产中心) -->
+          <div class="flex items-center bg-[#f5f5f3] rounded p-0.5 border border-[#e4e4e0] text-[11px]">
+            <button
+              @click="currentMode = 'WORKSHOP'"
+              :class="['px-3 py-1.5 rounded font-semibold transition flex items-center space-x-1', currentMode === 'WORKSHOP' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700']"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+              <span>推演工坊</span>
+            </button>
+            <button
+              @click="currentMode = 'ASSETS'"
+              :class="['px-3 py-1.5 rounded font-semibold transition flex items-center space-x-1', currentMode === 'ASSETS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700']"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+              <span>基础积木资产中心</span>
+            </button>
+          </div>
+
+          <!-- Factory Site Selector -->
+          <div class="flex items-center bg-[#f5f5f3] rounded p-0.5 border border-[#e4e4e0] text-[11px]">
+            <span class="text-slate-500 px-2 font-mono">站点:</span>
+            <select v-model="currentSite" @change="onSiteChange" class="bg-white border-0 text-slate-800 font-semibold rounded py-1 px-2 shadow-2xs cursor-pointer focus:ring-1 focus:ring-slate-400">
+              <option value="WL">WE34 (温岭)</option>
+              <option value="SY38">SY38 (沈阳)</option>
+            </select>
+          </div>
+
+          <a href="/video" target="_blank" class="inline-flex items-center space-x-1 px-2.5 py-1.5 text-[11px] font-medium rounded text-slate-700 bg-white hover:bg-slate-50 border border-[#e4e4e0] shadow-2xs transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span>业务全景演示</span>
+          </a>
+
+          <a href="/static/rule_sets.html" class="inline-flex items-center space-x-1 px-2.5 py-1.5 text-[11px] font-medium rounded text-slate-700 bg-white hover:bg-slate-50 border border-[#e4e4e0] shadow-2xs transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span>规则集配置</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- VIEW 1: 模块化推演工坊 (3-Column Layout) -->
+    <div v-show="currentMode === 'WORKSHOP'" class="flex flex-1 overflow-hidden">
+
+      <!-- LEFT COLUMN: Scenario Library Drawer (300px) -->
+      <aside class="w-72 border-r border-[#e4e4e0] bg-white flex flex-col shrink-0 overflow-hidden shadow-2xs">
+        <div class="p-3 border-b border-slate-100 flex items-center justify-between gap-2">
+          <div class="relative flex-1">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="搜索方案名称..."
+              class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-400"
+            />
+          </div>
+          <button
+            @click="openCreateModal"
+            class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-2.5 py-1.5 rounded transition shrink-0"
+          >
+            + 新建
+          </button>
+        </div>
+
+        <!-- Filter Tabs -->
+        <div class="flex px-3 pt-2 border-b border-slate-100 text-xs gap-1 bg-slate-50/50">
+          <button
+            v-for="tab in filterTabs"
+            :key="tab.value"
+            @click="activeStatusFilter = tab.value"
+            :class="['px-2.5 py-1.5 font-medium border-b-2 transition -mb-px text-[11px]', activeStatusFilter === tab.value ? 'border-slate-900 text-slate-900 bg-white rounded-t' : 'border-transparent text-slate-500 hover:text-slate-700']"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <!-- Scenario Cards Stream -->
+        <div class="flex-1 overflow-y-auto p-2.5 space-y-2">
+          <div v-if="filteredScenarios.length === 0" class="text-center py-12 text-slate-400 text-xs">
+            暂无匹配推演方案
+          </div>
+
+          <div
+            v-for="s in filteredScenarios"
+            :key="s.id"
+            @click="selectScenario(s.id)"
+            :class="[
+              'p-3 rounded border text-xs cursor-pointer transition relative group',
+              activeScenarioId === s.id
+                ? 'border-slate-900 bg-slate-50/80 shadow-2xs'
+                : 'border-slate-200 bg-white hover:border-slate-300'
+            ]"
+          >
+            <div class="flex items-start justify-between gap-2">
+              <div class="font-semibold text-slate-900 truncate flex-1" :title="s.name">{{ s.name }}</div>
+              <span
+                :class="[
+                  'text-[10px] px-1.5 py-0.2 rounded font-mono font-semibold shrink-0',
+                  s.status === 'RELEASED' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                  s.status === 'SOLVED' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                  'bg-slate-100 text-slate-600 border border-slate-200'
+                ]"
+              >
+                {{ s.status === 'RELEASED' ? '已发布' : s.status === 'SOLVED' ? '已求解' : '草稿' }}
+              </span>
+            </div>
+
+            <div class="mt-1.5 text-[11px] text-slate-500 flex items-center justify-between font-mono">
+              <span>{{ s.site }} · {{ (s.manifest.lines || []).join(', ') || '未选线' }}</span>
+              <span>{{ s.manifest.planning_days || 10 }}天</span>
+            </div>
+
+            <!-- KPIs Pill if solved -->
+            <div v-if="s.kpis" class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10.5px] font-mono">
+              <span class="text-emerald-700 font-semibold">OTD: {{ (s.kpis.otd_rate * 100).toFixed(1) }}%</span>
+              <span class="text-slate-600">负荷: {{ (s.kpis.avg_utilization * 100).toFixed(0) }}%</span>
+              <span class="text-slate-400">{{ s.solve_duration_ms }}ms</span>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <label class="flex items-center space-x-1 cursor-pointer text-slate-500 hover:text-slate-700" @click.stop>
+                <input
+                  type="checkbox"
+                  :value="s.id"
+                  v-model="compareSelection"
+                  class="rounded text-slate-900 text-xs"
+                />
+                <span class="text-[10.5px]">对比</span>
+              </label>
+
+              <div class="flex items-center space-x-1 text-slate-400">
+                <button
+                  @click.stop="cloneScenario(s.id)"
+                  class="hover:text-slate-900 px-1 py-0.5 rounded text-[11px] transition"
+                  title="克隆此方案"
+                >
+                  克隆
+                </button>
+                <button
+                  @click.stop="deleteScenario(s.id)"
+                  class="hover:text-rose-600 px-1 py-0.5 rounded text-[11px] transition"
+                  title="删除方案"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compare Bottom Bar if >= 2 selected -->
+        <div v-if="compareSelection.length >= 2" class="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+          <span class="text-xs text-slate-700 font-medium">已勾选 {{ compareSelection.length }} 个方案</span>
+          <button
+            @click="runComparison"
+            class="text-xs bg-slate-900 text-white font-medium px-3 py-1.5 rounded shadow-2xs hover:bg-slate-800 transition"
+          >
+            多方案横向对比
+          </button>
+        </div>
+      </aside>
+
+      <!-- MIDDLE COLUMN: Unified Scenario Workspace (Flex-1) -->
+      <main class="flex-1 flex flex-col overflow-y-auto bg-slate-50/50 p-5">
+        <div v-if="!activeScenario" class="flex-1 flex items-center justify-center text-slate-400 text-sm font-medium">
+          请在左侧选择一个推演方案，或点击「+ 新建」开始排产配置
+        </div>
+
+        <div v-else class="space-y-4 max-w-5xl mx-auto w-full pb-16">
+
+          <!-- Scenario Header Banner -->
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="space-y-1 flex-1 mr-4">
+                <div class="flex items-center space-x-3">
+                  <input
+                    v-if="activeScenario.status !== 'RELEASED'"
+                    v-model="activeScenario.name"
+                    class="text-base font-bold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-slate-500 focus:outline-none w-full"
+                    placeholder="方案名称"
+                  />
+                  <span v-else class="text-base font-bold text-slate-900">{{ activeScenario.name }}</span>
+
+                  <span
+                    :class="[
+                      'text-xs px-2 py-0.5 rounded font-mono font-semibold shrink-0',
+                      activeScenario.status === 'RELEASED' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                      activeScenario.status === 'SOLVED' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                      'bg-slate-100 text-slate-600 border border-slate-200'
+                    ]"
+                  >
+                    {{ activeScenario.status === 'RELEASED' ? '已发布下发车间' : activeScenario.status === 'SOLVED' ? '已完成推演求解' : '草稿配置中' }}
+                  </span>
+                </div>
+                <div class="text-[11px] text-slate-400 font-mono">
+                  方案 ID: {{ activeScenario.id }} · 创建于 {{ activeScenario.created_at ? activeScenario.created_at.slice(0, 16) : '' }}
+                </div>
+              </div>
+
+              <!-- Top Action Buttons -->
+              <div class="flex items-center space-x-2 shrink-0">
+                <button
+                  v-if="activeScenario.status !== 'RELEASED'"
+                  @click="saveScenario"
+                  class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium px-3 py-1.5 rounded transition"
+                >
+                  保存清单
+                </button>
+
+                <button
+                  @click="triggerSolve"
+                  :disabled="isSolving"
+                  class="text-xs bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded shadow-2xs transition flex items-center space-x-1.5"
+                >
+                  <svg v-if="isSolving" class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  <span>{{ isSolving ? 'CP-SAT 计算中...' : '开始计算排产 (Solve)' }}</span>
+                </button>
+
+                <button
+                  v-if="activeScenario.status === 'SOLVED'"
+                  @click="releaseScenario"
+                  class="text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium px-3.5 py-1.5 rounded shadow-2xs transition"
+                >
+                  发布方案
+                </button>
+              </div>
+            </div>
+
+            <!-- Workspace Sub-Tabs (Modern Codex Connectors) -->
+            <div class="flex items-center space-x-1 border-t border-slate-100 pt-2 text-xs font-semibold">
+              <button
+                @click="activeScenarioTab = 'MANIFEST'"
+                :class="['px-3 py-1.5 rounded transition flex items-center space-x-1.5', activeScenarioTab === 'MANIFEST' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900 bg-slate-50']"
+              >
+                <span>装配清单 (Manifest)</span>
+              </button>
+              <button
+                v-if="activeScenario.status === 'SOLVED' || activeScenario.status === 'RELEASED'"
+                @click="activeScenarioTab = 'BALANCE'"
+                :class="['px-3 py-1.5 rounded transition flex items-center space-x-1.5', activeScenarioTab === 'BALANCE' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900 bg-slate-50']"
+              >
+                <span>生产平衡与产线负荷</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              </button>
+              <button
+                v-if="activeScenario.status === 'SOLVED' || activeScenario.status === 'RELEASED'"
+                @click="activeScenarioTab = 'GANTT'"
+                :class="['px-3 py-1.5 rounded transition flex items-center space-x-1.5', activeScenarioTab === 'GANTT' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900 bg-slate-50']"
+              >
+                <span>协同甘特泳道</span>
+                <span class="text-[10px] px-1 py-0.2 rounded bg-slate-200 text-slate-800 font-mono">{{ taskList.length }}</span>
+              </button>
+              <button
+                v-if="activeScenario.status === 'SOLVED' || activeScenario.status === 'RELEASED'"
+                @click="activeScenarioTab = 'AUDIT'"
+                :class="['px-3 py-1.5 rounded transition flex items-center space-x-1.5', activeScenarioTab === 'AUDIT' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900 bg-slate-50']"
+              >
+                <span>17项全要素合规体检</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- SUB-VIEW 1: 装配清单 (Manifest Assembly) -->
+          <div v-show="activeScenarioTab === 'MANIFEST'" class="bg-white rounded-xl border border-slate-200 shadow-2xs divide-y divide-slate-100">
+            <!-- Step 1: Temporal & Calendar -->
+            <div class="p-4 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-xs flex items-center justify-center">1</span>
+                  <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wide">规划周期与工作日历 (Temporal & Calendar)</h3>
+                </div>
+                <span class="text-[11px] text-slate-400 font-mono">排产时段与开班制</span>
+              </div>
+
+              <div class="grid grid-cols-3 gap-3 pt-1 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">规划天数 (Horizon)</label>
+                  <select v-model="activeScenario.manifest.planning_days" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option :value="5">5 天 (短周期冲刺)</option>
+                    <option :value="10">10 天 (标准双周排产)</option>
+                    <option :value="15">15 天 (半月度推演)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-slate-500 mb-1">排产起始时点</label>
+                  <input
+                    type="datetime-local"
+                    v-model="activeScenario.manifest.start_datetime"
+                    class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-slate-500 mb-1">工作制日历积木</label>
+                  <select v-model="activeScenario.manifest.calendar_pattern_id" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="c in buildingBlocks.calendar_patterns"
+                      :key="c.pattern_id"
+                      :value="c.pattern_id"
+                    >
+                      {{ c.name }} ({{ c.workdays_per_week }}天/周, {{ c.shifts_per_day }}班/天)
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2: Lines & Routing Slicing -->
+            <div class="p-4 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-xs flex items-center justify-center">2</span>
+                  <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wide">产线切片与工艺定额 (Lines & Routing)</h3>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono">
+                    识别模式: {{ detectedSliceMode }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Quick Selection Toolbar -->
+              <div class="flex items-center space-x-2 pt-1 text-xs">
+                <span class="text-slate-400">快捷选线:</span>
+                <button
+                  @click="selectAllLines"
+                  class="px-2 py-0.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded transition"
+                >
+                  全选产线
+                </button>
+                <button
+                  @click="selectFGLines"
+                  class="px-2 py-0.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded transition"
+                >
+                  仅选总装 (FG)
+                </button>
+                <button
+                  @click="selectSFLines"
+                  class="px-2 py-0.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded transition"
+                >
+                  仅选冲压/注塑 (SF)
+                </button>
+              </div>
+
+              <div class="space-y-1.5 pt-1 text-xs">
+                <div class="flex flex-wrap gap-2">
+                  <label
+                    v-for="l in buildingBlocks.lines"
+                    :key="l.line_code"
+                    :class="[
+                      'flex items-center space-x-2 px-2.5 py-1.5 rounded border cursor-pointer transition',
+                      (activeScenario.manifest.lines || []).includes(l.line_code)
+                        ? 'border-slate-900 bg-slate-50 text-slate-900 font-semibold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white'
+                    ]"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="l.line_code"
+                      v-model="activeScenario.manifest.lines"
+                      class="rounded text-slate-900 text-xs"
+                    />
+                    <span class="font-mono">{{ l.line_code }}</span>
+                    <span
+                      :class="[
+                        'text-[10px] px-1 py-0.2 rounded font-mono',
+                        l.stage === 'FG' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                      ]"
+                    >
+                      {{ l.stage }}
+                    </span>
+                    <span class="text-[10px] text-slate-400">{{ l.workshop_code }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: BOM & RuleSet -->
+            <div class="p-4 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-xs flex items-center justify-center">3</span>
+                  <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wide">物料拓扑与约束规则集 (BOM & RuleSet)</h3>
+                </div>
+                <span class="text-[11px] text-slate-400 font-mono">BOM结构包与规则版本</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">BOM 结构积木包 (bom_packages)</label>
+                  <select v-model="activeScenario.manifest.bom_package_id" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="b in buildingBlocks.bom_packages"
+                      :key="b.package_id"
+                      :value="b.package_id"
+                    >
+                      {{ b.name }} (版本 {{ b.version_no }})
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-slate-500 mb-1">约束规则集 (RuleSet)</label>
+                  <select v-model="activeScenario.manifest.rule_set_id" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="rs in buildingBlocks.rule_sets"
+                      :key="rs"
+                      :value="rs"
+                    >
+                      {{ rs }} 规则集
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">工艺工时定额版本 (routing_parameters)</label>
+                  <select v-model="activeScenario.manifest.routing_version" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="rv in buildingBlocks.routing_versions"
+                      :key="rv"
+                      :value="rv"
+                    >
+                      {{ rv }}
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-slate-500 mb-1">换模时间矩阵 (setup_edges)</label>
+                  <select v-model="activeScenario.manifest.setup_matrix_id" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="sm in buildingBlocks.setup_matrices"
+                      :key="sm"
+                      :value="sm"
+                    >
+                      {{ sm }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 4: Demand & What-If Stock Simulator -->
+            <div class="p-4 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-xs flex items-center justify-center">4</span>
+                  <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wide">需求订单与 What-If 演练 (Orders & Inventory)</h3>
+                </div>
+                <span class="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  What-If 沙箱支持
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">需求订单批次 (demand_batches)</label>
+                  <select v-model="activeScenario.manifest.demand_batch_id" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="d in buildingBlocks.demand_batches"
+                      :key="d.batch_id"
+                      :value="d.batch_id"
+                    >
+                      {{ d.name }} ({{ d.order_count }} 订单)
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-slate-500 mb-1">期初库存批次 (inventory_packages)</label>
+                  <select v-model="activeScenario.manifest.inventory_batch_id" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50 focus:bg-white focus:outline-none">
+                    <option
+                      v-for="inv in buildingBlocks.inventory_packages"
+                      :key="inv.package_id"
+                      :value="inv.package_id"
+                    >
+                      {{ inv.name }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- What-If Stock Overrides -->
+              <div class="mt-2 p-3 bg-slate-50 rounded border border-slate-200 text-xs space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-slate-700">关键件现存量临时覆写 (断供模拟):</span>
+                  <button
+                    @click="addWhatIfOverride('WA14208', 0)"
+                    class="text-[11px] bg-white text-rose-700 border border-rose-200 px-2 py-0.5 rounded hover:bg-rose-50 transition"
+                  >
+                    + 模拟 WA14208 断供 (现存量=0)
+                  </button>
+                </div>
+
+                <div v-if="Object.keys(activeScenario.manifest.stock_overrides || {}).length === 0" class="text-slate-400 text-[11px] italic">
+                  未配置库存覆写，排产将使用库存包基线现存量。
+                </div>
+
+                <div v-else class="space-y-1.5 pt-1">
+                  <div
+                    v-for="(qty, part) in activeScenario.manifest.stock_overrides"
+                    :key="part"
+                    class="flex items-center space-x-3 bg-white p-2 rounded border border-slate-200 text-xs shadow-2xs"
+                  >
+                    <span class="font-mono font-bold text-slate-800">{{ part }}</span>
+                    <span class="text-slate-400">临时现存量:</span>
+                    <input
+                      type="number"
+                      v-model.number="activeScenario.manifest.stock_overrides[part]"
+                      class="w-24 border border-slate-200 rounded px-2 py-0.5 text-xs text-right font-mono"
+                    />
+                    <span class="text-slate-500">件</span>
+                    <button
+                      @click="removeWhatIfOverride(part)"
+                      class="text-rose-600 hover:text-rose-800 text-xs ml-auto font-medium"
+                    >
+                      移除覆写
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-VIEW 2: 生产平衡与产线负荷 (Balance & Line Loads) -->
+          <div v-show="activeScenarioTab === 'BALANCE'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div class="flex items-center space-x-3">
+                <span class="font-bold text-slate-900">生产平衡与产线负荷矩阵 (PSI Matrix)</span>
+                <div class="flex items-center bg-white p-0.5 rounded border border-slate-200 text-[11px]">
+                  <button @click="balanceView = 'FG'" :class="balanceView === 'FG' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600'" class="px-2.5 py-0.5 rounded">
+                    产成品 (FG, {{ (panoramaData ? panoramaData.fg_balance : []).length }})
+                  </button>
+                  <button @click="balanceView = 'SF'" :class="balanceView === 'SF' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600'" class="px-2.5 py-0.5 rounded">
+                    半成品 (SF, {{ (panoramaData ? panoramaData.sf_balance : []).length }})
+                  </button>
+                  <button @click="balanceView = 'ALL'" :class="balanceView === 'ALL' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600'" class="px-2.5 py-0.5 rounded">
+                    全部展示
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <input v-model="balanceSearch" type="text" placeholder="搜索料号/品名..." class="text-xs bg-white border border-slate-300 rounded px-2 py-1 w-44" />
+              </div>
+            </div>
+
+            <!-- Synchronized Table (Freeze-pane style) -->
+            <div class="overflow-x-auto max-h-[600px]">
+              <table v-if="panoramaData && panoramaData.shift_columns" class="w-full text-[11px] text-left border-collapse">
+                <thead class="bg-slate-100 text-slate-700 sticky top-0 z-20 border-b border-slate-200">
+                  <tr>
+                    <th class="p-2 border-r border-slate-200 bg-slate-100 sticky left-0 z-30 w-36">产线 / 料号</th>
+                    <th class="p-2 border-r border-slate-200 bg-slate-100 w-44">指标 / 属性</th>
+                    <th class="p-2 border-r-2 border-slate-300 bg-slate-100 text-right w-24">基准定额</th>
+                    <th v-for="col in panoramaData.shift_columns" :key="col.key" class="p-1.5 border-r border-slate-200 text-center font-mono text-[10px] min-w-[65px]">
+                      <div class="text-slate-500">{{ col.date }}</div>
+                      <div class="font-bold text-slate-900">{{ col.shift }}</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <!-- Section 1: Line Loads -->
+                  <tr class="bg-slate-100/70 font-bold text-slate-800">
+                    <td :colspan="3 + panoramaData.shift_columns.length" class="p-1.5 px-3">
+                      【产线负荷与工时】(Line Loads)
+                    </td>
+                  </tr>
+                  <tr v-for="(ll, idx) in panoramaData.line_loads" :key="'ll-'+idx" class="hover:bg-slate-50/50">
+                    <td class="p-2 font-mono font-bold border-r border-slate-200 sticky left-0 bg-white">{{ ll.line }}</td>
+                    <td class="p-2 border-r border-slate-200 font-medium text-slate-700">{{ ll.metric }}</td>
+                    <td class="p-2 border-r-2 border-slate-300 text-right font-mono text-slate-500">
+                      {{ ll.metric.includes('Rate') ? '≥95%' : (ll.metric.includes('TRP') ? '0.71' : '8.0h') }}
+                    </td>
+                    <td v-for="col in panoramaData.shift_columns" :key="col.key" class="p-1.5 border-r border-slate-200 text-center font-mono text-[10px]">
+                      <span
+                        v-if="ll.metric.includes('Rate')"
+                        :class="[
+                          'px-1 py-0.2 rounded font-bold',
+                          (ll.shift_values[col.key] || 0) >= 95 ? 'bg-emerald-100 text-emerald-800' :
+                          (ll.shift_values[col.key] || 0) > 0 ? 'bg-rose-100 text-rose-800' : 'text-slate-300'
+                        ]"
+                      >
+                        {{ (ll.shift_values[col.key] || 0) > 0 ? ll.shift_values[col.key] + '%' : '-' }}
+                      </span>
+                      <span v-else>
+                        {{ ll.shift_values[col.key] || '-' }}
+                      </span>
+                    </td>
+                  </tr>
+
+                  <!-- Section 2: Material Balance Matrix -->
+                  <tr class="bg-slate-100/70 font-bold text-slate-800">
+                    <td :colspan="3 + panoramaData.shift_columns.length" class="p-1.5 px-3">
+                      【物料动态进销存平衡】(PSI Material Balance)
+                    </td>
+                  </tr>
+                  <template v-for="mat in filteredMaterialsList" :key="mat.part_no">
+                    <tr class="hover:bg-slate-50/50">
+                      <td rowspan="3" class="p-2 font-mono font-bold border-r border-slate-200 sticky left-0 bg-white align-top">
+                        <div>{{ mat.part_no }}</div>
+                        <div class="text-[10px] text-slate-400 font-normal truncate max-w-[130px]">{{ mat.description }}</div>
+                      </td>
+                      <td class="p-1.5 border-r border-slate-200 text-slate-500">Customer Demand</td>
+                      <td class="p-1.5 border-r-2 border-slate-300 text-right font-mono text-slate-500">{{ mat.total_demand }} 件</td>
+                      <td v-for="col in panoramaData.shift_columns" :key="'d-'+col.key" class="p-1 border-r border-slate-200 text-center font-mono text-[10px]">
+                        {{ mat.demand[col.key] > 0 ? mat.demand[col.key] : '-' }}
+                      </td>
+                    </tr>
+                    <tr class="bg-blue-50/30 hover:bg-blue-50/50">
+                      <td class="p-1.5 border-r border-slate-200 text-blue-900 font-semibold">Production Plan</td>
+                      <td class="p-1.5 border-r-2 border-slate-300 text-right font-mono text-blue-800">CT: {{ mat.ct_seconds }}s</td>
+                      <td v-for="col in panoramaData.shift_columns" :key="'p-'+col.key" class="p-1 border-r border-slate-200 text-center font-mono text-[10px]">
+                        <span v-if="mat.plan[col.key] > 0" class="bg-blue-100 text-blue-800 font-bold px-1 rounded">{{ mat.plan[col.key] }}</span>
+                        <span v-else class="text-slate-300">-</span>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-slate-50/50 border-b-2 border-slate-200">
+                      <td class="p-1.5 border-r border-slate-200 text-slate-600">Stock Balance</td>
+                      <td class="p-1.5 border-r-2 border-slate-300 text-right font-mono text-emerald-700">期初: {{ mat.initial_stock }}</td>
+                      <td v-for="col in panoramaData.shift_columns" :key="'s-'+col.key" class="p-1 border-r border-slate-200 text-center font-mono text-[10px]">
+                        <span :class="mat.stock[col.key] < 0 ? 'text-rose-600 font-bold' : 'text-slate-700'">{{ mat.stock[col.key] }}</span>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div v-else class="p-8 text-center text-slate-400 text-xs">
+                正在生成全景数据或暂无排产记录...
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-VIEW 3: 协同甘特泳道 (Swimlanes & Tasks) -->
+          <div v-show="activeScenarioTab === 'GANTT'" class="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 space-y-4">
+            <!-- Toolbar -->
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 text-xs">
+              <div class="flex items-center space-x-3">
+                <span class="font-bold text-slate-900">产线协同排产泳道甘特图 ({{ filteredGanttTasks.length }} 笔工单已排)</span>
+                <span class="text-[11px] text-slate-400 font-mono">
+                  跨度: {{ panoramaData && panoramaData.gantt_horizon ? panoramaData.gantt_horizon.start_dt + ' ~ ' + panoramaData.gantt_horizon.end_dt : '' }}
+                </span>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <select v-model="ganttLineFilter" class="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs">
+                  <option value="ALL">全部产线</option>
+                  <option value="PGLINKAGE">PGLINKAGE (总装)</option>
+                  <option value="轴套6">轴套6 (冲压)</option>
+                </select>
+
+                <select v-model="ganttStageFilter" class="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs">
+                  <option value="ALL">全部工序阶段</option>
+                  <option value="FG">产成品 (FG)</option>
+                  <option value="SF">半成品 (SF)</option>
+                </select>
+
+                <button
+                  @click="enableBomLink = !enableBomLink"
+                  :class="['px-2.5 py-1 rounded border text-xs font-medium transition', enableBomLink ? 'bg-cyan-50 border-cyan-300 text-cyan-800' : 'bg-slate-50 border-slate-200 text-slate-600']"
+                >
+                  BOM 协同联动: {{ enableBomLink ? '开' : '关' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Live Hover/Selected Preview Bar -->
+            <div
+              class="p-2.5 rounded border text-xs flex flex-wrap items-center justify-between gap-3 font-mono transition"
+              :class="activeTaskInspect ? 'bg-slate-100 border-slate-300 text-slate-900 font-medium' : 'bg-slate-50 border-slate-200 text-slate-500'"
+            >
+              <div v-if="activeTaskInspect" class="flex items-center space-x-4">
+                <span :class="['px-1.5 py-0.2 rounded text-[10px] font-bold uppercase', activeTaskInspect.stage === 'FG' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800']">
+                  {{ activeTaskInspect.stage }}
+                </span>
+                <span class="font-bold">{{ activeTaskInspect.part_no }}</span>
+                <span>产线: {{ activeTaskInspect.line }}</span>
+                <span>数量: <b>{{ activeTaskInspect.quantity }}</b> 件</span>
+                <span>时段: {{ activeTaskInspect.start_dt }} ~ {{ activeTaskInspect.end_dt }} ({{ activeTaskInspect.duration_hours }}h)</span>
+              </div>
+              <div v-else>
+                鼠标悬停或点击任意排产色块查看全要素详情与 BOM 联动
+              </div>
+
+              <button
+                v-if="activeTaskInspect"
+                @click="openTaskModal(activeTaskInspect)"
+                class="text-xs text-blue-600 hover:underline font-sans font-semibold"
+              >
+                查看工单全要素详情 →
+              </button>
+            </div>
+
+            <!-- Gantt Swimlanes Visual Canvas -->
+            <div class="space-y-4 pt-2">
+              <div v-for="line in distinctGanttLines" :key="line" class="space-y-1.5">
+                <div class="flex items-center justify-between text-xs font-mono font-bold text-slate-700">
+                  <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span>产线泳道: {{ line }}</span>
+                  </div>
+                  <span class="text-slate-400 text-[11px] font-normal">
+                    {{ tasksForLine(line).length }} 个生产任务
+                  </span>
+                </div>
+
+                <!-- Swimlane Track -->
+                <div class="relative h-11 bg-slate-100 rounded border border-slate-200 overflow-hidden">
+                  <div
+                    v-for="task in tasksForLine(line)"
+                    :key="task.task_id"
+                    @mouseenter="activeTaskInspect = task"
+                    @click="openTaskModal(task)"
+                    :style="{ left: task.left_percent + '%', width: task.width_percent + '%' }"
+                    :class="[
+                      'absolute top-1 bottom-1 rounded px-2 text-[10px] font-mono flex items-center justify-between cursor-pointer transition shadow-2xs border truncate',
+                      task.stage === 'FG'
+                        ? 'bg-slate-800 text-white border-slate-900 hover:bg-slate-700'
+                        : 'bg-amber-600 text-white border-amber-700 hover:bg-amber-500',
+                      enableBomLink && activeTaskInspect && (activeTaskInspect.part_no === task.part_no || isBomLinked(activeTaskInspect, task))
+                        ? 'ring-2 ring-cyan-400 ring-offset-1 z-20'
+                        : ''
+                    ]"
+                    :title="task.part_no + ' (' + task.quantity + '件)'"
+                  >
+                    <span class="font-bold truncate">{{ task.part_no }}</span>
+                    <span class="text-[9px] opacity-80 shrink-0 ml-1">{{ task.quantity }}件</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-VIEW 4: 17项合规审计 (17-Item Compliance) -->
+          <div v-show="activeScenarioTab === 'AUDIT'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+              <span class="font-bold text-slate-900">17 项工业级规则合规审计矩阵</span>
+              <span class="text-slate-500 font-mono">
+                合规达标率: {{ activeScenario.validation_checks ? activeScenario.validation_checks.passed_count + '/' + activeScenario.validation_checks.total_count : '-' }}
+              </span>
+            </div>
+
+            <div class="divide-y divide-slate-100 text-xs">
+              <div
+                v-for="(check, idx) in (panoramaData ? panoramaData.checks : [])"
+                :key="'chk-'+idx"
+                class="p-3 hover:bg-slate-50/50 flex items-start justify-between gap-4"
+              >
+                <div class="space-y-1 flex-1">
+                  <div class="flex items-center space-x-2">
+                    <span
+                      :class="[
+                        'text-[10px] px-2 py-0.2 rounded font-mono font-bold',
+                        check.passed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                      ]"
+                    >
+                      {{ check.passed ? '合规 (PASS)' : '预警 (WARN)' }}
+                    </span>
+                    <span class="font-bold text-slate-900">{{ check.name }}</span>
+                    <span class="text-slate-400 text-[11px] font-mono">[{{ (check.rule_ids || []).join(', ') }}]</span>
+                  </div>
+                  <div class="text-[11px] text-slate-600 leading-relaxed font-mono">
+                    {{ check.calculation_details || '全部工序与班次严格满足该项业务规则约束。' }}
+                  </div>
+                </div>
+
+                <div class="text-right shrink-0 font-mono text-[11px]">
+                  <div :class="check.passed ? 'text-emerald-700' : 'text-rose-600 font-bold'">
+                    违规项: {{ check.violation_count }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      <!-- RIGHT COLUMN: KPI Arena & Side-by-side Compare (320px) -->
+      <aside class="w-80 border-l border-[#e4e4e0] bg-white flex flex-col shrink-0 overflow-y-auto p-4 shadow-2xs space-y-4">
+        <!-- Top Mode Switcher -->
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+            {{ isCompareMode ? '多方案横向对比' : '方案决策指标' }}
+          </h2>
+          <button
+            v-if="isCompareMode"
+            @click="isCompareMode = false"
+            class="text-[11px] text-slate-500 hover:underline"
+          >
+            返回单方案
+          </button>
+        </div>
+
+        <!-- Mode 1: Single Scenario Overview -->
+        <div v-if="!isCompareMode">
+          <div v-if="!activeScenario || !activeScenario.kpis" class="text-center py-20 text-slate-400 text-xs space-y-2">
+            <div class="font-medium text-slate-500">方案尚未求解</div>
+            <p class="text-[11px] text-slate-400">配置完积木后，点击「开始计算排产」生成交付率与负荷指标</p>
+          </div>
+
+          <div v-else class="space-y-4">
+            <!-- 4 Key Metric Cards -->
+            <div class="grid grid-cols-2 gap-2.5">
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 space-y-0.5">
+                <span class="text-[10.5px] text-slate-500">准时交付率 (OTD)</span>
+                <div class="text-lg font-bold font-mono text-emerald-600">
+                  {{ (activeScenario.kpis.otd_rate * 100).toFixed(1) }}%
+                </div>
+              </div>
+
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 space-y-0.5">
+                <span class="text-[10.5px] text-slate-500">产线综合负荷</span>
+                <div class="text-lg font-bold font-mono text-slate-900">
+                  {{ (activeScenario.kpis.avg_utilization * 100).toFixed(1) }}%
+                </div>
+              </div>
+
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 space-y-0.5">
+                <span class="text-[10.5px] text-slate-500">换模总用时</span>
+                <div class="text-lg font-bold font-mono text-slate-900">
+                  {{ activeScenario.kpis.total_setup_minutes }} <span class="text-xs font-normal">m</span>
+                </div>
+              </div>
+
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 space-y-0.5">
+                <span class="text-[10.5px] text-slate-500">排产工单数</span>
+                <div class="text-lg font-bold font-mono text-slate-900">
+                  {{ activeScenario.kpis.task_count }} <span class="text-xs font-normal">单</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 17-Item Quality Check Card -->
+            <div class="bg-slate-50 rounded border border-slate-200 p-3 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-700">17 项工业级合规体检</span>
+                <span
+                  :class="[
+                    'text-[10px] font-bold px-1.5 py-0.2 rounded font-mono',
+                    activeScenario.validation_checks.overall_pass
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  ]"
+                >
+                  {{ activeScenario.validation_checks.passed_count }} / {{ activeScenario.validation_checks.total_count }} 项
+                </span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-1 overflow-hidden">
+                <div
+                  class="bg-emerald-500 h-1 rounded-full transition-all duration-500"
+                  :style="{ width: ((activeScenario.validation_checks.passed_count / activeScenario.validation_checks.total_count) * 100) + '%' }"
+                ></div>
+              </div>
+            </div>
+
+            <!-- Quick Navigation Card -->
+            <div class="p-3 bg-slate-50 rounded border border-slate-200 text-xs space-y-2">
+              <span class="font-bold text-slate-800">快速穿透视图:</span>
+              <div class="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  @click="activeScenarioTab = 'BALANCE'"
+                  class="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 font-medium transition text-center"
+                >
+                  生产平衡表 →
+                </button>
+                <button
+                  @click="activeScenarioTab = 'GANTT'"
+                  class="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 font-medium transition text-center"
+                >
+                  协同甘特图 →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode 2: Multi-Scenario Comparison Arena -->
+        <div v-else class="space-y-3">
+          <div class="text-xs text-slate-500">
+            横向对比选中的 {{ comparisonResults.length }} 个方案指标：
+          </div>
+
+          <div class="border border-slate-200 rounded divide-y divide-slate-100 text-xs">
+            <div
+              v-for="res in comparisonResults"
+              :key="res.id"
+              class="p-3 space-y-2 bg-slate-50/50"
+            >
+              <div class="flex items-center justify-between">
+                <div class="font-bold text-slate-900">{{ res.name }}</div>
+                <span class="text-[10px] font-mono px-1 py-0.2 rounded bg-white border border-slate-200">{{ res.site }}</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-1.5 text-[10.5px] pt-1">
+                <div class="bg-white p-1.5 rounded border border-slate-100">
+                  <span class="text-slate-400">准时交付率:</span>
+                  <span class="font-bold font-mono text-emerald-600 ml-1">{{ (res.otd_rate * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="bg-white p-1.5 rounded border border-slate-100">
+                  <span class="text-slate-400">设备利用率:</span>
+                  <span class="font-bold font-mono text-slate-900 ml-1">{{ (res.avg_utilization * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="bg-white p-1.5 rounded border border-slate-100">
+                  <span class="text-slate-400">换模总用时:</span>
+                  <span class="font-bold font-mono text-slate-900 ml-1">{{ res.total_setup_minutes }}m</span>
+                </div>
+                <div class="bg-white p-1.5 rounded border border-slate-100">
+                  <span class="text-slate-400">合规体检:</span>
+                  <span class="font-bold font-mono text-emerald-700 ml-1">{{ res.checks_passed }}/{{ res.checks_total }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- VIEW 2: 基础积木资产中心 (Building Blocks Asset Hub) -->
+    <div v-show="currentMode === 'ASSETS'" class="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+      <div class="max-w-6xl mx-auto w-full space-y-6">
+
+        <!-- Asset Hub Header & Action Buttons -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">
+              基础积木资产中心 - {{ currentSite }}
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">支持 Excel 自动拆包导入 与 界面手工维护 双轨机制，资产沉淀至 14 表数据库</p>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <!-- Upload Excel Button -->
+            <button
+              @click="openUploadExcelModal"
+              class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3.5 py-1.5 rounded shadow-2xs transition"
+            >
+              导入 Excel 数据源
+            </button>
+
+            <button
+              v-if="activeAssetTab === 'lines'"
+              @click="showAddLineModal = true"
+              class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-1.5 rounded shadow-2xs transition"
+            >
+              + 新增产线
+            </button>
+            <button
+              v-if="activeAssetTab === 'bom'"
+              @click="showAddBOMModal = true"
+              class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-1.5 rounded shadow-2xs transition"
+            >
+              + 新建 BOM 包
+            </button>
+            <button
+              v-if="activeAssetTab === 'calendar'"
+              @click="showAddCalendarModal = true"
+              class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-1.5 rounded shadow-2xs transition"
+            >
+              + 新增工作制
+            </button>
+            <button
+              v-if="activeAssetTab === 'inventory'"
+              @click="showAddInventoryModal = true"
+              class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-1.5 rounded shadow-2xs transition"
+            >
+              + 新增库存批次
+            </button>
+          </div>
+        </div>
+
+        <!-- Asset Navigation Tabs -->
+        <div class="flex items-center space-x-2 border-b border-slate-200 pb-2 text-xs">
+          <button
+            @click="activeAssetTab = 'lines'"
+            :class="['px-3 py-1.5 rounded font-medium transition', activeAssetTab === 'lines' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200 font-bold' : 'text-slate-500 hover:text-slate-800']"
+          >
+            产线资产 ({{ buildingBlocks.lines.length }})
+          </button>
+          <button
+            @click="activeAssetTab = 'bom'"
+            :class="['px-3 py-1.5 rounded font-medium transition', activeAssetTab === 'bom' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200 font-bold' : 'text-slate-500 hover:text-slate-800']"
+          >
+            BOM 结构包 ({{ buildingBlocks.bom_packages.length }})
+          </button>
+          <button
+            @click="activeAssetTab = 'calendar'"
+            :class="['px-3 py-1.5 rounded font-medium transition', activeAssetTab === 'calendar' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200 font-bold' : 'text-slate-500 hover:text-slate-800']"
+          >
+            工作制日历 ({{ buildingBlocks.calendar_patterns.length }})
+          </button>
+          <button
+            @click="activeAssetTab = 'inventory'"
+            :class="['px-3 py-1.5 rounded font-medium transition', activeAssetTab === 'inventory' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200 font-bold' : 'text-slate-500 hover:text-slate-800']"
+          >
+            期初库存批次 ({{ buildingBlocks.inventory_packages.length }})
+          </button>
+        </div>
+
+        <!-- Asset Tables (Lines, BOM, Calendar, Inventory) -->
+        <div v-if="activeAssetTab === 'lines'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <tr>
+                <th class="p-3">产线编码</th>
+                <th class="p-3">所属车间</th>
+                <th class="p-3">阶段工序</th>
+                <th class="p-3">默认日历</th>
+                <th class="p-3">利用率上限</th>
+                <th class="p-3">默认人力</th>
+                <th class="p-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="l in buildingBlocks.lines" :key="l.line_code" class="hover:bg-slate-50/50 transition">
+                <td class="p-3 font-bold font-mono text-slate-800">{{ l.line_code }}</td>
+                <td class="p-3 text-slate-600">{{ l.workshop_code }}</td>
+                <td class="p-3">
+                  <span :class="['px-1.5 py-0.2 rounded text-[10px] font-bold font-mono', l.stage === 'FG' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700']">
+                    {{ l.stage }}
+                  </span>
+                </td>
+                <td class="p-3 font-mono text-slate-500">{{ l.default_calendar_id }}</td>
+                <td class="p-3 font-mono text-slate-700">{{ (l.max_util_rate * 100).toFixed(0) }}%</td>
+                <td class="p-3 font-mono text-slate-700">{{ l.default_crew }} 人</td>
+                <td class="p-3 text-right">
+                  <button @click="deleteLineBlock(l.line_code)" class="text-rose-600 hover:text-rose-800 font-medium">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- BOM Packages -->
+        <div v-if="activeAssetTab === 'bom'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <tr>
+                <th class="p-3">BOM 包 ID</th>
+                <th class="p-3">包名称</th>
+                <th class="p-3">版本</th>
+                <th class="p-3">只读锁状态</th>
+                <th class="p-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="b in buildingBlocks.bom_packages" :key="b.package_id" class="hover:bg-slate-50/50 transition">
+                <td class="p-3 font-bold font-mono text-slate-800">{{ b.package_id }}</td>
+                <td class="p-3 text-slate-800 font-medium">{{ b.name }}</td>
+                <td class="p-3 font-mono text-slate-600">v{{ b.version_no }}</td>
+                <td class="p-3">
+                  <span :class="['px-1.5 py-0.2 rounded text-[10px] font-bold font-mono', b.is_locked ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-700']">
+                    {{ b.is_locked ? '锁定保护' : '可编辑' }}
+                  </span>
+                </td>
+                <td class="p-3 text-right space-x-3">
+                  <button @click="viewBOMItems(b.package_id)" class="text-blue-600 hover:text-blue-800 font-medium">查看明细</button>
+                  <button @click="deleteBOMBlock(b.package_id)" class="text-rose-600 hover:text-rose-800 font-medium">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Calendars -->
+        <div v-if="activeAssetTab === 'calendar'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <tr>
+                <th class="p-3">工作制 ID</th>
+                <th class="p-3">名称</th>
+                <th class="p-3">工作天数/周</th>
+                <th class="p-3">班次/天</th>
+                <th class="p-3">班次工时</th>
+                <th class="p-3">开班时间</th>
+                <th class="p-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="c in buildingBlocks.calendar_patterns" :key="c.pattern_id" class="hover:bg-slate-50/50 transition">
+                <td class="p-3 font-bold font-mono text-slate-800">{{ c.pattern_id }}</td>
+                <td class="p-3 text-slate-800 font-medium">{{ c.name }}</td>
+                <td class="p-3 font-mono text-slate-600">{{ c.workdays_per_week }} 天</td>
+                <td class="p-3 font-mono text-slate-600">{{ c.shifts_per_day }} 班</td>
+                <td class="p-3 font-mono text-slate-600">{{ c.shift_hours }} 小时</td>
+                <td class="p-3 font-mono text-slate-500">{{ c.shift_start_times }}</td>
+                <td class="p-3 text-right">
+                  <button @click="deleteCalendarBlock(c.pattern_id)" class="text-rose-600 hover:text-rose-800 font-medium">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Inventory -->
+        <div v-if="activeAssetTab === 'inventory'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <tr>
+                <th class="p-3">库存批次 ID</th>
+                <th class="p-3">名称</th>
+                <th class="p-3">快照时点</th>
+                <th class="p-3">只读锁状态</th>
+                <th class="p-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="inv in buildingBlocks.inventory_packages" :key="inv.package_id" class="hover:bg-slate-50/50 transition">
+                <td class="p-3 font-bold font-mono text-slate-800">{{ inv.package_id }}</td>
+                <td class="p-3 text-slate-800 font-medium">{{ inv.name }}</td>
+                <td class="p-3 font-mono text-slate-500">{{ inv.snapshot_time ? inv.snapshot_time.slice(0, 16) : '' }}</td>
+                <td class="p-3">
+                  <span :class="['px-1.5 py-0.2 rounded text-[10px] font-bold font-mono', inv.is_locked ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-700']">
+                    {{ inv.is_locked ? '锁定保护' : '可编辑' }}
+                  </span>
+                </td>
+                <td class="p-3 text-right space-x-3">
+                  <button @click="viewInventoryItems(inv.package_id)" class="text-blue-600 hover:text-blue-800 font-medium">查看明细</button>
+                  <button @click="deleteInventoryBlock(inv.package_id)" class="text-rose-600 hover:text-rose-800 font-medium">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Task Detail Modal (Inspector) -->
+    <div v-if="showTaskModal && modalTask" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-lg w-full p-5 shadow-xl space-y-4 text-xs font-mono">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div class="flex items-center space-x-2">
+            <span :class="['px-1.5 py-0.2 rounded text-[10px] font-bold', modalTask.stage === 'FG' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800']">
+              {{ modalTask.stage }}
+            </span>
+            <span class="font-bold text-sm text-slate-900">{{ modalTask.part_no }}</span>
+          </div>
+          <button @click="showTaskModal = false" class="text-slate-400 hover:text-slate-800 font-bold">✕</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 text-slate-700 font-sans">
+          <div><span class="text-slate-400">工单代码:</span> <b class="font-mono">{{ modalTask.task_id }}</b></div>
+          <div><span class="text-slate-400">制造产线:</span> <b class="font-mono">{{ modalTask.line }}</b></div>
+          <div><span class="text-slate-400">计划排产:</span> <b class="font-mono text-blue-800">{{ modalTask.quantity }}</b> 件</div>
+          <div><span class="text-slate-400">作业工时:</span> <b class="font-mono">{{ modalTask.duration_hours }}</b> 小时</div>
+          <div><span class="text-slate-400">开工时间:</span> <b class="font-mono">{{ modalTask.start_dt }}</b></div>
+          <div><span class="text-slate-400">完工时间:</span> <b class="font-mono">{{ modalTask.end_dt }}</b></div>
+          <div><span class="text-slate-400">CT 节拍:</span> <b class="font-mono">{{ modalTask.ct_seconds }}</b> 秒</div>
+          <div><span class="text-slate-400">TRP 效率:</span> <b class="font-mono">{{ modalTask.trp }}</b></div>
+        </div>
+
+        <div class="border-t border-slate-100 pt-2 space-y-1">
+          <span class="text-slate-500 font-sans font-medium">班次排产分解 (Shift Breakdown):</span>
+          <div class="space-y-1 max-h-36 overflow-y-auto">
+            <div v-for="(qty, shift) in modalTask.shift_breakdown" :key="shift" class="flex justify-between bg-slate-50 p-1.5 rounded">
+              <span class="text-slate-600">{{ shift }}</span>
+              <span class="font-bold text-slate-900">{{ qty }} 件</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-slate-100 font-sans">
+          <button @click="showTaskModal = false" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-medium">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals for Building Blocks (Upload Excel, Add Line, Add BOM, etc.) -->
+    <!-- Modal: Upload Excel -->
+    <div v-if="showUploadExcelModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-3 text-xs font-sans">
+        <h3 class="text-sm font-bold text-slate-900">导入 Excel 工厂数据源 (自动拆包)</h3>
+        <p class="text-[11px] text-slate-500">上传包含标准 Sheet 的工厂 Excel 表格，系统将自动切片灌装入产线、BOM、日历与库存积木表。</p>
+        <div class="space-y-2.5 pt-1">
+          <div>
+            <label class="block text-slate-500 mb-1">选择目标站点</label>
+            <select v-model="uploadSite" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50">
+              <option value="WL">WE34 (温岭工厂)</option>
+              <option value="SY38">SY38 (沈阳工厂)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-500 mb-1">版本标识 (Tag)</label>
+            <input v-model="uploadVersionTag" type="text" class="w-full border border-slate-200 rounded p-1.5 font-mono" />
+          </div>
+          <div>
+            <label class="block text-slate-500 mb-1">选择 Excel 文件 (.xlsx, .xls)</label>
+            <input type="file" ref="excelFileInput" accept=".xlsx, .xls" class="w-full border border-slate-200 rounded p-1.5 text-xs" />
+          </div>
+        </div>
+        <div class="flex items-center justify-end space-x-2 pt-2">
+          <button @click="showUploadExcelModal = false" :disabled="isUploading" class="px-3 py-1.5 border rounded hover:bg-slate-50">取消</button>
+          <button @click="submitUploadExcel" :disabled="isUploading" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded font-medium">
+            {{ isUploading ? '正在拆包导入...' : '开始导入' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Create Scenario -->
+    <div v-if="showCreateModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-3 font-sans">
+        <h3 class="text-sm font-bold text-slate-900">新建排产推演方案</h3>
+        <div class="space-y-2.5 text-xs">
+          <div>
+            <label class="block text-slate-500 mb-1">方案名称</label>
+            <input v-model="newScenarioName" type="text" placeholder="例如: 11月第一周标准排产 (做五休二)" class="w-full border border-slate-200 rounded p-2" />
+          </div>
+          <div>
+            <label class="block text-slate-500 mb-1">所属工厂站点</label>
+            <select v-model="newScenarioSite" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50">
+              <option value="WL">WE34 (温岭工厂)</option>
+              <option value="SY38">SY38 (沈阳工厂)</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex items-center justify-end space-x-2 pt-2 text-xs">
+          <button @click="showCreateModal = false" class="px-3 py-1.5 border border-slate-200 rounded hover:bg-slate-50">取消</button>
+          <button @click="submitCreateScenario" :disabled="!newScenarioName.trim()" class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium rounded shadow-2xs">立即创建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Add Line -->
+    <div v-if="showAddLineModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-3 text-xs font-sans">
+        <h3 class="text-sm font-bold text-slate-900">新增产线资产</h3>
+        <div class="space-y-2.5">
+          <div>
+            <label class="block text-slate-500 mb-1">产线代码 (line_code)</label>
+            <input v-model="newLineForm.line_code" type="text" placeholder="例如: LINE_CUSTOM_01" class="w-full border border-slate-200 rounded p-1.5 font-mono" />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-slate-500 mb-1">工序阶段</label>
+              <select v-model="newLineForm.stage" class="w-full border border-slate-200 rounded p-1.5 bg-slate-50">
+                <option value="FG">总装 (FG)</option>
+                <option value="SF">前道冲压/注塑 (SF)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">所属车间代码</label>
+              <input v-model="newLineForm.workshop_code" type="text" class="w-full border border-slate-200 rounded p-1.5 font-mono" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-slate-500 mb-1">最大负荷利用率上限</label>
+            <input v-model.number="newLineForm.max_util_rate" type="number" step="0.05" class="w-full border border-slate-200 rounded p-1.5 font-mono" />
+          </div>
+        </div>
+        <div class="flex items-center justify-end space-x-2 pt-2">
+          <button @click="showAddLineModal = false" class="px-3 py-1.5 border rounded hover:bg-slate-50">取消</button>
+          <button @click="submitAddLine" class="px-3.5 py-1.5 bg-slate-900 text-white rounded font-medium">确认新增</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Add BOM -->
+    <div v-if="showAddBOMModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl max-w-lg w-full p-5 shadow-xl space-y-3 text-xs font-sans">
+        <h3 class="text-sm font-bold text-slate-900">配置 BOM 结构包</h3>
+        <div class="space-y-2.5">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-slate-500 mb-1">BOM 包唯一 ID</label>
+              <input v-model="newBOMForm.package_id" type="text" class="w-full border rounded p-1.5 font-mono" />
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">BOM 包名称</label>
+              <input v-model="newBOMForm.name" type="text" class="w-full border rounded p-1.5" />
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-slate-500 font-medium">子件与用量清单:</label>
+              <button @click="newBOMForm.items.push({ parent_part_no: '', child_part_no: '', usage_ratio: 1.0 })" class="text-blue-600 hover:underline">+ 增行</button>
+            </div>
+            <div class="space-y-1.5 max-h-48 overflow-y-auto">
+              <div v-for="(it, idx) in newBOMForm.items" :key="idx" class="flex items-center space-x-2 bg-slate-50 p-1.5 rounded font-mono">
+                <input v-model="it.parent_part_no" placeholder="父件号" class="flex-1 border rounded px-1.5 py-1 text-xs" />
+                <span>→</span>
+                <input v-model="it.child_part_no" placeholder="子件号" class="flex-1 border rounded px-1.5 py-1 text-xs" />
+                <input v-model.number="it.usage_ratio" placeholder="用量" type="number" step="0.1" class="w-16 border rounded px-1.5 py-1 text-right text-xs" />
+                <button @click="newBOMForm.items.splice(idx, 1)" class="text-rose-500 px-1 font-bold">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-end space-x-2 pt-2">
+          <button @click="showAddBOMModal = false" class="px-3 py-1.5 border rounded hover:bg-slate-50">取消</button>
+          <button @click="submitAddBOM" class="px-3.5 py-1.5 bg-slate-900 text-white rounded font-medium">保存 BOM 包</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Vue 3 Application Script -->
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const currentMode = ref("WORKSHOP");
+        const activeScenarioTab = ref("MANIFEST");
+        const activeAssetTab = ref("lines");
+        const currentSite = ref("WL");
+        const scenarios = ref([]);
+        const activeScenarioId = ref(null);
+        const activeScenario = ref(null);
+        const taskList = ref([]);
+        const panoramaData = ref(null);
+        const isSolving = ref(false);
+        const searchQuery = ref("");
+        const activeStatusFilter = ref("ALL");
+        const compareSelection = ref([]);
+        const isCompareMode = ref(false);
+        const comparisonResults = ref([]);
+
+        // Balance & Gantt interactive states
+        const balanceView = ref("FG");
+        const balanceSearch = ref("");
+        const ganttLineFilter = ref("ALL");
+        const ganttStageFilter = ref("ALL");
+        const enableBomLink = ref(true);
+        const activeTaskInspect = ref(null);
+        const showTaskModal = ref(false);
+        const modalTask = ref(null);
+
+        // Building blocks
+        const buildingBlocks = ref({
+          calendar_patterns: [],
+          lines: [],
+          routing_versions: [],
+          bom_packages: [],
+          inventory_packages: [],
+          demand_batches: [],
+          setup_matrices: [],
+          rule_sets: [],
+        });
+
+        // Modals
+        const showCreateModal = ref(false);
+        const newScenarioName = ref("");
+        const newScenarioSite = ref("WL");
+        const showAddLineModal = ref(false);
+        const newLineForm = ref({ line_code: "", stage: "FG", workshop_code: "WE34", max_util_rate: 1.05, default_crew: 1 });
+        const showAddBOMModal = ref(false);
+        const newBOMForm = ref({ package_id: "", name: "", items: [{ parent_part_no: "", child_part_no: "", usage_ratio: 1.0 }] });
+        const showAddCalendarModal = ref(false);
+        const showAddInventoryModal = ref(false);
+        const showUploadExcelModal = ref(false);
+        const uploadSite = ref("WL");
+        const uploadVersionTag = ref("");
+        const isUploading = ref(false);
+        const excelFileInput = ref(null);
+
+        const filterTabs = [
+          { label: "全部", value: "ALL" },
+          { label: "草稿", value: "DRAFT" },
+          { label: "已求解", value: "SOLVED" },
+          { label: "已发布", value: "RELEASED" },
+        ];
+
+        const detectedSliceMode = computed(() => {
+          if (!activeScenario.value) return "无";
+          const lines = activeScenario.value.manifest.lines || [];
+          if (lines.length === 0) return "未指定产线";
+          const hasFG = lines.some(l => l.includes("PGLINKAGE") || l.includes("PU"));
+          const hasSF = lines.some(l => l.includes("轴套"));
+          if (hasFG && hasSF) return "全厂联合排产 (FG+SF)";
+          if (hasFG && !hasSF) return "总装单独排产 (FG-only)";
+          if (!hasFG && hasSF) return "前道冲压自动补水 (SF-only)";
+          return "自定义切片";
+        });
+
+        const filteredScenarios = computed(() => {
+          return scenarios.value.filter(s => {
+            const matchSite = s.site === currentSite.value;
+            const matchStatus = activeStatusFilter.value === "ALL" || s.status === activeStatusFilter.value;
+            const matchQuery = !searchQuery.value.trim() || s.name.toLowerCase().includes(searchQuery.value.toLowerCase());
+            return matchSite && matchStatus && matchQuery;
+          });
+        });
+
+        const filteredMaterialsList = computed(() => {
+          if (!panoramaData.value) return [];
+          let list = [];
+          if (balanceView.value === "FG") list = panoramaData.value.fg_balance || [];
+          else if (balanceView.value === "SF") list = panoramaData.value.sf_balance || [];
+          else list = [...(panoramaData.value.fg_balance || []), ...(panoramaData.value.sf_balance || [])];
+
+          if (!balanceSearch.value.trim()) return list;
+          const q = balanceSearch.value.trim().toLowerCase();
+          return list.filter(m => (m.part_no || "").toLowerCase().includes(q) || (m.description || "").toLowerCase().includes(q));
+        });
+
+        const filteredGanttTasks = computed(() => {
+          if (!panoramaData.value) return [];
+          return (panoramaData.value.tasks || []).filter(t => {
+            const matchLine = ganttLineFilter.value === "ALL" || t.line === ganttLineFilter.value;
+            const matchStage = ganttStageFilter.value === "ALL" || t.stage === ganttStageFilter.value;
+            return matchLine && matchStage;
+          });
+        });
+
+        const distinctGanttLines = computed(() => {
+          if (!panoramaData.value) return [];
+          const lines = new Set((panoramaData.value.tasks || []).map(t => t.line));
+          return Array.from(lines);
+        });
+
+        function tasksForLine(line) {
+          return filteredGanttTasks.value.filter(t => t.line === line);
+        }
+
+        function isBomLinked(t1, t2) {
+          if (!t1 || !t2) return false;
+          return t1.part_no === t2.part_no;
+        }
+
+        function openTaskModal(task) {
+          modalTask.value = task;
+          showTaskModal.value = true;
+        }
+
+        async function fetchBuildingBlocks() {
+          try {
+            const resp = await fetch(`/api/scenarios/building-blocks?site=${currentSite.value}`);
+            if (resp.ok) {
+              buildingBlocks.value = await resp.json();
+            }
+          } catch (e) {
+            console.error("Failed to fetch building blocks:", e);
+          }
+        }
+
+        async function fetchScenarios() {
+          try {
+            const resp = await fetch(`/api/scenarios?site=${currentSite.value}`);
+            if (resp.ok) {
+              scenarios.value = await resp.json();
+            }
+          } catch (e) {
+            console.error("Failed to fetch scenarios:", e);
+          }
+        }
+
+        async function loadPanorama(id) {
+          try {
+            const resp = await fetch(`/api/scenarios/${id}/panorama`);
+            if (resp.ok) {
+              panoramaData.value = await resp.json();
+            }
+          } catch (e) {
+            console.error("Failed to load panorama:", e);
+          }
+        }
+
+        async function selectScenario(id) {
+          activeScenarioId.value = id;
+          isCompareMode.value = false;
+          try {
+            const resp = await fetch(`/api/scenarios/${id}`);
+            if (resp.ok) {
+              activeScenario.value = await resp.json();
+              if (activeScenario.value.status === 'SOLVED' || activeScenario.value.status === 'RELEASED') {
+                await loadPanorama(id);
+                const tResp = await fetch(`/api/scenarios/${id}/tasks`);
+                if (tResp.ok) taskList.value = await tResp.json();
+                if (activeScenarioTab.value === 'MANIFEST') {
+                  activeScenarioTab.value = 'GANTT';
+                }
+              } else {
+                panoramaData.value = null;
+                taskList.value = [];
+                activeScenarioTab.value = 'MANIFEST';
+              }
+            }
+          } catch (e) {
+            console.error("Failed to load scenario details:", e);
+          }
+        }
+
+        function selectAllLines() {
+          if (!activeScenario.value) return;
+          activeScenario.value.manifest.lines = buildingBlocks.value.lines.map(l => l.line_code);
+        }
+
+        function selectFGLines() {
+          if (!activeScenario.value) return;
+          activeScenario.value.manifest.lines = buildingBlocks.value.lines
+            .filter(l => l.stage === "FG")
+            .map(l => l.line_code);
+        }
+
+        function selectSFLines() {
+          if (!activeScenario.value) return;
+          activeScenario.value.manifest.lines = buildingBlocks.value.lines
+            .filter(l => l.stage === "SF")
+            .map(l => l.line_code);
+        }
+
+        function onSiteChange() {
+          activeScenarioId.value = null;
+          activeScenario.value = null;
+          uploadSite.value = currentSite.value;
+          fetchBuildingBlocks();
+          fetchScenarios();
+        }
+
+        function openCreateModal() {
+          newScenarioName.value = `${currentSite.value} 新推演方案`;
+          newScenarioSite.value = currentSite.value;
+          showCreateModal.value = true;
+        }
+
+        async function submitCreateScenario() {
+          const defaultLines = buildingBlocks.value.lines.map(l => l.line_code);
+          const payload = {
+            name: newScenarioName.value.trim(),
+            site: newScenarioSite.value,
+            manifest: {
+              lines: defaultLines.length > 0 ? defaultLines : ["PGLINKAGE", "轴套6"],
+              calendar_pattern_id: `${newScenarioSite.value}_5_2`,
+              routing_version: `ROUTING-${newScenarioSite.value}-2026Q4`,
+              bom_package_id: `BOM-${newScenarioSite.value}-2026Q4`,
+              rule_set_id: `${newScenarioSite.value}_Phase1`,
+              inventory_batch_id: `INV-${newScenarioSite.value}-2026Q4`,
+              demand_batch_id: `ORD-${newScenarioSite.value}-2026Q4`,
+              setup_matrix_id: `SETUP-${newScenarioSite.value}-DEFAULT`,
+              planning_days: 10,
+              start_datetime: "2026-10-12T07:00:00",
+            },
+          };
+          try {
+            const resp = await fetch("/api/scenarios", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (resp.ok) {
+              const created = await resp.json();
+              showCreateModal.value = false;
+              await fetchScenarios();
+              selectScenario(created.id);
+            }
+          } catch (e) {
+            alert("创建失败: " + e.message);
+          }
+        }
+
+        async function cloneScenario(id) {
+          const name = prompt("请输入克隆后的方案名称:", "克隆微调方案");
+          if (!name) return;
+          try {
+            const resp = await fetch("/api/scenarios", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: name.trim(),
+                site: currentSite.value,
+                clone_from_id: id,
+              }),
+            });
+            if (resp.ok) {
+              const cloned = await resp.json();
+              await fetchScenarios();
+              selectScenario(cloned.id);
+            }
+          } catch (e) {
+            alert("克隆失败: " + e.message);
+          }
+        }
+
+        async function deleteScenario(id) {
+          if (!confirm("确认彻底删除该方案及其排产数据？")) return;
+          try {
+            const resp = await fetch(`/api/scenarios/${id}`, { method: "DELETE" });
+            if (resp.ok) {
+              if (activeScenarioId.value === id) {
+                activeScenarioId.value = null;
+                activeScenario.value = null;
+              }
+              await fetchScenarios();
+            }
+          } catch (e) {
+            alert("删除失败: " + e.message);
+          }
+        }
+
+        async function saveScenario() {
+          if (!activeScenario.value) return;
+          try {
+            const resp = await fetch(`/api/scenarios/${activeScenario.value.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: activeScenario.value.name,
+                manifest: activeScenario.value.manifest,
+              }),
+            });
+            if (resp.ok) {
+              alert("方案清单已保存");
+              await fetchScenarios();
+            }
+          } catch (e) {
+            alert("保存失败: " + e.message);
+          }
+        }
+
+        async function triggerSolve() {
+          if (!activeScenario.value) return;
+          isSolving.value = true;
+          try {
+            const resp = await fetch(`/api/scenarios/${activeScenario.value.id}/solve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ time_limit_seconds: 10.0 }),
+            });
+            if (resp.ok) {
+              const updated = await resp.json();
+              activeScenario.value = updated;
+              await fetchScenarios();
+              await loadPanorama(updated.id);
+              const tResp = await fetch(`/api/scenarios/${updated.id}/tasks`);
+              if (tResp.ok) taskList.value = await tResp.json();
+              activeScenarioTab.value = 'GANTT';
+            } else {
+              const err = await resp.json();
+              alert("求解失败: " + (err.detail || "不可行或超时"));
+            }
+          } catch (e) {
+            alert("求解异常: " + e.message);
+          } finally {
+            isSolving.value = false;
+          }
+        }
+
+        async function releaseScenario() {
+          if (!activeScenario.value) return;
+          if (!confirm("确认正式发布该方案下发车间执行？发布后方案将被锁定防篡改。")) return;
+          try {
+            const resp = await fetch(`/api/scenarios/${activeScenario.value.id}/release`, {
+              method: "POST",
+            });
+            if (resp.ok) {
+              alert("方案已成功发布");
+              await fetchScenarios();
+              selectScenario(activeScenario.value.id);
+            }
+          } catch (e) {
+            alert("发布失败: " + e.message);
+          }
+        }
+
+        async function runComparison() {
+          if (compareSelection.value.length < 2) return;
+          try {
+            const resp = await fetch("/api/scenarios/compare", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ scenario_ids: compareSelection.value }),
+            });
+            if (resp.ok) {
+              comparisonResults.value = await resp.json();
+              isCompareMode.value = true;
+            }
+          } catch (e) {
+            alert("对比失败: " + e.message);
+          }
+        }
+
+        function addWhatIfOverride(part, qty) {
+          if (!activeScenario.value.manifest.stock_overrides) {
+            activeScenario.value.manifest.stock_overrides = {};
+          }
+          activeScenario.value.manifest.stock_overrides[part] = qty;
+        }
+
+        function removeWhatIfOverride(part) {
+          if (activeScenario.value.manifest.stock_overrides) {
+            delete activeScenario.value.manifest.stock_overrides[part];
+          }
+        }
+
+        // Upload Excel Handling
+        function openUploadExcelModal() {
+          uploadSite.value = currentSite.value;
+          uploadVersionTag.value = `${currentSite.value}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+          showUploadExcelModal.value = true;
+        }
+
+        async function submitUploadExcel() {
+          const file = excelFileInput.value && excelFileInput.value.files[0];
+          if (!file) {
+            alert("请选择要上传的 Excel 文件");
+            return;
+          }
+          isUploading.value = true;
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("site", uploadSite.value);
+          formData.append("version_tag", uploadVersionTag.value.trim() || undefined);
+
+          try {
+            const resp = await fetch("/api/scenarios/upload-excel", {
+              method: "POST",
+              body: formData,
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              alert(`Excel 拆包导入成功！BOM: ${data.ingested.bom_package_id}, 订单: ${data.ingested.demand_batch_id}`);
+              showUploadExcelModal.value = false;
+              await fetchBuildingBlocks();
+            } else {
+              const err = await resp.json();
+              alert("导入失败: " + (err.detail || "格式异常"));
+            }
+          } catch (e) {
+            alert("上传异常: " + e.message);
+          } finally {
+            isUploading.value = false;
+          }
+        }
+
+        // Building Block Asset Hub API Calls
+        async function submitAddLine() {
+          try {
+            const resp = await fetch("/api/scenarios/blocks/lines", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...newLineForm.value, site_code: currentSite.value }),
+            });
+            if (resp.ok) {
+              showAddLineModal.value = false;
+              await fetchBuildingBlocks();
+            }
+          } catch (e) {
+            alert("新增产线失败: " + e.message);
+          }
+        }
+
+        async function deleteLineBlock(code) {
+          if (!confirm(`确认删除产线 ${code}？`)) return;
+          try {
+            const resp = await fetch(`/api/scenarios/blocks/lines/${code}`, { method: "DELETE" });
+            if (resp.ok) await fetchBuildingBlocks();
+          } catch (e) {
+            alert("删除产线失败: " + e.message);
+          }
+        }
+
+        async function submitAddBOM() {
+          try {
+            const resp = await fetch("/api/scenarios/blocks/bom-packages", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...newBOMForm.value, site_code: currentSite.value }),
+            });
+            if (resp.ok) {
+              showAddBOMModal.value = false;
+              await fetchBuildingBlocks();
+            }
+          } catch (e) {
+            alert("保存 BOM 失败: " + e.message);
+          }
+        }
+
+        async function deleteBOMBlock(pkgId) {
+          if (!confirm(`确认删除 BOM 包 ${pkgId}？`)) return;
+          try {
+            const resp = await fetch(`/api/scenarios/blocks/bom-packages/${pkgId}`, { method: "DELETE" });
+            if (resp.ok) await fetchBuildingBlocks();
+          } catch (e) {
+            alert("删除 BOM 失败: " + e.message);
+          }
+        }
+
+        async function deleteCalendarBlock(patId) {
+          if (!confirm(`确认删除工作制 ${patId}？`)) return;
+          try {
+            const resp = await fetch(`/api/scenarios/blocks/calendar-patterns/${patId}`, { method: "DELETE" });
+            if (resp.ok) await fetchBuildingBlocks();
+          } catch (e) {
+            alert("删除工作制失败: " + e.message);
+          }
+        }
+
+        async function deleteInventoryBlock(pkgId) {
+          if (!confirm(`确认删除库存批次 ${pkgId}？`)) return;
+          try {
+            const resp = await fetch(`/api/scenarios/blocks/inventory-packages/${pkgId}`, { method: "DELETE" });
+            if (resp.ok) await fetchBuildingBlocks();
+          } catch (e) {
+            alert("删除库存批次失败: " + e.message);
+          }
+        }
+
+        onMounted(async () => {
+          await fetchBuildingBlocks();
+          await fetchScenarios();
+
+          // Check if scenario_id is passed in URL query
+          const urlParams = new URLSearchParams(window.location.search);
+          const qScenarioId = urlParams.get('scenario_id');
+          if (qScenarioId) {
+            selectScenario(qScenarioId);
+          } else if (scenarios.value.length > 0 && !activeScenarioId.value) {
+            selectScenario(scenarios.value[0].id);
+          }
+        });
+
+        return {
+          currentMode,
+          activeScenarioTab,
+          activeAssetTab,
+          currentSite,
+          scenarios,
+          activeScenarioId,
+          activeScenario,
+          taskList,
+          panoramaData,
+          isSolving,
+          searchQuery,
+          activeStatusFilter,
+          filterTabs,
+          filteredScenarios,
+          filteredMaterialsList,
+          filteredGanttTasks,
+          distinctGanttLines,
+          tasksForLine,
+          isBomLinked,
+          balanceView,
+          balanceSearch,
+          ganttLineFilter,
+          ganttStageFilter,
+          enableBomLink,
+          activeTaskInspect,
+          showTaskModal,
+          modalTask,
+          openTaskModal,
+          buildingBlocks,
+          detectedSliceMode,
+          compareSelection,
+          isCompareMode,
+          comparisonResults,
+          showCreateModal,
+          newScenarioName,
+          newScenarioSite,
+          showAddLineModal,
+          newLineForm,
+          showAddBOMModal,
+          newBOMForm,
+          showAddCalendarModal,
+          showAddInventoryModal,
+          showUploadExcelModal,
+          uploadSite,
+          uploadVersionTag,
+          isUploading,
+          excelFileInput,
+          onSiteChange,
+          fetchBuildingBlocks,
+          fetchScenarios,
+          selectScenario,
+          selectAllLines,
+          selectFGLines,
+          selectSFLines,
+          openCreateModal,
+          submitCreateScenario,
+          cloneScenario,
+          deleteScenario,
+          saveScenario,
+          triggerSolve,
+          releaseScenario,
+          runComparison,
+          addWhatIfOverride,
+          removeWhatIfOverride,
+          openUploadExcelModal,
+          submitUploadExcel,
+          submitAddLine,
+          deleteLineBlock,
+          submitAddBOM,
+          deleteBOMBlock,
+          deleteCalendarBlock,
+          deleteInventoryBlock,
+        };
+      },
+    }).mount("#app");
+  </script>
+</body>
+</html>

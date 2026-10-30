@@ -42,6 +42,11 @@ def main():
             "tests.test_regressions",
             "tests.test_rule_catalog",
             "tests.test_rule_mapping_and_validator",
+            "tests.test_scenario_repository",
+            "tests.test_scenario_ingestion",
+            "tests.test_scenario_builder",
+            "tests.test_scenario_api",
+            "tests.test_telemetry",
         ]
         suite = unittest.TestSuite()
         for mod in fast_modules:

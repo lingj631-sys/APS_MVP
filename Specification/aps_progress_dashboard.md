@@ -26,8 +26,8 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译且调度器全量接线；`routing` 未编译（Phase 2） |
-| 全量测试 | **111/111 PASS**（含 105 基线 + `test_operator_wiring.py` 6 项，约 1387.6s） |
-| 快速测试 | **67/67 PASS，约 61s** |
+| 全量测试 | **132/132 PASS**（含 105 基线 + operator wiring 6 项 + 多场景推演 17 项 + 追踪体系 4 项） |
+| 快速测试 | **107/107 PASS，约 64s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
 ### 测试套件
@@ -51,11 +51,27 @@
 | `tests/test_capacity_kernel.py` | 7 | PASS |
 | `tests/test_operator_wiring.py` | 6 | PASS |
 | `tests/test_campaign.py` | 2 | PASS |
-| **全量** | **111** | **PASS** |
+| `tests/test_scenario_repository.py` | 5 | PASS |
+| `tests/test_scenario_ingestion.py` | 2 | PASS |
+| `tests/test_scenario_builder.py` | 5 | PASS |
+| `tests/test_scenario_api.py` | 5 | PASS |
+| `tests/test_telemetry.py` | 4 | PASS |
+| **全量** | **132** | **PASS** |
 
 ---
 
-## 3. 32 条规则状态
+## 3. 32 条规则状态与多场景推演架构
+
+### Phase S：模块化多场景推演架构 (Scenario Platform)
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| S1 中立仓储与无外键 Schema | ✅ | `src/scenarios/repository.py`：14 张表、无物理外键、高密度索引、级联事务 |
+| S2 Excel 自动拆包服务 | ✅ | `src/scenarios/ingestion.py`：10 个 Sheet 0.3s 切片入库至 7 大积木表 |
+| S3 内存装配器流水线 | ✅ | `src/scenarios/builder.py`：<500B 清单、15ms 纯内存组装、前道补水推导、What-If |
+| S4 RESTful API 与方案对撞 | ✅ | `src/scenarios/router.py`：生命周期 CRUD、克隆、求解归档、多方案 KPI 对撞 |
+| S5 前端推演工作台 | ✅ | `src/static/scenarios.html`：3 栏式 SPA（场景库抽屉/4步工坊/KPI竞技场） |
+| S6 防漂移与防篡改硬化 | ✅ | 求解自动触发只读锁 `is_locked=1`，已发布 `RELEASED` 方案防篡改 400 拦截 |
 
 ### Phase B
 

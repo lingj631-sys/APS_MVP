@@ -117,16 +117,35 @@
 * **深度实现 (Implementation)**：
   * 统一双工厂物理拓扑：温岭工厂（WE34: 8h × 3班，连续流水）与沈阳工厂（SY38: 12h × 2班，注塑涂装）；
   * 封装做四休三、做五休二与 7×3 连产日历模式生成与班次时间窗口换算。
-* **接缝 (Seam)**：`PlantTopology` 数据接缝。调度器与审计引擎均通过此接缝获取额定工时。
+### 2.5 多场景推演深模块 (`src/scenarios`)
+* **设计意图**：提供工业级轻量化推演工作台支撑，彻底摆脱单体大泥球内存单例（`session_state`）。
+* **接口 (Interface)**：
+  - `ScenarioRepository`：14 表无物理外键架构、应用级级联删除、防漂移只读锁；
+  - `IngestionService.ingest_excel()`：10 个 Sheet 极速切片拆包入库至 7 大积木表（<0.35s）；
+  - `ScenarioBuilder.assemble_context()`：根据轻量 Manifest 清单（<500B JSON）在 15ms 内纯内存组装调度上下文；
+  - `ScenarioService`：方案 CRUD、克隆、求解、17项校验归档、全景数据穿透、跨方案多维对撞。
+* **实现 (Implementation)**：隐藏了复杂的 SQL 构建、BOM 拓扑拉动、前道半成品安全库存缺口补水工单推导与 What-If 沙箱临时覆写。
+
+### 2.6 AOP 自动化遥测与可观测深模块 (`src/infrastructure`)
+* **设计意图**：全链路非侵入式追踪函数调用性能与 SQL 查询耗时，防海量数据日志爆炸。
+* **接口 (Interface)**：
+  - `@trace(stage, logger_name)`：AOP 装饰器，记录出入参摘要、执行耗时与异常堆栈；
+  - `wrap_traced_connection(conn)`：数据库连接透明代理，自动监控 SQL 执行并告警 >15ms 慢查询；
+  - `summarize_value(val)`：递归智能摘要器，剪裁巨型排产对象，保护日志通道。
 
 ---
 
 ## 3. 测试表面与回归矩阵 (The Interface is the Test Surface)
 
-根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 15 大自动化测试套件与系统接缝的映射关系如下：
+根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 20 大自动化测试套件与系统接缝的映射关系如下：
 
 | 测试套件文件 | 覆盖的模块接缝 | 核心验证不变量 |
 |---|---|---|
+| `tests/test_scenario_repository.py` | `src/scenarios/repository.py` | 14 表 ANSI 结构、级联事务删除、防漂移只读锁、事务回滚 |
+| `tests/test_scenario_ingestion.py` | `src/scenarios/ingestion.py` | Excel 10 Sheet 拆包切片入库至 7 大积木表、幂等性重复导入 |
+| `tests/test_scenario_builder.py` | `src/scenarios/builder.py` | 全厂内存组装、总装单独排产切片、冲压半成品补水推导、What-If 演练 |
+| `tests/test_scenario_api.py` | `src/scenarios/router.py` | RESTful API 完整生命周期、对撞对比、手工积木 CRUD、Excel 上传拆包、全景透视 |
+| `tests/test_telemetry.py` | `src/infrastructure/telemetry.py` | 防日志爆炸摘要器、@trace 耗时与入参出参拦截、DB Proxy 慢查询告警 |
 | `tests/test_domain.py` | `src/domain/` 实体层 | Site/Workshop/Line 拓扑、ShiftSlot 值对象、多线 Routing 候选能力 |
 | `tests/test_kernel.py` | `src/kernel/` 公共接口 | 19 个模板编译、参数 Schema、作用域继承、字典序分层优化、权重归一化 |
 | `tests/test_independent_audit.py` | `src/audit/` 公共接口 | 独立性（零依赖求解器）、20 类变异矩阵拦截（删单、超载、跳序、篡改、欠产） |

@@ -153,7 +153,7 @@ class TestApsRegressions(unittest.TestCase):
 
     def test_reg04_unknown_part_or_missing_master_data_raises_invalid_input(self):
         """REG-04: Orders with missing master data must be recorded as invalid orders, not silently skipped."""
-        snap = load_aps_csv("data", site_filter="WL")
+        snap = load_aps_database("dataSource.xlsx", site_filter="WL")
         bad_order = CustomerOrder(
             order_id="ORD_UNKNOWN_TEST",
             part_no="UNKNOWN_PART_NONEXISTENT",

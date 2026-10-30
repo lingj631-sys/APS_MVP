@@ -51,7 +51,8 @@ def process_manual_excel_audit(
     site_upper = (site or "WL").upper()
     snap: ProductionInputSnapshot = session_state.get("snapshot")
     if snap is None:
-        raise HTTPException(status_code=400, detail=f"未找到站点 {site_upper} 的数据快照，请先初始化站点")
+        from src.data_loader import load_aps_database
+        snap = load_aps_database("dataSource.xlsx", site_filter=site_upper)
 
     settings = site_settings
     horizon_days = settings.get("horizon_days", 10)

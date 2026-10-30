@@ -35,6 +35,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
+from src.infrastructure.telemetry import trace
 from src.data_loader import TIME_SCALE, ProductionTask, RequirementPlan
 from src.shift_manager import (
     CalendarMode,
@@ -102,6 +103,86 @@ class ScheduledTask:
     line_pm_slots: List[int] = field(default_factory=list)
     crew_required: float = 0.0
     splittable: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes the scheduled task to a clean JSON-compliant dictionary."""
+        serialized_breakdown = {
+            f"{k[0]} {k[1]}" if isinstance(k, (tuple, list)) else str(k): v
+            for k, v in (self.shift_breakdown or {}).items()
+        }
+        start_iso = self.start_dt.isoformat() if isinstance(self.start_dt, datetime) else str(self.start_dt)
+        end_iso = self.end_dt.isoformat() if isinstance(self.end_dt, datetime) else str(self.end_dt)
+        return {
+            "task_id": self.task_id,
+            "stage": self.stage,
+            "line": self.line,
+            "part_no": self.part_no,
+            "description": self.description or self.part_no,
+            "quantity": float(self.quantity),
+            "order_id": self.order_id or "",
+            "ct_seconds": float(self.ct_seconds),
+            "trp": float(self.trp),
+            "mpq": int(self.mpq),
+            "lot_size": int(self.lot_size),
+            "lots": int(self.lots),
+            "start_dt": start_iso,
+            "end_dt": end_iso,
+            "duration_hours": float(self.duration_hours),
+            "due_dt": self.due_datetime.isoformat() if isinstance(self.due_datetime, datetime) else "-",
+            "shift_breakdown": serialized_breakdown,
+            "mold_id": self.mold_id or "",
+            "customer_tier": self.customer_tier or "A",
+            "setup_minutes": 0.0,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ScheduledTask":
+        """Deserializes a dictionary or database row back into a ScheduledTask."""
+        start_raw = d.get("start_dt") or "2026-10-12T07:00:00"
+        end_raw = d.get("end_dt") or start_raw
+        start_dt = datetime.fromisoformat(start_raw) if isinstance(start_raw, str) else start_raw
+        end_dt = datetime.fromisoformat(end_raw) if isinstance(end_raw, str) else end_raw
+
+        reconstructed_breakdown = {}
+        for k, v in (d.get("shift_breakdown") or {}).items():
+            if isinstance(k, tuple):
+                reconstructed_breakdown[k] = v
+            elif " " in k:
+                parts = k.split(" ", 1)
+                reconstructed_breakdown[(parts[0], parts[1])] = v
+            else:
+                reconstructed_breakdown[(k, "")] = v
+
+        due_raw = d.get("due_dt")
+        due_dt = None
+        if due_raw and due_raw != "-":
+            try:
+                due_dt = datetime.fromisoformat(due_raw)
+            except Exception:
+                due_dt = None
+
+        return cls(
+            task_id=d.get("task_id", ""),
+            stage=d.get("stage", "FG"),
+            line=d.get("line", ""),
+            part_no=d.get("part_no", ""),
+            description=d.get("description", d.get("part_no", "")),
+            quantity=float(d.get("quantity", 0.0)),
+            ct_seconds=float(d.get("ct_seconds", 30.0)),
+            trp=float(d.get("trp", 0.71)),
+            mpq=int(d.get("mpq", 1)),
+            lot_size=int(d.get("lot_size", 1)),
+            lots=int(d.get("lots", 1)),
+            order_id=d.get("order_id", ""),
+            due_datetime=due_dt,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            duration_hours=float(d.get("duration_hours", 8.0)),
+            shift_breakdown=reconstructed_breakdown,
+            shift_seconds={},
+            mold_id=d.get("mold_id"),
+            customer_tier=d.get("customer_tier", "A"),
+        )
 
 
 @dataclass
@@ -530,6 +611,7 @@ class APSScheduler:
                 return result
         return None
 
+    @trace(stage="CP_SAT_SOLVER", logger_name="aps.solver")
     def solve(self, time_limit_seconds: float = 90.0) -> ScheduleResult:
         # WE34 ranks the constraints: on-time delivery first, 95% shift utilisation
         # second, whole models per line third.
@@ -758,10 +840,11 @@ class APSScheduler:
     def _solver(self, time_limit_seconds: float) -> cp_model.CpSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max(1.0, time_limit_seconds)
-        # One worker + a fixed seed makes a plan reproducible; a planning system
-        # cannot answer "why did yesterday work and today not" any other way.
-        solver.parameters.num_workers = 1
+        # B5 Fix: Address Combinatorial Explosion via Parallel Search & LNS
+        solver.parameters.num_workers = 4  # Scale up from 1 to leverage multi-core for deep trees
         solver.parameters.random_seed = 1
+        solver.parameters.use_lns = True   # Large Neighborhood Search for fast convergence on large horizons
+        solver.parameters.relative_gap_limit = 0.01  # Accept 1% gap to stop proving optimality early
         solver.parameters.log_search_progress = False
         return solver
 

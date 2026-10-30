@@ -34,8 +34,6 @@ COPY src/ ./src/
 COPY data/ ./data/
 COPY config/ ./config/
 COPY run_web.py .
-COPY ["APS Database- Simulation draft.xlsx", "./"]
-COPY ["Production Plan Validation.xlsx", "./"]
 COPY ["dataSource.xlsx", "./"]
 COPY Specification/ ./Specification/
 COPY README.md .

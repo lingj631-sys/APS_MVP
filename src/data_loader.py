@@ -766,14 +766,23 @@ def _load_aps_excel(excel_path: str, site_filter: str = "WL") -> ProductionInput
     )
 
 
-def load_aps_database(source_path: str = "data", site_filter: str = "WL") -> ProductionInputSnapshot:
+def load_aps_database(source_path: str = "dataSource.xlsx", site_filter: str = "WL") -> ProductionInputSnapshot:
     """Unified entry point to load APS dataset.
-    Prioritizes loading from explicit .xlsx file if given, otherwise loads from CSV directory.
+    Prioritizes loading from dataSource.xlsx (or specified .xlsx file), falling back to CSV directory.
     """
-    # If source_path is an existing xlsx file
+    # 1. If source_path is an explicit existing xlsx file
     if os.path.isfile(source_path) and source_path.lower().endswith(".xlsx"):
         return _load_aps_excel(source_path, site_filter=site_filter)
 
+    # 2. Check if dataSource.xlsx exists in project root or current working dir
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root_excel = os.path.join(base_dir, "dataSource.xlsx")
+    if os.path.isfile(root_excel):
+        return _load_aps_excel(root_excel, site_filter=site_filter)
+    if os.path.isfile("dataSource.xlsx"):
+        return _load_aps_excel("dataSource.xlsx", site_filter=site_filter)
+
+    # 3. Fallback to CSV directory if directory exists
     if os.path.isdir(source_path):
         return load_aps_csv(source_path, site_filter=site_filter)
 
@@ -782,7 +791,6 @@ def load_aps_database(source_path: str = "data", site_filter: str = "WL") -> Pro
     if os.path.exists(candidate_data) and os.path.isdir(candidate_data):
         return load_aps_csv(candidate_data, site_filter=site_filter)
 
-    # Default fallback to 'data'
     if os.path.isdir("data"):
         return load_aps_csv("data", site_filter=site_filter)
 

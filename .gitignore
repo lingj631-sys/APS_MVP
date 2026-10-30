@@ -40,14 +40,17 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Runtime rule-set DB / generated test artifacts
-data/rule_sets.sqlite3
-data/test_rules.sqlite3
+# Runtime temporary test artifacts & ephemeral WAL journals
+data/test_*.sqlite3
+data/*-wal
+data/*-shm
 data/rule_template.xlsx
+data/logs/
+data/uploads/
 
-# Local visual reference files
+# Local visual reference & agent design system files
 kimi_reference*.css
-
+design-system/
 
 # Generated rule workbook from tests/CLI
 Light China APS Rules.xlsx

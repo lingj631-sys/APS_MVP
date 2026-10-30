@@ -1,8 +1,0 @@
-﻿Site,PO Number,Supplier,Part No.,Description,ETA Date,ETA Shift,Quantity,QC Release Hours,Associated Part,Status
-WL,PO-202610-WL-0881,博世微电子(苏州),WA14208-CHIP,雨刮主控微型驱动芯片,2026-10-13,早班,5000,2,WA14208,质检合格 (Released)
-WL,PO-202610-WL-0882,宝武特钢管业,W000061536-RAW,20#精密冷拔无缝钢管φ16,2026-10-12,早班,8000,1,W000061536,已入库 (Stocked)
-WL,PO-202610-WL-0883,宁波敏实汽车零部件,WAB6404-PIN,E371传动杆高强耐磨球铰轴,2026-10-14,中班,6500,2,WAB6404,在途运输 (In Transit)
-WL,PO-202610-WL-0884,江苏新联精密铜套,WB35356-SUB,930B低摩擦含油双金属衬套,2026-10-13,中班,9200,1.5,WB35356,质检合格 (Released)
-WL,PO-202610-WL-0885,芜湖宏达橡胶密封,WB80510-SEAL,CX11防水防尘硅胶密封圈,2026-10-14,早班,12000,1,WB80510,在途运输 (In Transit)
-WL,PO-202610-WL-0886,上海森信电子传感,WD48696-SENSOR,L743电子霍尔位置传感器,2026-10-15,早班,4500,2.5,WD48696,在途运输 (In Transit)
-WL,PO-202610-WL-0887,昆山科森精密五金,WBC9317-BRKT,LEAP电机固定加固冲压支架,2026-10-14,晚班,7000,1,WBC9317,在途运输 (In Transit)

@@ -714,6 +714,48 @@ python -m unittest discover -s tests -v
 - 已推送 main：C1-b-3/4、B4-b FG/SF soft/hard 选项、C2-b-0 CP-SAT 路线分配阶段、C4 lead time + transfer batch、C5-a Campaign、C5-b Slack。
 - 仍未完成：C2-b 主模型内 Assign(i,m)、C5 Pull 独立策略、32 条规则与 17 项审计映射、真实主数据替换。
 
+### 2026-10-30 核心架构跃迁：基于任务载体的模块化多场景推演架构 (Scenario-Based Architecture)
+
+- **架构跃迁背景**：
+  - 既有系统输入数据绑定在全局单例 `session_state`，每次排产必须全量加载全厂产线与物料，修改即覆盖，无法并存多个推演方案，更无法做“方案 A (严格做五休二) vs 方案 B (周末加班保供)”的横向决策对比。
+- **六阶段完整落地**：
+  1. **Phase 1: 中立仓储与 Schema (`src/scenarios/repository.py`)**：
+     - 采用无物理外键原则（No Foreign Keys），杜绝锁争用与级联死锁；
+     - 落地 14 张核心业务与积木表，建立高密度 B-Tree 二级索引；
+     - 实现轻量清单 `manifest`、KPI、17 项校验及甘特任务的事务级持久化；
+     - 实现防漂移只读锁（`lock_building_blocks`），锁定已排产方案引用的底层积木版本。
+  2. **Phase 2: 数据摄入与 Excel 自动拆包服务 (`src/scenarios/ingestion.py`)**：
+     - 单应用事务将 `dataSource.xlsx` 10 个 Sheet 极速切片入库至 7 大积木表，全厂拆包入库仅耗时 0.317s；
+     - 首次完成 `data/scenarios.sqlite3` 物理数据库灌装。
+  3. **Phase 3: 模块化内存装配器流水线 (`src/scenarios/builder.py`)**：
+     - 基于 <500 字节 JSON 清单，15ms 纯内存组装 `ProductionInputSnapshot`、`RequirementPlan` 与 `RuleSet`；
+     - 支持全厂联合排产、总装单独排产（FG-only）与冲压单独排产（SF-only）；
+     - **闭环漏洞 3**：前道冲压单独排产无主订单时，自动对比现存量与安全库存生成补水需求（`REPL_{part_no}`）；
+     - 支持 `stock_overrides`（What-If 断供模拟）与 `rule_overrides`（规则微调）。
+  4. **Phase 4: 推演中枢服务与 RESTful API (`src/scenarios/service.py` & `src/scenarios/router.py`)**：
+     - 提供 `/api/scenarios` 完整 RESTful 端点（CRUD、克隆、求解、校验归档、任务明细、正式发布、多方案对比）；
+     - `/api/scenarios/compare` 毫秒级输出多方案横向对撞矩阵；
+     - 严防数据篡改：已发布（`RELEASED`）方案更新直接被 400 拦截。
+  5. **Phase 5: 前端推演工作台中枢交互 (`src/static/scenarios.html`)**：
+     - 3 栏式 SPA：左侧场景库抽屉、中间 4 步积木装配工坊、右侧 KPI 竞技场与对撞看板；
+     - 主导航打通：在 `src/server.py` 挂载 `/scenarios`，并在 `index.html` 增设入口。
+  6. **Phase 6: 工业级防线硬化与全量回归**：
+     - 新增 4 大测试套件（19 项用例），快速回归套件扩充至 103 项 PASS（63s）。
+
+### 2026-10-30 冗余清理 (Option B) 与轻量级调用/数据库追踪体系 (Option A)
+
+- **冗余全面清理 (Option B)**：
+  - 物理清理 `src/static/index.html.*_backup` 临时备份文件（642 KB）；
+  - 物理清理被 `dataSource.xlsx` 替代的根目录草案 `APS Database- Simulation draft.xlsx` 与 `Production Plan Validation.xlsx`；
+  - 物理清理 `data/` 根目录下 9 个冗余旧 CSV，并重构 `src/data_loader.py::load_aps_database` 优先读取单源事实 `dataSource.xlsx`；
+  - 快速测试 103 项保持 100% 绿灯。
+- **全自动调用与数据库追踪体系 (Option A)**：
+  - 架构：`src/infrastructure/telemetry.py`，提供 `summarize_value`（防巨型对象撑爆日志）、`@trace` 切面装饰器与 `wrap_traced_connection` 数据库透明连接代理；
+  - 零侵入切面：在 `assemble_context`、`solve`、`ingest_excel`、`solve_scenario`、`compare_scenarios` 等关键链路打标，自动捕获函数名、入参摘要、返回摘要与精确耗时（ms）；
+  - 数据库调用监控：拦截所有 SQL `execute` / `executemany`，自动记录执行用时、行数，并在 >15ms 时触发 `[SLOW_SQL]` 告警；
+  - 结构化日志：写入 `data/logs/aps_runtime.log`（按 10MB 自动轮转，受 `.gitignore` 保护）；
+  - 测试：新增 `tests/test_telemetry.py`（4 项用例），快速回归套件扩充至 **107 项全部 PASS（64.1s）**。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

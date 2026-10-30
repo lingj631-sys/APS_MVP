@@ -80,7 +80,7 @@
 | C2-b-0 CP-SAT 路线分配阶段 | ✅ 可选 | `solve_routing_assignment()` 独立 CP-SAT 选址 + 容量；仍未与主排产模型联立 |
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
-| C4 Operation LeadTime/Transfer | 🟡 部分 | `lead_time_days` + Operation-LeadTime 的 setup/queue/inspection/move 已接软约束；transfer batch 未接 |
+| C4 Operation LeadTime/Transfer | ✅ 软约束 | `lead_time_days` + setup/queue/inspection/move + transfer batch 次数已接 soft gap；仍非机台级硬排程 |
 | C5 Campaign/Pull/Slack | ❌ | 未实现 |
 | 全连续时间 | ❌ | 仍是班次粒度 + 班内近似 |
 

@@ -124,7 +124,7 @@ class TestCapacityKernelWiring(unittest.TestCase):
         )
         self.assertTrue(entries)
         entry = next(iter(entries.values()))
-        self.assertGreaterEqual(lead_shifts(entry, lead_time_days=1.0, shift_hours=8.0), 1)
+        self.assertGreaterEqual(lead_shifts(entry, lead_time_days=1.0, shift_hours=8.0, quantity=100.0), 1)
         sched = APSScheduler(
             plan,
             start_datetime=start,

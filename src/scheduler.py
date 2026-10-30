@@ -1374,7 +1374,7 @@ class APSScheduler:
                 continue
             from src.leadtime import lead_shifts as _lead_shifts
             entry = self.operation_lead_times.get((self.site, sf_task.part_no, 10))
-            lead_shift_count = _lead_shifts(entry, lead_time_days=lead_days, shift_hours=self.shift_hours)
+            lead_shift_count = _lead_shifts(entry, lead_time_days=lead_days, shift_hours=self.shift_hours, quantity=float(getattr(sf_task, "quantity", 0.0) or 0.0))
             if lead_shift_count <= 0:
                 continue
             lead_shifts = lead_shift_count

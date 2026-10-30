@@ -69,11 +69,18 @@ def lead_shifts(
     *,
     lead_time_days: float,
     shift_hours: float,
+    quantity: float = 0.0,
 ) -> int:
     """Convert product lead days plus operation non-processing minutes into shifts."""
     hours = max(0.0, float(lead_time_days)) * 24.0
     if entry is not None:
-        hours += entry.non_processing_minutes / 60.0
+        minutes = entry.setup_min + entry.queue_min + entry.inspection_min
+        if entry.transfer_batch > 0 and quantity > 0:
+            transfers = math.ceil(quantity / entry.transfer_batch)
+            minutes += entry.move_min * transfers
+        else:
+            minutes += entry.move_min
+        hours += minutes / 60.0
     if hours <= 0 or shift_hours <= 0:
         return 0
     return max(1, int(math.ceil(hours / shift_hours)))

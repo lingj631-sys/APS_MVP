@@ -676,7 +676,7 @@ python -m unittest discover -s tests -v
 ### C4-a 工序提前期软约束
 
 - `ProductionTask.lead_time_days` 从 Parameters-SFN 透传；`enforce_lead_time` / 站点 `leadtime_enabled` 开启后，SF 完工与父 FG 完工之间按 `ceil(lead_days × shifts_per_day)` 计 soft lag penalty。
-- 已把 Operation-LeadTime 的 setup/queue/inspection/move 与 `lead_time_days` 合并为 shift gap；transfer batch 仍未并入。
+- 已把 Operation-LeadTime 的 setup/queue/inspection/move 与 `lead_time_days` 合并为 shift gap；Transfer Batch Qty 用于计算 move 次数并计入 gap。
 - 新增 `tests/test_capacity_kernel.py` 第 5 项；全量 101/101、快速 57/57。
 
 ### 待做

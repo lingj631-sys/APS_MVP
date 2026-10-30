@@ -725,6 +725,12 @@ python -m unittest discover -s tests -v
 - `/api/solve` 新增 `routing_capability_violations`：返回未认证产线的任务清单。
 - 这是审计输出，不改变排产；便于业务先发现 Routing-Master 与参数表不一致。
 
+### 2026-10-30 本地收口（未推送）
+
+- 32 条目录状态：partial 20、needs_model 5、preprocess 4、configurable 2、postprocess 1。
+- HC-05：`capability_violations()` + `/api/solve.routing_capability_violations`。
+- 本地 main 领先 origin/main 4 个 commit；全量最近完整跑 105/105，新增 routing test 后预计 106。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

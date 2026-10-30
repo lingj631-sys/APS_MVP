@@ -22,11 +22,11 @@
 
 | 项 | 当前值 |
 |---|---|
-| 分支 | `main` @ `55fd955`（已推送 GitHub） |
+| 分支 | `main` @ `2c9b17f`（本地 ahead 4，未推送） |
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **105/105 PASS，约 1387.6s** |
+| 全量测试 | **105/105 PASS（最新完整跑）；新增 capability 测试后预计 106** |
 | 快速测试 | **59/59 PASS，约 61s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
@@ -45,12 +45,12 @@
 | `tests/test_regressions.py` | 8 | PASS |
 | `tests/test_sequence.py` | 2 | PASS |
 | `tests/test_scrap.py` | 1 | PASS |
-| `tests/test_routing.py` | 5 | PASS |
+| `tests/test_routing.py` | 6 | PASS |
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
 | `tests/test_capacity_kernel.py` | 7 | PASS |
 | `tests/test_campaign.py` | 2 | PASS |
-| **全量** | **105** | **PASS** |
+| **全量** | **106（预计）** | **PASS** |
 
 ---
 
@@ -109,6 +109,8 @@
 - B4-b：FG/SF 库存上限 soft penalty + `inventory_policy_enabled`。
 - C4-a：`lead_time_days` 软提前期 + `leadtime_enabled`。
 - UI 空白页修复：`sequencePlan` 未 expose；Playwright 验证 `pageerror=0`。
+- HC-05：新增 `capability_violations()` 与 `/api/solve.routing_capability_violations`，审计未认证产线。
+- 32 条目录状态校准：partial 20 / needs_model 5 / preprocess 4 / configurable 2 / postprocess 1。
 - 修复：
   - `_compile_capacity_kernel` 二次调用 `total_objective()` 导致 500；
   - `sequence_setup` 接入时 `site` 未定义导致 500；

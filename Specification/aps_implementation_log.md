@@ -697,6 +697,11 @@ python -m unittest discover -s tests -v
 - 已推送 main：C1-b-3/4、B4-b FG/SF soft/hard 选项、C2-b-0 CP-SAT 路线分配阶段、C4 lead time + transfer batch、C5-a Campaign、C5-b Slack。
 - 仍未完成：C2-b 主模型内 Assign(i,m)、C5 Pull 独立策略、32 条规则与 17 项审计映射、真实主数据替换。
 
+### C-governance coverage API
+
+- 新增 `coverage_summary()` 与 `/api/rule-coverage`：返回 32 条规则的 class/status 统计。
+- 新增 `tests/test_rule_catalog.py` 第 4 项；当前全量 105 + 1 新测，快速 59。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

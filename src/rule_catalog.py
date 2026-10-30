@@ -77,3 +77,14 @@ def effective_for_site(
         }
         out.append(item)
     return out
+
+
+def coverage_summary(rules: Iterable[CatalogRule]) -> Dict[str, object]:
+    """Return counts by class/status for the 32-rule catalog."""
+    rules = list(rules)
+    by_class: Dict[str, int] = {}
+    by_status: Dict[str, int] = {}
+    for rule in rules:
+        by_class[rule.rule_class] = by_class.get(rule.rule_class, 0) + 1
+        by_status[rule.status] = by_status.get(rule.status, 0) + 1
+    return {"total": len(rules), "by_class": by_class, "by_status": by_status}

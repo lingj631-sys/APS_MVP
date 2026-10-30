@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from src.rule_catalog import SiteRuleOverride, effective_for_site, load_catalog
+from src.rule_catalog import SiteRuleOverride, coverage_summary, effective_for_site, load_catalog
 
 
 class TestRuleCatalog(unittest.TestCase):
@@ -33,6 +33,12 @@ class TestRuleCatalog(unittest.TestCase):
         self.assertEqual(sc02["weight"], "0.7")
         self.assertEqual(sc02["params"]["min_util"], 0.9)
         self.assertTrue(next(item for item in self.catalog if item.id == "HC-15"))
+
+    def test_coverage_summary(self):
+        summary = coverage_summary(self.catalog)
+        self.assertEqual(summary["total"], 32)
+        self.assertEqual(summary["by_class"], {"HC": 16, "SC": 10, "BS": 6})
+
 
 
 if __name__ == "__main__":

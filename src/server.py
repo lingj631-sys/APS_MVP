@@ -47,7 +47,7 @@ from src.labor import load_labor_data
 from src.campaign import load_campaign_families
 from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
-from src.rule_catalog import load_catalog
+from src.rule_catalog import coverage_summary, load_catalog
 from src.routing import assign_routing_lines, load_routing, solve_routing_assignment
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
@@ -1365,6 +1365,13 @@ def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SE
         current_calendar_mode=calendar_mode,
         site=session_state["site"],
     )
+
+
+@app.get("/api/rule-coverage")
+def get_rule_coverage():
+    path = os.path.join(BASE_DIR, "config", "rule_catalog", "aps_32_rules.json")
+    rules = load_catalog(path)
+    return coverage_summary(rules)
 
 
 @app.get("/api/rule-catalog")

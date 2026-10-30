@@ -48,7 +48,7 @@ from src.campaign import load_campaign_families
 from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
 from src.rule_catalog import coverage_summary, load_catalog
-from src.routing import assign_routing_lines, load_routing, solve_routing_assignment
+from src.routing import assign_routing_lines, capability_violations, load_routing, solve_routing_assignment
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -2331,6 +2331,11 @@ def run_solver(payload: SolvePayload):
         "tasks": task_schedule_list,
         "sequence_plan": result.sequence_plan or [],
         "routing_decisions": routing_decisions,
+        "routing_capability_violations": capability_violations(
+            plan.tasks,
+            load_routing(os.path.join(DATA_DIR, "master", "Routing-Machines.csv")),
+            site=payload.site.upper(),
+        ),
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
         "inventory_projection": inventory_data,

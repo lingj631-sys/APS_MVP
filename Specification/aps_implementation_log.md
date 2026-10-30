@@ -720,6 +720,11 @@ python -m unittest discover -s tests -v
 - 新增 `tests/test_routing.py` 第 6 项；全量 106（新增测试后未重跑全量），快速 59。
 - 当前是审计能力，尚未在求解器里硬拒绝或自动改线。
 
+### HC-05 能力审计 API
+
+- `/api/solve` 新增 `routing_capability_violations`：返回未认证产线的任务清单。
+- 这是审计输出，不改变排产；便于业务先发现 Routing-Master 与参数表不一致。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

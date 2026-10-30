@@ -702,6 +702,11 @@ python -m unittest discover -s tests -v
 - 新增 `coverage_summary()` 与 `/api/rule-coverage`：返回 32 条规则的 class/status 统计。
 - 新增 `tests/test_rule_catalog.py` 第 4 项；当前全量 105 + 1 新测，快速 59。
 
+### 32 条目录覆盖率 UI
+
+- 第三页 32 条规则目录展示 `configurable / partial / needs_model` 统计徽章，数据来自 `/api/rule-coverage`。
+- 仅本地修改，未推送。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

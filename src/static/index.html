@@ -1544,6 +1544,7 @@
               <div class="flex items-center space-x-2">
                 <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">32 条规则目录 (HC / SC / BS)</h2>
                 <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">{{ ruleCatalog.length }} 条</span>
+                <span class="text-[10px] text-slate-500" v-if="ruleCoverage.by_status">可配置 {{ ruleCoverage.by_status.configurable || 0 }} · 部分 {{ ruleCoverage.by_status.partial || 0 }} · 待建模 {{ ruleCoverage.by_status.needs_model || 0 }}</span>
                 <span class="text-[10px] text-slate-500">全局目录 · 站点可在 /rule-sets 覆盖</span>
               </div>
               <p class="text-[11px] text-slate-500 mt-1">这是新 32 条规则的唯一目录；旧版 27 条已从界面移除。</p>
@@ -4120,6 +4121,7 @@
         const psiProductionFilter = ref("ALL");
         const showOnlyProductionPlanRows = ref(false);
         const ruleCatalog = ref([]);
+        const ruleCoverage = ref({});
         const ruleCatalogSearch = ref("");
         const ruleCatalogClass = ref("ALL");
         const emptyShiftReasons = ref({});
@@ -4259,6 +4261,10 @@
             const res = await fetch('/api/rule-catalog');
             const data = await res.json();
             ruleCatalog.value = data.rules || [];
+            try {
+              const cov = await fetch('/api/rule-coverage');
+              if (cov.ok) ruleCoverage.value = await cov.json();
+            } catch (_) {}
           } catch (e) {
             console.error("rule catalog load failed", e);
           }
@@ -5421,6 +5427,7 @@
           psiProductionFilter,
           showOnlyProductionPlanRows,
           ruleCatalog,
+          ruleCoverage,
           ruleCatalogSearch,
           ruleCatalogClass,
           filteredRuleCatalog,

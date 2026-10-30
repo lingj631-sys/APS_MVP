@@ -306,6 +306,8 @@ class APSScheduler:
         setup_technicians_available: int = 0,
         inventory_policies: Optional[Dict[Any, Any]] = None,
         operation_lead_times: Optional[Dict[Any, Any]] = None,
+        campaign_families: Optional[Dict[Any, Any]] = None,
+        enforce_campaign: bool = False,
         enforce_lead_time: bool = False,
         sequence_feedback: bool = False,
         setup_matrix: Optional[Dict[Any, Any]] = None,
@@ -368,6 +370,8 @@ class APSScheduler:
         self.setup_technicians_available = max(0, int(setup_technicians_available or 0))
         self.inventory_policies = dict(inventory_policies or {})
         self.operation_lead_times = dict(operation_lead_times or {})
+        self.campaign_families = dict(campaign_families or {})
+        self.enforce_campaign = bool(enforce_campaign)
         self.enforce_lead_time = bool(enforce_lead_time)
         self._sequence_vars = {}
         if self.sequence_setup:
@@ -1135,6 +1139,10 @@ class APSScheduler:
                 group_terms["G3_CHANGEOVER"].append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
         if concurrency_objective is not None:
             group_terms["G3_CHANGEOVER"].append(concurrency_objective)
+        if self.enforce_campaign and self.campaign_families:
+            campaign_penalty = self._add_campaign_penalty(model, active)
+            if campaign_penalty is not None:
+                group_terms["G3_CHANGEOVER"].append(campaign_penalty)
 
         # R-SF-07 & R-FG-09: 周末停机偏好软约束惩罚
         weekend_penalties = []
@@ -1359,6 +1367,34 @@ class APSScheduler:
         for warning in compiled.warnings:
             print(f"  [kernel] {warning}")
         return compiled
+
+    def _add_campaign_penalty(self, model, active):
+        """C5-a: soft penalty for mixing campaign groups inside one line/shift."""
+        penalties = []
+        for line in self.lines:
+            line_tasks = [t for t in self.tasks if t.line == line]
+            for s in range(self.num_shifts):
+                groups = {}
+                for task in line_tasks:
+                    family = self.campaign_families.get(str(task.part_no))
+                    if family is None or not family.campaign_group:
+                        continue
+                    if (task.task_id, s) not in active:
+                        continue
+                    groups.setdefault(family.campaign_group, []).append(task)
+                if len(groups) <= 1:
+                    continue
+                present = []
+                for group, members in groups.items():
+                    p = model.NewBoolVar(f"campaign.{line}.{s}.{group}")
+                    for task in members:
+                        model.Add(p >= active[task.task_id, s])
+                    model.Add(p <= sum(active[task.task_id, s] for task in members))
+                    present.append(p)
+                excess = model.NewIntVar(0, len(present), f"campaign_excess.{line}.{s}")
+                model.Add(excess >= sum(present) - 1)
+                penalties.append(excess)
+        return 20 * sum(penalties) if penalties else None
 
     def _add_lead_time_penalty(self, model, end_of):
         """C4-a: soft SF operation lead-time gap before parent FG completion."""

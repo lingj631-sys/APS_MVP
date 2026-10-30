@@ -15,6 +15,7 @@ if BASE_DIR not in sys.path:
 
 from src.data_loader import build_requirement_plan, load_aps_database
 from src.inventory_policy import load_inventory_policy
+from src.campaign import load_campaign_families
 from src.leadtime import lead_shifts, load_operation_lead_times
 from src.kernel.types import GroupMode, Nature, RuleGroup, RuleInstance, RuleSet, Scope
 from src.scheduler import APSScheduler
@@ -133,6 +134,24 @@ class TestCapacityKernelWiring(unittest.TestCase):
             site="WL",
             operation_lead_times=entries,
             enforce_lead_time=True,
+        )
+        result = sched.solve(time_limit_seconds=10.0)
+        self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
+
+
+    def test_campaign_soft_constraint_solves(self):
+        snap, plan, start = _wl_plan(5)
+        families = load_campaign_families(
+            os.path.join(BASE_DIR, "data", "master", "Campaign-Families.csv"), site="WL"
+        )
+        sched = APSScheduler(
+            plan,
+            start_datetime=start,
+            planning_days=5,
+            calendar_mode=CalendarMode.SEVEN_ZERO,
+            site="WL",
+            campaign_families=families,
+            enforce_campaign=True,
         )
         result = sched.solve(time_limit_seconds=10.0)
         self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))

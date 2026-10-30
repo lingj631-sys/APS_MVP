@@ -126,8 +126,8 @@ docker run --env-file .env -p 8000:8000 aps-mvp
 
 ### 自动化测试
 ```bash
-python run_tests.py --fast   # 快速单元/回归（57 项，约 61s）
-python run_tests.py          # 全量 15 个套件（101 项，含黄金基线与端到端，约 23 分钟）
+python run_tests.py --fast   # 快速单元/回归（58 项，约 61s）
+python run_tests.py          # 全量 16 个套件（104 项，含黄金基线与端到端，约 23 分钟）
 ```
 
 Web 界面主要特性：

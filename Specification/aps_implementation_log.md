@@ -476,8 +476,8 @@ python -m unittest discover -s tests -v
 
 ### 8.1 当前测试口径
 
-- 快速回归：`run_tests.py --fast` 57/57 + `test_regressions` 8/8 = **65/65 绿**；
-- 全量：**101/101 绿，1386.7s**；
+- 快速回归：`run_tests.py --fast` 58/58 + `test_regressions` 8/8 = **66/66 绿**；
+- 全量：**104/104 绿，1385.9s**；
 - 全量回归已闭环。
 
 ---
@@ -626,7 +626,7 @@ python -m unittest discover -s tests -v
 - `/api/inputs/upload` 改为严格模板校验：Sheet 名称/顺序 + 第 1 行表头必须与 `dataSource.xlsx` 一致；错误表头直接 400。
 - 上传文件按站点保存为 `data/uploads/current_WL.xlsx` / `current_SY38.xlsx`，不覆盖仓库模板。
 - 第六页新增站点级 `sequence_setup` 开关；`FACTORY_SITE` 支持每厂独立实例。
-- 最终验证：全量 101/101，快速 57/57；真实 API `/api/solve` success / 19 tasks / 17 checks。
+- 最终验证：全量 104/104，快速 58/58；真实 API `/api/solve` success / 19 tasks / 17 checks。
 - 仍待完成：C1-b 真正班内 sequence 变量、C2-b CP-SAT Assign(i,m)、B4-b CP-SAT 库存约束、C4/C5。
 
 ### C1-b-3 班内 start/end + setup 数值化
@@ -678,6 +678,12 @@ python -m unittest discover -s tests -v
 - `ProductionTask.lead_time_days` 从 Parameters-SFN 透传；`enforce_lead_time` / 站点 `leadtime_enabled` 开启后，SF 完工与父 FG 完工之间按 `ceil(lead_days × shifts_per_day)` 计 soft lag penalty。
 - 已把 Operation-LeadTime 的 setup/queue/inspection/move 与 `lead_time_days` 合并为 shift gap；Transfer Batch Qty 用于计算 move 次数并计入 gap。
 - 新增 `tests/test_capacity_kernel.py` 第 5 项；全量 101/101、快速 57/57。
+
+### C5-a Campaign Group 软约束
+
+- 新增 `src/campaign.py` 读取 Campaign-Families；`campaign_enabled` / 站点开关开启后，同一产线/班次出现多个 Campaign Group 时产生 soft penalty。
+- 新增 `tests/test_campaign.py` 2 项，并在 `test_capacity_kernel.py` 增加 campaign 求解用例；全量 104/104、快速 58/58。
+- 当前只做同班次分组惩罚，不做跨班 campaign 连续、Pull 或 Slack。
 
 ### 待做
 

@@ -26,8 +26,8 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **101/101 PASS，约 1386.7s** |
-| 快速测试 | **57/57 PASS，约 61s** |
+| 全量测试 | **104/104 PASS，约 1385.9s** |
+| 快速测试 | **58/58 PASS，约 61s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
 ### 测试套件
@@ -48,8 +48,9 @@
 | `tests/test_routing.py` | 5 | PASS |
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
-| `tests/test_capacity_kernel.py` | 5 | PASS |
-| **全量** | **101** | **PASS** |
+| `tests/test_capacity_kernel.py` | 6 | PASS |
+| `tests/test_campaign.py` | 2 | PASS |
+| **全量** | **104** | **PASS** |
 
 ---
 
@@ -81,7 +82,7 @@
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
 | C4 Operation LeadTime/Transfer | ✅ 软约束 | `lead_time_days` + setup/queue/inspection/move + transfer batch 次数已接 soft gap；仍非机台级硬排程 |
-| C5 Campaign/Pull/Slack | ❌ | 未实现 |
+| C5 Campaign/Pull/Slack | 🟡 部分 | Campaign Group 同班次软惩罚已接；Pull/Slack 未做 |
 | 全连续时间 | ❌ | 仍是班次粒度 + 班内近似 |
 
 ---
@@ -188,8 +189,8 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 ## 8. 验证记录
 
 ```text
-全量：101/101 PASS，约 1386.7s（C1-b-3/4/B4-b/C2-b-0/C4-a 后）
-快速：57/57 PASS，约 61s
+全量：104/104 PASS，约 1385.9s（C1-b-3/4/B4-b/C2-b-0/C4/C5-a 后）
+快速：58/58 PASS，约 61s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules
 /api/rule-catalog：32 条

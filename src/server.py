@@ -44,6 +44,7 @@ from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.kernel.rule_mapping import describe_legacy_rule
 from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
+from src.campaign import load_campaign_families
 from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
 from src.rule_catalog import load_catalog
@@ -144,6 +145,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "inventory_policy_enabled": False,
         "routing_assign_enabled": False,
         "leadtime_enabled": False,
+        "campaign_enabled": False,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -164,6 +166,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "inventory_policy_enabled": False,
         "routing_assign_enabled": False,
         "leadtime_enabled": False,
+        "campaign_enabled": False,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -533,6 +536,7 @@ class SiteSettingsPayload(BaseModel):
     inventory_policy_enabled: Optional[bool] = False
     routing_assign_enabled: Optional[bool] = False
     leadtime_enabled: Optional[bool] = False
+    campaign_enabled: Optional[bool] = False
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -561,6 +565,7 @@ class SolvePayload(BaseModel):
     inventory_policy_enabled: Optional[bool] = None
     routing_assign_enabled: Optional[bool] = None
     leadtime_enabled: Optional[bool] = None
+    campaign_enabled: Optional[bool] = None
 
 
 class RuleSetSavePayload(BaseModel):
@@ -621,6 +626,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["routing_assign_enabled"] = payload.routing_assign_enabled
     if payload.leadtime_enabled is not None:
         cfg["leadtime_enabled"] = payload.leadtime_enabled
+    if payload.campaign_enabled is not None:
+        cfg["campaign_enabled"] = payload.campaign_enabled
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -1809,6 +1816,15 @@ def run_solver(payload: SolvePayload):
         load_operation_lead_times(os.path.join(DATA_DIR, "master", "Operation-LeadTime.csv"), site=payload.site.upper())
         if leadtime_enabled else {}
     )
+    campaign_enabled = (
+        payload.campaign_enabled
+        if payload.campaign_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("campaign_enabled", False)
+    )
+    campaign_families = (
+        load_campaign_families(os.path.join(DATA_DIR, "master", "Campaign-Families.csv"), site=payload.site.upper())
+        if campaign_enabled else {}
+    )
     scheduler = APSScheduler(
         plan=plan,
         start_datetime=start_dt,
@@ -1842,6 +1858,8 @@ def run_solver(payload: SolvePayload):
         ),
         inventory_policies=inventory_policies,
         operation_lead_times=operation_lead_times,
+        campaign_families=campaign_families,
+        enforce_campaign=campaign_enabled,
         enforce_lead_time=leadtime_enabled,
     )
 

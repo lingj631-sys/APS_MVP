@@ -477,7 +477,7 @@ python -m unittest discover -s tests -v
 ### 8.1 当前测试口径
 
 - 快速回归：`run_tests.py --fast` 59/59 + `test_regressions` 8/8 = **67/67 绿**；
-- 全量：**105/105 绿（新增 slack 测试；最新完整跑 104）**；
+- 全量：**105/105 绿，1387.6s**；
 - 全量回归已闭环。
 
 ---

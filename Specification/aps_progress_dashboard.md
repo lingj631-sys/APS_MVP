@@ -2,7 +2,7 @@
 
 > **更新日期**：2026-10-30
 > **结论**：Phase 0 已闭环；Phase 1 规则内核可用；Phase B 大部分完成；Phase C 只完成到可验证的增量子集。**整体仍未完成**，不能标记为 100%。
-> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；班内 sequence、软库存、C4 提前期、C2-b-0 路线分配、C5-a Campaign 已落地；主模型内 Assign、库存硬约束、Pull/Slack 仍未完成。
+> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；班内 sequence、FG/SF 软/硬库存选项、C4 提前期、C2-b-0 路线分配、C5 Campaign/Slack 已落地；主模型内 Assign、独立 Pull 仍未完成。
 
 ---
 
@@ -12,8 +12,8 @@
 |---|---:|---|
 | Phase 0：正确性止血 | **100%** | 已闭环，含 ACT-06 拆批连续 |
 | Phase 1：规则内核化 | **95%** | 19 模板、18 编译；routing 仍未编译 |
-| Phase B：32 规则数据/算子扩展 | **约 70%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层已做；B4 求解器约束未做 |
-| Phase C：时间/路由/序列 | **约 55%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0、C4、C5-a 已做；主模型内 Assign、Pull/Slack 未做 |
+| Phase B：32 规则数据/算子扩展 | **约 75%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存 soft/hard 选项已做；真实策略值仍待校准 |
+| Phase C：时间/路由/序列 | **约 60%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0、C4、C5-a/C5-b 已做；主模型内 Assign、独立 Pull 未做 |
 | **整体** | **约 82%** | 可演示、可基础测试；不是完整 32 规则求解器 |
 
 ---
@@ -128,12 +128,12 @@
 
 1. **C1-b 生产化**：已有可选 `start/end/setup`、Gantt 明细、按边技术员人数；仍需真实 Setup-Matrix、默认开关策略。
 2. **C2-b 主模型内 Assign(i,m)**：已有上游 CP-SAT 分配阶段，但尚未与主排产模型联立。
-3. **B4-b 库存硬约束/SF 硬上限**：当前 FG/SF 都是 soft；硬上限未做。
+3. **B4-b 库存策略校准**：FG/SF soft 与 hard 选项均已接；仍需真实 Inventory-Policy 值，默认不要开 hard。
 
 ### P1
 
-4. C4 完整版：Operation-LeadTime 的 queue/inspection/transfer batch 进入求解器。
-5. C5 Pull/Slack 策略（Campaign 分组已做）。
+4. C4 完整版：queue/inspection/move/transfer batch 已接 soft gap；仍需机台级硬排程。
+5. C5 Pull 独立策略（Campaign 与 Slack 已做）。
 6. 32 条规则目录与 17 项审计的正式映射。
 7. 真实 Setup-Matrix / Inventory-Policy / Routing 数据替换 mock。
 
@@ -189,7 +189,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 ## 8. 验证记录
 
 ```text
-全量：104/104 PASS，约 1385.9s（C1-b-3/4/B4-b/C2-b-0/C4/C5-a 后）
+全量：105/105 PASS，约 1387.6s（C1-b-3/4/B4-b/C2-b-0/C4/C5-a/C5-b 后）
 快速：59/59 PASS，约 61s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules

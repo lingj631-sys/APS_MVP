@@ -685,6 +685,12 @@ python -m unittest discover -s tests -v
 - 新增 `tests/test_campaign.py` 2 项，并在 `test_capacity_kernel.py` 增加 campaign 求解用例；全量 104/104、快速 58/58。
 - 当前只做同班次分组惩罚，不做跨班 campaign 连续、Pull 或 Slack。
 
+### C5-b 交期 Slack 软约束
+
+- `APSScheduler(due_slack_shifts=N)` / 站点 `due_slack_shifts`：对 FG 完工早于 due 的 N 个班次做 soft lag penalty；0 = 关闭。
+- 新增第六页数值配置；API 实测 `due_slack_shifts=2` 返回 success / 19 tasks。
+- Pull 仍复用 30 天 lookahead，没有单独的 Pull 规则。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

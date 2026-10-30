@@ -82,7 +82,7 @@
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
 | C4 Operation LeadTime/Transfer | ✅ 软约束 | `lead_time_days` + setup/queue/inspection/move + transfer batch 次数已接 soft gap；仍非机台级硬排程 |
-| C5 Campaign/Pull/Slack | 🟡 部分 | Campaign Group 同班次软惩罚已接；Pull/Slack 未做 |
+| C5 Campaign/Pull/Slack | 🟡 部分 | Campaign Group + 交期 Slack 软惩罚已接；Pull 策略未独立实现 |
 | 全连续时间 | ❌ | 仍是班次粒度 + 班内近似 |
 
 ---

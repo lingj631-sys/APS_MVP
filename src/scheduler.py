@@ -310,6 +310,7 @@ class APSScheduler:
         campaign_families: Optional[Dict[Any, Any]] = None,
         enforce_campaign: bool = False,
         enforce_lead_time: bool = False,
+        due_slack_shifts: int = 0,
         sequence_feedback: bool = False,
         setup_matrix: Optional[Dict[Any, Any]] = None,
         setup_matrix_path: Optional[str] = None,
@@ -375,6 +376,7 @@ class APSScheduler:
         self.campaign_families = dict(campaign_families or {})
         self.enforce_campaign = bool(enforce_campaign)
         self.enforce_lead_time = bool(enforce_lead_time)
+        self.due_slack_shifts = max(0, int(due_slack_shifts or 0))
         self._sequence_vars = {}
         if self.sequence_setup:
             try:
@@ -968,6 +970,7 @@ class APSScheduler:
             )
         inventory_penalty = self._add_inventory_constraints(model, cumulative) if self.inventory_policies else None
         lead_time_penalty = self._add_lead_time_penalty(model, end_of) if self.enforce_lead_time else None
+        slack_penalty = self._add_due_slack_penalty(model, end_of) if self.due_slack_shifts > 0 else None
         shortfall, violations, overloads, opening, tails, loads, kernel_objective = self._add_line_capacity(
             model, x, active, started, end_of, utilization_mode, gap_cap, use_kernel=use_kernel
         )
@@ -1185,6 +1188,8 @@ class APSScheduler:
             group_terms["G4_INVENTORY"].append(inventory_penalty)
         if lead_time_penalty is not None:
             group_terms["G1_DELIVERY"].append(lead_time_penalty)
+        if slack_penalty is not None:
+            group_terms["G1_DELIVERY"].append(slack_penalty)
         all_terms = [term for group in group_terms.values() for term in group]
         model.Minimize(sum(all_terms))
         return model, x, {"open": opening, "tail": tails, "load": loads, "group_terms": group_terms}
@@ -1397,6 +1402,21 @@ class APSScheduler:
                 model.Add(excess >= sum(present) - 1)
                 penalties.append(excess)
         return 20 * sum(penalties) if penalties else None
+
+    def _add_due_slack_penalty(self, model, end_of):
+        """C5-b: soft buffer before due; encourages completion N shifts early."""
+        penalties = []
+        for task in self.plan.fg_tasks:
+            if task.task_id not in end_of:
+                continue
+            due = self._due_shift(task)
+            target = due - self.due_slack_shifts
+            if target <= 0:
+                continue
+            lag = model.NewIntVar(0, self.due_slack_shifts, f"slack_lag.{task.task_id}")
+            model.Add(lag >= end_of[task.task_id] - target)
+            penalties.append(lag)
+        return 10 * sum(penalties) if penalties else None
 
     def _add_lead_time_penalty(self, model, end_of):
         """C4-a: soft SF operation lead-time gap before parent FG completion."""

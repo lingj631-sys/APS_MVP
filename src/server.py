@@ -147,6 +147,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "routing_assign_enabled": False,
         "leadtime_enabled": False,
         "campaign_enabled": False,
+        "due_slack_shifts": 0,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -169,6 +170,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "routing_assign_enabled": False,
         "leadtime_enabled": False,
         "campaign_enabled": False,
+        "due_slack_shifts": 0,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -540,6 +542,7 @@ class SiteSettingsPayload(BaseModel):
     routing_assign_enabled: Optional[bool] = False
     leadtime_enabled: Optional[bool] = False
     campaign_enabled: Optional[bool] = False
+    due_slack_shifts: Optional[int] = 0
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -570,6 +573,7 @@ class SolvePayload(BaseModel):
     routing_assign_enabled: Optional[bool] = None
     leadtime_enabled: Optional[bool] = None
     campaign_enabled: Optional[bool] = None
+    due_slack_shifts: Optional[int] = None
 
 
 class RuleSetSavePayload(BaseModel):
@@ -634,6 +638,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["leadtime_enabled"] = payload.leadtime_enabled
     if payload.campaign_enabled is not None:
         cfg["campaign_enabled"] = payload.campaign_enabled
+    if payload.due_slack_shifts is not None:
+        cfg["due_slack_shifts"] = max(0, int(payload.due_slack_shifts))
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -1872,6 +1878,11 @@ def run_solver(payload: SolvePayload):
         campaign_families=campaign_families,
         enforce_campaign=campaign_enabled,
         enforce_lead_time=leadtime_enabled,
+        due_slack_shifts=(
+            payload.due_slack_shifts
+            if payload.due_slack_shifts is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("due_slack_shifts", 0)
+        ),
     )
 
     # Solve with capacity overload diagnosis

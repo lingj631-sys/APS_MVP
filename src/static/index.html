@@ -3478,6 +3478,14 @@
                 </div>
                 <input v-model="siteSettings.campaign_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
               </label>
+              <label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">交期 Slack（提前班次数）</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">鼓励 FG 在交期前 N 个班次完成；0 = 不启用。当前为软惩罚。</div>
+                </div>
+                <input v-model.number="siteSettings.due_slack_shifts" type="number" min="0" step="1"
+                       class="w-20 text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500">
+              </label>
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -4893,6 +4901,7 @@
                 routing_assign_enabled: !!siteSettings.value.routing_assign_enabled,
                 leadtime_enabled: !!siteSettings.value.leadtime_enabled,
                 campaign_enabled: !!siteSettings.value.campaign_enabled,
+                due_slack_shifts: Number(siteSettings.value.due_slack_shifts || 0),
                 lookahead_enabled: siteSettings.value.lookahead_enabled,
                 lookahead_days: siteSettings.value.lookahead_days,
                 max_pull_forward_days: siteSettings.value.max_pull_forward_days,

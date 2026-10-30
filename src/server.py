@@ -142,6 +142,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "setup_technicians_available": 0,
         "inventory_policy_enabled": False,
         "routing_assign_enabled": False,
+        "leadtime_enabled": False,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -161,6 +162,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "setup_technicians_available": 0,
         "inventory_policy_enabled": False,
         "routing_assign_enabled": False,
+        "leadtime_enabled": False,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -529,6 +531,7 @@ class SiteSettingsPayload(BaseModel):
     setup_technicians_available: Optional[int] = 0
     inventory_policy_enabled: Optional[bool] = False
     routing_assign_enabled: Optional[bool] = False
+    leadtime_enabled: Optional[bool] = False
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -556,6 +559,7 @@ class SolvePayload(BaseModel):
     setup_technicians_available: Optional[int] = None
     inventory_policy_enabled: Optional[bool] = None
     routing_assign_enabled: Optional[bool] = None
+    leadtime_enabled: Optional[bool] = None
 
 
 class RuleSetSavePayload(BaseModel):
@@ -614,6 +618,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["inventory_policy_enabled"] = payload.inventory_policy_enabled
     if payload.routing_assign_enabled is not None:
         cfg["routing_assign_enabled"] = payload.routing_assign_enabled
+    if payload.leadtime_enabled is not None:
+        cfg["leadtime_enabled"] = payload.leadtime_enabled
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -1825,6 +1831,11 @@ def run_solver(payload: SolvePayload):
             else site_settings_store.get(payload.site.upper(), {}).get("setup_technicians_available", 0)
         ),
         inventory_policies=inventory_policies,
+        enforce_lead_time=(
+            payload.leadtime_enabled
+            if payload.leadtime_enabled is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("leadtime_enabled", False)
+        ),
     )
 
     # Solve with capacity overload diagnosis

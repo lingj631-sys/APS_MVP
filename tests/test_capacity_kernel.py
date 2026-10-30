@@ -116,6 +116,20 @@ class TestCapacityKernelWiring(unittest.TestCase):
         self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
 
 
+    def test_lead_time_soft_constraint_solves(self):
+        snap, plan, start = _wl_plan(5)
+        sched = APSScheduler(
+            plan,
+            start_datetime=start,
+            planning_days=5,
+            calendar_mode=CalendarMode.SEVEN_ZERO,
+            site="WL",
+            enforce_lead_time=True,
+        )
+        result = sched.solve(time_limit_seconds=10.0)
+        self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
+
+
 
 if __name__ == "__main__":
     unittest.main()

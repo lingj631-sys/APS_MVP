@@ -196,7 +196,7 @@
 | `test_golden_baseline` | 13 项 PASS（内核迁移 + 105 口径 + 组目标） |
 | **合计** | **57 项 PASS，375.0s** |
 
-> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **100 项（100 绿，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
+> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **101 项（101 绿，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
 
 ### 4.3 独立审计（ACT-09 / ACT-10）
 
@@ -461,7 +461,7 @@ CLI `python src/main.py`（active WL_PHASE1，180s）
 ```bash
 python src/main.py                 # CLI 全流程 + 17 项校验
 python run_tests.py --fast         # 快速单元/回归（49 项，约 61s）
-python run_tests.py                # 全量 15 套件（100 项，含黄金基线与端到端）
+python run_tests.py                # 全量 15 套件（101 项，含黄金基线与端到端）
 python -m unittest discover -s tests -v
 ```
 
@@ -476,8 +476,8 @@ python -m unittest discover -s tests -v
 
 ### 8.1 当前测试口径
 
-- 快速回归：`run_tests.py --fast` 56/56 + `test_regressions` 8/8 = **64/64 绿**；
-- 全量：**100/100 绿，1386.0s**；
+- 快速回归：`run_tests.py --fast` 57/57 + `test_regressions` 8/8 = **65/65 绿**；
+- 全量：**101/101 绿，1386.7s**；
 - 全量回归已闭环。
 
 ---
@@ -626,7 +626,7 @@ python -m unittest discover -s tests -v
 - `/api/inputs/upload` 改为严格模板校验：Sheet 名称/顺序 + 第 1 行表头必须与 `dataSource.xlsx` 一致；错误表头直接 400。
 - 上传文件按站点保存为 `data/uploads/current_WL.xlsx` / `current_SY38.xlsx`，不覆盖仓库模板。
 - 第六页新增站点级 `sequence_setup` 开关；`FACTORY_SITE` 支持每厂独立实例。
-- 最终验证：全量 100/100，快速 56/56；真实 API `/api/solve` success / 19 tasks / 17 checks。
+- 最终验证：全量 101/101，快速 57/57；真实 API `/api/solve` success / 19 tasks / 17 checks。
 - 仍待完成：C1-b 真正班内 sequence 变量、C2-b CP-SAT Assign(i,m)、B4-b CP-SAT 库存约束、C4/C5。
 
 ### C1-b-3 班内 start/end + setup 数值化
@@ -672,6 +672,12 @@ python -m unittest discover -s tests -v
 - `/api/solve` 的 `routing_assign_enabled` 先调这个 CP-SAT 阶段，失败/无决策时回退到启发式 `assign_routing_lines()`。
 - 新增 `tests/test_routing.py` 第 5 项；全量 100/100、快速 56/56。
 - 边界：这是上游 assignment 阶段，尚未把 Assign(i,m) 与班次容量/换型/技术员联立；SY38 5 天当前无任务，未产生决策。
+
+### C4-a 工序提前期软约束
+
+- `ProductionTask.lead_time_days` 从 Parameters-SFN 透传；`enforce_lead_time` / 站点 `leadtime_enabled` 开启后，SF 完工与父 FG 完工之间按 `ceil(lead_days × shifts_per_day)` 计 soft lag penalty。
+- 当前只使用 `lead_time_days`；Operation-LeadTime 的 queue/inspection/transfer 尚未并入。
+- 新增 `tests/test_capacity_kernel.py` 第 5 项；全量 101/101、快速 57/57。
 
 ### 待做
 

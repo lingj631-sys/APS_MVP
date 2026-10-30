@@ -305,6 +305,7 @@ class APSScheduler:
         sequence_setup: bool = False,
         setup_technicians_available: int = 0,
         inventory_policies: Optional[Dict[Any, Any]] = None,
+        enforce_lead_time: bool = False,
         sequence_feedback: bool = False,
         setup_matrix: Optional[Dict[Any, Any]] = None,
         setup_matrix_path: Optional[str] = None,
@@ -365,6 +366,7 @@ class APSScheduler:
         self.sequence_setup = bool(sequence_setup)
         self.setup_technicians_available = max(0, int(setup_technicians_available or 0))
         self.inventory_policies = dict(inventory_policies or {})
+        self.enforce_lead_time = bool(enforce_lead_time)
         self._sequence_vars = {}
         if self.sequence_setup:
             try:
@@ -957,6 +959,7 @@ class APSScheduler:
                 "material_balance", model, x, active, started, end_of, {}, {}, {}, cumulative=cumulative
             )
         inventory_penalty = self._add_inventory_constraints(model, cumulative) if self.inventory_policies else None
+        lead_time_penalty = self._add_lead_time_penalty(model, end_of) if self.enforce_lead_time else None
         shortfall, violations, overloads, opening, tails, loads, kernel_objective = self._add_line_capacity(
             model, x, active, started, end_of, utilization_mode, gap_cap, use_kernel=use_kernel
         )
@@ -1168,6 +1171,8 @@ class APSScheduler:
             group_terms["G2_CAPACITY"].append(sequence_setup_penalty)
         if inventory_penalty is not None:
             group_terms["G4_INVENTORY"].append(inventory_penalty)
+        if lead_time_penalty is not None:
+            group_terms["G1_DELIVERY"].append(lead_time_penalty)
         all_terms = [term for group in group_terms.values() for term in group]
         model.Minimize(sum(all_terms))
         return model, x, {"open": opening, "tail": tails, "load": loads, "group_terms": group_terms}
@@ -1352,6 +1357,24 @@ class APSScheduler:
         for warning in compiled.warnings:
             print(f"  [kernel] {warning}")
         return compiled
+
+    def _add_lead_time_penalty(self, model, end_of):
+        """C4-a: soft SF operation lead-time gap before parent FG completion."""
+        shifts_per_day = max(1, int(getattr(self.topology, "shifts_per_day", 3)))
+        by_id = {t.task_id: t for t in self.plan.tasks}
+        penalties = []
+        for sf_task in self.plan.sf_tasks:
+            parent = by_id.get(getattr(sf_task, "parent_task_id", None))
+            if parent is None or parent.task_id not in end_of or sf_task.task_id not in end_of:
+                continue
+            lead_days = float(getattr(sf_task, "lead_time_days", 0.0) or 0.0)
+            if lead_days <= 0:
+                continue
+            lead_shifts = max(1, int(math.ceil(lead_days * shifts_per_day)))
+            lag = model.NewIntVar(0, lead_shifts, f"lead_lag.{sf_task.task_id}")
+            model.Add(lag >= lead_shifts - (end_of[parent.task_id] - end_of[sf_task.task_id]))
+            penalties.append(lag)
+        return 10 * sum(penalties) if penalties else None
 
     def _add_inventory_constraints(self, model, cumulative):
         """B4-b: soft time-phased FG inventory cap from Inventory-Policy.

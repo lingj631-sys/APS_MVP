@@ -153,6 +153,7 @@ class ProductionTask:
     line_pm_slots: List[int] = field(default_factory=list)
     crew_required: float = 0.0
     moq: int = 0
+    lead_time_days: float = 0.0
 
 
 @dataclass
@@ -983,6 +984,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
             line_pm_slots=line_pm_slots.get(param.line, []),
             crew_required=param.headcount,
             moq=int(round(param.moq or param.mpq)),
+            lead_time_days=float(param.lead_time_days or 0.0),
         )
         fg_tasks.append(fg_task)
 
@@ -1040,6 +1042,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                 line_pm_slots=line_pm_slots.get(sf_param.line, []),
                 crew_required=sf_param.headcount,
                 moq=int(round(sf_param.moq or sf_param.mpq)),
+                lead_time_days=float(sf_param.lead_time_days or 0.0),
             ))
 
     movements = [

@@ -26,8 +26,8 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **100/100 PASS，约 1386.0s** |
-| 快速测试 | **56/56 PASS，约 61s** |
+| 全量测试 | **101/101 PASS，约 1386.7s** |
+| 快速测试 | **57/57 PASS，约 61s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
 ### 测试套件
@@ -48,8 +48,8 @@
 | `tests/test_routing.py` | 5 | PASS |
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
-| `tests/test_capacity_kernel.py` | 4 | PASS |
-| **全量** | **100** | **PASS** |
+| `tests/test_capacity_kernel.py` | 5 | PASS |
+| **全量** | **101** | **PASS** |
 
 ---
 
@@ -80,7 +80,7 @@
 | C2-b-0 CP-SAT 路线分配阶段 | ✅ 可选 | `solve_routing_assignment()` 独立 CP-SAT 选址 + 容量；仍未与主排产模型联立 |
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
-| C4 Operation LeadTime/Transfer | ❌ | 仅 UI 展示 |
+| C4 Operation LeadTime/Transfer | 🟡 部分 | `lead_time_days` 软约束 + 站点开关；Operation-LeadTime 队列/转移批量未接 |
 | C5 Campaign/Pull/Slack | ❌ | 未实现 |
 | 全连续时间 | ❌ | 仍是班次粒度 + 班内近似 |
 
@@ -176,7 +176,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 | 当前单实例是全局 `session_state` | 多人同时操作会互相影响 | 正式使用按每厂一个实例；或后续做 per-user session |
 | Setup Matrix 仍是 mock | sequence 开关效果不代表真实换型 | 先用 mock 验证模型，再替换业务数据 |
 | Routing/Inventory/LeadTime 未全接求解器 | UI 能看到，但排产不完全使用 | 明确标注数据层/审计层；下一阶段接 CP-SAT |
-| 100 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
+| 101 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
 | 工作区改动未提交前不可复现 | 交接风险 | 本次提交/推送后以 Git 版本为准 |
 
 ---
@@ -184,8 +184,8 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 ## 8. 验证记录
 
 ```text
-全量：100/100 PASS，约 1386.0s（C1-b-3/4/B4-b/C2-b-0 后）
-快速：56/56 PASS，约 61s
+全量：101/101 PASS，约 1386.7s（C1-b-3/4/B4-b/C2-b-0/C4-a 后）
+快速：57/57 PASS，约 61s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules
 /api/rule-catalog：32 条

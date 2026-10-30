@@ -707,6 +707,13 @@ python -m unittest discover -s tests -v
 - 第三页 32 条规则目录展示 `configurable / partial / needs_model` 统计徽章，数据来自 `/api/rule-coverage`。
 - 仅本地修改，未推送。
 
+### 32 条目录状态校准
+
+- 将已具备实际实现的规则从 `needs_model` 上调为 `partial`：HC-02/04/09/10/11/16、SC-03/05/06/07、BS-06。
+- 当前覆盖：partial 19、needs_model 6、preprocess 4、configurable 2、postprocess 1。
+- `needs_model` 剩余：HC-05、SC-01、SC-08、SC-09、SC-10、BS-04（以目录为准）。
+- 仅状态校准，不代表已全部接入主求解器。
+
 ### 待做
 
 - C1-b 真正班内 sequence 变量 + SDST + carry-over：当前只有 setup 容量/反馈近似。

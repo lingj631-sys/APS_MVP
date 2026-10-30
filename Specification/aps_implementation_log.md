@@ -650,7 +650,7 @@ python -m unittest discover -s tests -v
 
 - `APSScheduler(inventory_policies=...)` 新增 FG 逐时点库存上限 soft penalty：opening + 累计产出 - 累计需求，按 Inventory-Policy 的 max_days/max_stock 计罚。
 - 站点设置新增 `inventory_policy_enabled`（默认 false）与第六页开关；`/api/solve` 可传同名字段。
-- 当前 FG 与 SF 都做 soft 上限；SF 需求由 FG 累计产出 × BOM 比例计算；库存策略仍是 mock 值。
+- 当前 FG 与 SF 都做 soft 上限；SF 需求由 FG 累计产出 × BOM 比例计算；`inventory_hard_enabled` 可切换为硬上限，默认关闭；库存策略仍是 mock 值。
 - 新增 `tests/test_capacity_kernel.py` 第 4 项；全量 99/99、快速 56/56。
 
 ### C2-b-a 路线重指派接线

@@ -305,6 +305,7 @@ class APSScheduler:
         sequence_setup: bool = False,
         setup_technicians_available: int = 0,
         inventory_policies: Optional[Dict[Any, Any]] = None,
+        inventory_hard: bool = False,
         operation_lead_times: Optional[Dict[Any, Any]] = None,
         campaign_families: Optional[Dict[Any, Any]] = None,
         enforce_campaign: bool = False,
@@ -369,6 +370,7 @@ class APSScheduler:
         self.sequence_setup = bool(sequence_setup)
         self.setup_technicians_available = max(0, int(setup_technicians_available or 0))
         self.inventory_policies = dict(inventory_policies or {})
+        self.inventory_hard = bool(inventory_hard)
         self.operation_lead_times = dict(operation_lead_times or {})
         self.campaign_families = dict(campaign_families or {})
         self.enforce_campaign = bool(enforce_campaign)
@@ -1467,11 +1469,14 @@ class APSScheduler:
                     continue
                 inventory = opening + sum(prod_terms) - cumulative_demand
                 ceiling = int(round(policy.max_days * daily + max(0.0, policy.max_stock)))
-                over = model.NewIntVar(
-                    0, max(1, int(total_demand + opening + 1)), f"inv_over.{part}.{s}"
-                )
-                model.Add(over >= inventory - ceiling)
-                penalties.append(over)
+                if self.inventory_hard:
+                    model.Add(inventory <= ceiling)
+                else:
+                    over = model.NewIntVar(
+                        0, max(1, int(total_demand + opening + 1)), f"inv_over.{part}.{s}"
+                    )
+                    model.Add(over >= inventory - ceiling)
+                    penalties.append(over)
         sf_penalty = self._add_sf_inventory_penalties(model, cumulative)
         if not penalties and sf_penalty is None:
             return None
@@ -1529,9 +1534,12 @@ class APSScheduler:
                         demand.append(slots[max(eligible)] * self._unit_pieces(fg_task) * coeff)
                 ceiling = int(round((policy.max_days * daily + max(0.0, policy.max_stock)) * 1000))
                 inventory = opening * 1000 + sum(supply) - sum(demand)
-                over = model.NewIntVar(0, max(1, total * 2000 + 1), f"sf_inv_over.{part}.{s}")
-                model.Add(over >= inventory - ceiling)
-                penalties.append(over)
+                if self.inventory_hard:
+                    model.Add(inventory <= ceiling)
+                else:
+                    over = model.NewIntVar(0, max(1, total * 2000 + 1), f"sf_inv_over.{part}.{s}")
+                    model.Add(over >= inventory - ceiling)
+                    penalties.append(over)
         return 50 * sum(penalties) if penalties else None
 
     def _add_sequence_constraints(self, model, x, active, loads):

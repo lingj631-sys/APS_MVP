@@ -63,7 +63,7 @@
 | B1 MOQ/MPQ | ✅ 代码/数据 | `basis=shift/order`、`quantity_source=MPQ/MOQ`、`tail_exempt`、`moq_override`；尚未写入 active seed |
 | B2 scrap | ✅ opt-in | `build_requirement_plan(apply_scrap=True)`，默认关闭 |
 | B3 软产能 | ✅ | soft 双边计罚，不再硬加 ceiling |
-| B4 库存策略 | 🟡/✅ 部分 | 数据层 + 逐班投影 + API；FG/SF 库存上限 soft penalty，默认关闭；硬约束未做 |
+| B4 库存策略 | 🟡/✅ 部分 | 数据层 + 投影 + API；FG/SF soft penalty，另可选 hard 上限；均默认关闭 |
 | B5 时间窗/冻结 | ✅ | `allowed_dates`；`freeze.use_baseline` |
 | B6 目录/site override | ✅ 数据层 | 32 条目录 + `effective_for_site()`；尚未完全替换旧审计映射 |
 

@@ -143,6 +143,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "sequence_setup": False,
         "setup_technicians_available": 0,
         "inventory_policy_enabled": False,
+        "inventory_hard_enabled": False,
         "routing_assign_enabled": False,
         "leadtime_enabled": False,
         "campaign_enabled": False,
@@ -164,6 +165,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "sequence_setup": False,
         "setup_technicians_available": 0,
         "inventory_policy_enabled": False,
+        "inventory_hard_enabled": False,
         "routing_assign_enabled": False,
         "leadtime_enabled": False,
         "campaign_enabled": False,
@@ -534,6 +536,7 @@ class SiteSettingsPayload(BaseModel):
     sequence_setup: Optional[bool] = False
     setup_technicians_available: Optional[int] = 0
     inventory_policy_enabled: Optional[bool] = False
+    inventory_hard_enabled: Optional[bool] = False
     routing_assign_enabled: Optional[bool] = False
     leadtime_enabled: Optional[bool] = False
     campaign_enabled: Optional[bool] = False
@@ -563,6 +566,7 @@ class SolvePayload(BaseModel):
     sequence_setup: bool = False
     setup_technicians_available: Optional[int] = None
     inventory_policy_enabled: Optional[bool] = None
+    inventory_hard_enabled: Optional[bool] = None
     routing_assign_enabled: Optional[bool] = None
     leadtime_enabled: Optional[bool] = None
     campaign_enabled: Optional[bool] = None
@@ -622,6 +626,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["setup_technicians_available"] = max(0, int(payload.setup_technicians_available))
     if payload.inventory_policy_enabled is not None:
         cfg["inventory_policy_enabled"] = payload.inventory_policy_enabled
+    if payload.inventory_hard_enabled is not None:
+        cfg["inventory_hard_enabled"] = payload.inventory_hard_enabled
     if payload.routing_assign_enabled is not None:
         cfg["routing_assign_enabled"] = payload.routing_assign_enabled
     if payload.leadtime_enabled is not None:
@@ -1857,6 +1863,11 @@ def run_solver(payload: SolvePayload):
             else site_settings_store.get(payload.site.upper(), {}).get("setup_technicians_available", 0)
         ),
         inventory_policies=inventory_policies,
+        inventory_hard=bool(
+            payload.inventory_hard_enabled
+            if payload.inventory_hard_enabled is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("inventory_hard_enabled", False)
+        ),
         operation_lead_times=operation_lead_times,
         campaign_families=campaign_families,
         enforce_campaign=campaign_enabled,

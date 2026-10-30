@@ -1073,6 +1073,34 @@
           </div>
         </div>
 
+        <div v-if="sequencePlan.length" class="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+          <div class="px-4 py-2.5 bg-indigo-50 border-b border-indigo-200 flex flex-wrap items-center justify-between gap-2">
+            <div class="text-xs font-bold text-indigo-900">班内 Sequence / SDST 明细（C1-b-3）</div>
+            <div class="text-[11px] text-indigo-700">
+              {{ sequencePlan.length }} 条任务 · setup 合计 <b>{{ sequenceSetupTotal.toFixed(1) }}</b> 分钟
+            </div>
+          </div>
+          <div class="overflow-auto max-h-[260px]">
+            <table class="min-w-full text-[11px] text-left">
+              <thead class="bg-indigo-50/60 text-indigo-900 font-semibold sticky top-0">
+                <tr><th class="py-1.5 px-3">产线</th><th class="py-1.5 px-3">班次</th><th class="py-1.5 px-3">顺位</th><th class="py-1.5 px-3">工单</th><th class="py-1.5 px-3 text-right">开始(min)</th><th class="py-1.5 px-3 text-right">结束(min)</th><th class="py-1.5 px-3 text-right">Setup(min)</th><th class="py-1.5 px-3">首件/末件</th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr v-for="(s, idx) in sequencePlan" :key="s.task_id + '-' + s.shift_index + '-' + idx" class="hover:bg-slate-50">
+                  <td class="py-1.5 px-3 font-medium">{{ s.line }}</td>
+                  <td class="py-1.5 px-3 font-mono">{{ s.shift_key }}</td>
+                  <td class="py-1.5 px-3 font-mono">#{{ s.sequence }}</td>
+                  <td class="py-1.5 px-3 font-mono truncate max-w-[360px]" :title="s.task_id">{{ s.task_id }}</td>
+                  <td class="py-1.5 px-3 text-right font-mono">{{ s.start_min }}</td>
+                  <td class="py-1.5 px-3 text-right font-mono">{{ s.end_min }}</td>
+                  <td class="py-1.5 px-3 text-right font-mono" :class="s.setup_min > 0 ? 'text-amber-700 font-bold' : 'text-slate-400'">{{ s.setup_min }}</td>
+                  <td class="py-1.5 px-3 text-[10px] text-slate-500"><span v-if="s.first">首件</span><span v-if="s.last">末件</span><span v-if="!s.first && !s.last">中间</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- ================= GANTT TIMELINE VIEW ================= -->
         <div v-show="ganttViewMode === 'gantt'" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="overflow-x-auto max-h-[750px]">
@@ -3407,6 +3435,57 @@
                 </div>
                 <input v-model="siteSettings.sequence_setup" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
               </label>
+              <label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">换模技术员每班可用人数</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">C1-b-4：setup 区间并发上限；0 = 不启用。设得过小可能无解，建议先用 0 或 2+。</div>
+                </div>
+                <input v-model.number="siteSettings.setup_technicians_available" type="number" min="0" step="1"
+                       class="w-20 text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用库存策略软约束 (B4-b)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">按 Inventory-Policy 的 FG 库存上限计罚；当前只做 FG 软目标。</div>
+                </div>
+                <input v-model="siteSettings.inventory_policy_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">库存上限改为硬约束</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">FG/SF 超过 Inventory-Policy 上限直接不可行；mock 策略下可能无解，谨慎开启。</div>
+                </div>
+                <input v-model="siteSettings.inventory_hard_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用路线重指派 (C2-b-a)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">主候选线过载时按 Routing-Machines 移到较低负荷备线；当前是 preprocessor，不是 CP-SAT Assign。</div>
+                </div>
+                <input v-model="siteSettings.routing_assign_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用工序提前期软约束 (C4-a)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">SF 完工需早于父 FG 完工 lead_time_days；当前为软惩罚。</div>
+                </div>
+                <input v-model="siteSettings.leadtime_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用 Campaign 分组软约束 (C5-a)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">同一产线/班次尽量只生产一个 Campaign Group；当前为软惩罚。</div>
+                </div>
+                <input v-model="siteSettings.campaign_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">交期 Slack（提前班次数）</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">鼓励 FG 在交期前 N 个班次完成；0 = 不启用。当前为软惩罚。</div>
+                </div>
+                <input v-model.number="siteSettings.due_slack_shifts" type="number" min="0" step="1"
+                       class="w-20 text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-indigo-500">
+              </label>
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -4036,6 +4115,8 @@
         const showAiRecModal = ref(false);
         const ganttHorizon = ref(null);
         const shiftsInfo = ref([]);
+        const sequencePlan = ref([]);
+        const sequenceSetupTotal = computed(() => (sequencePlan.value || []).reduce((sum, r) => sum + Number(r.setup_min || 0), 0));
         const psiProductionFilter = ref("ALL");
         const showOnlyProductionPlanRows = ref(false);
         const ruleCatalog = ref([]);
@@ -4813,6 +4894,14 @@
                 day_shift_overrides: dayShiftOverrides.value,
                 allow_105_utilization_fg: allow_105_fg,
                 allow_105_utilization_sf: allow_105_sf,
+                sequence_setup: !!siteSettings.value.sequence_setup,
+                setup_technicians_available: Number(siteSettings.value.setup_technicians_available || 0),
+                inventory_policy_enabled: !!siteSettings.value.inventory_policy_enabled,
+                inventory_hard_enabled: !!siteSettings.value.inventory_hard_enabled,
+                routing_assign_enabled: !!siteSettings.value.routing_assign_enabled,
+                leadtime_enabled: !!siteSettings.value.leadtime_enabled,
+                campaign_enabled: !!siteSettings.value.campaign_enabled,
+                due_slack_shifts: Number(siteSettings.value.due_slack_shifts || 0),
                 lookahead_enabled: siteSettings.value.lookahead_enabled,
                 lookahead_days: siteSettings.value.lookahead_days,
                 max_pull_forward_days: siteSettings.value.max_pull_forward_days,
@@ -4852,6 +4941,7 @@
             fgBalance.value = data.fg_balance;
             sfBalance.value = data.sf_balance;
             tasks.value = data.tasks;
+            sequencePlan.value = data.sequence_plan || [];
             checks.value = data.checks;
             complianceMatrix.value = data.compliance_matrix;
             ganttHorizon.value = data.gantt_horizon;
@@ -5251,6 +5341,8 @@
           fgBalance,
           sfBalance,
           tasks,
+          sequencePlan,
+          sequenceSetupTotal,
           checks,
           complianceMatrix,
           ganttViewMode,

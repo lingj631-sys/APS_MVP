@@ -44,8 +44,11 @@ from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.kernel.rule_mapping import describe_legacy_rule
 from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
+from src.campaign import load_campaign_families
+from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
 from src.rule_catalog import load_catalog
+from src.routing import assign_routing_lines, load_routing, solve_routing_assignment
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -138,6 +141,13 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "baseline_date": "2026-10-11",
         "calendar_mode": "SEVEN_ZERO",
         "sequence_setup": False,
+        "setup_technicians_available": 0,
+        "inventory_policy_enabled": False,
+        "inventory_hard_enabled": False,
+        "routing_assign_enabled": False,
+        "leadtime_enabled": False,
+        "campaign_enabled": False,
+        "due_slack_shifts": 0,
         "lookahead_enabled": True,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -154,6 +164,13 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "baseline_date": "2026-10-11",
         "calendar_mode": "FIVE_TWO",
         "sequence_setup": False,
+        "setup_technicians_available": 0,
+        "inventory_policy_enabled": False,
+        "inventory_hard_enabled": False,
+        "routing_assign_enabled": False,
+        "leadtime_enabled": False,
+        "campaign_enabled": False,
+        "due_slack_shifts": 0,
         "lookahead_enabled": False,
         "lookahead_days": 30,
         "max_pull_forward_days": 10,
@@ -519,6 +536,13 @@ class SiteSettingsPayload(BaseModel):
     baseline_date: Optional[str] = "2026-10-11"
     calendar_mode: Optional[str] = "SEVEN_ZERO"
     sequence_setup: Optional[bool] = False
+    setup_technicians_available: Optional[int] = 0
+    inventory_policy_enabled: Optional[bool] = False
+    inventory_hard_enabled: Optional[bool] = False
+    routing_assign_enabled: Optional[bool] = False
+    leadtime_enabled: Optional[bool] = False
+    campaign_enabled: Optional[bool] = False
+    due_slack_shifts: Optional[int] = 0
     lookahead_enabled: Optional[bool] = True
     lookahead_days: Optional[int] = 30
     max_pull_forward_days: Optional[int] = 10
@@ -543,6 +567,13 @@ class SolvePayload(BaseModel):
     max_pull_forward_days: Optional[int] = None
     use_rule_set: bool = True
     sequence_setup: bool = False
+    setup_technicians_available: Optional[int] = None
+    inventory_policy_enabled: Optional[bool] = None
+    inventory_hard_enabled: Optional[bool] = None
+    routing_assign_enabled: Optional[bool] = None
+    leadtime_enabled: Optional[bool] = None
+    campaign_enabled: Optional[bool] = None
+    due_slack_shifts: Optional[int] = None
 
 
 class RuleSetSavePayload(BaseModel):
@@ -595,6 +626,20 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["calendar_mode"] = payload.calendar_mode
     if payload.sequence_setup is not None:
         cfg["sequence_setup"] = payload.sequence_setup
+    if payload.setup_technicians_available is not None:
+        cfg["setup_technicians_available"] = max(0, int(payload.setup_technicians_available))
+    if payload.inventory_policy_enabled is not None:
+        cfg["inventory_policy_enabled"] = payload.inventory_policy_enabled
+    if payload.inventory_hard_enabled is not None:
+        cfg["inventory_hard_enabled"] = payload.inventory_hard_enabled
+    if payload.routing_assign_enabled is not None:
+        cfg["routing_assign_enabled"] = payload.routing_assign_enabled
+    if payload.leadtime_enabled is not None:
+        cfg["leadtime_enabled"] = payload.leadtime_enabled
+    if payload.campaign_enabled is not None:
+        cfg["campaign_enabled"] = payload.campaign_enabled
+    if payload.due_slack_shifts is not None:
+        cfg["due_slack_shifts"] = max(0, int(payload.due_slack_shifts))
     if payload.lookahead_enabled is not None:
         cfg["lookahead_enabled"] = payload.lookahead_enabled
     if payload.lookahead_days is not None:
@@ -1738,6 +1783,60 @@ def run_solver(payload: SolvePayload):
     for error in labor_data.errors:
         print(f"  [labor] {error}")
 
+    routing_enabled = (
+        payload.routing_assign_enabled
+        if payload.routing_assign_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("routing_assign_enabled", False)
+    )
+    routing_decisions = []
+    if routing_enabled:
+        routing_path = os.path.join(DATA_DIR, "master", "Routing-Machines.csv")
+        routing_table = load_routing(routing_path)
+        topology = get_topology(payload.site.upper())
+        line_names = {getattr(t, "line", "") for t in plan.tasks}
+        for (_site, _part, _op), options in routing_table.items():
+            if _site == payload.site.upper():
+                line_names.update(o.candidate_line for o in options if o.candidate_line)
+        capacity_hours = {
+            line: float(horizon_days * topology.shifts_per_day * topology.shift_hours)
+            for line in line_names
+        }
+        routing_decisions = solve_routing_assignment(
+            plan.tasks, routing_table, site=payload.site.upper(),
+            capacity_hours_by_line=capacity_hours, time_limit_seconds=5.0,
+        )
+        if not routing_decisions:
+            routing_decisions = assign_routing_lines(
+                plan.tasks, routing_table, site=payload.site.upper(),
+                capacity_hours_by_line=capacity_hours, max_ratio=0.95,
+            )
+    inventory_enabled = (
+        payload.inventory_policy_enabled
+        if payload.inventory_policy_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("inventory_policy_enabled", False)
+    )
+    inventory_policies = (
+        load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"), site=payload.site.upper())
+        if inventory_enabled else {}
+    )
+    leadtime_enabled = (
+        payload.leadtime_enabled
+        if payload.leadtime_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("leadtime_enabled", False)
+    )
+    operation_lead_times = (
+        load_operation_lead_times(os.path.join(DATA_DIR, "master", "Operation-LeadTime.csv"), site=payload.site.upper())
+        if leadtime_enabled else {}
+    )
+    campaign_enabled = (
+        payload.campaign_enabled
+        if payload.campaign_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("campaign_enabled", False)
+    )
+    campaign_families = (
+        load_campaign_families(os.path.join(DATA_DIR, "master", "Campaign-Families.csv"), site=payload.site.upper())
+        if campaign_enabled else {}
+    )
     scheduler = APSScheduler(
         plan=plan,
         start_datetime=start_dt,
@@ -1764,6 +1863,26 @@ def run_solver(payload: SolvePayload):
         kernel_templates=kernel_templates,
         labor_data=labor_data,
         sequence_setup=bool(payload.sequence_setup or site_settings_store.get(payload.site.upper(), {}).get("sequence_setup", False)),
+        setup_technicians_available=(
+            payload.setup_technicians_available
+            if payload.setup_technicians_available is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("setup_technicians_available", 0)
+        ),
+        inventory_policies=inventory_policies,
+        inventory_hard=bool(
+            payload.inventory_hard_enabled
+            if payload.inventory_hard_enabled is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("inventory_hard_enabled", False)
+        ),
+        operation_lead_times=operation_lead_times,
+        campaign_families=campaign_families,
+        enforce_campaign=campaign_enabled,
+        enforce_lead_time=leadtime_enabled,
+        due_slack_shifts=(
+            payload.due_slack_shifts
+            if payload.due_slack_shifts is not None
+            else site_settings_store.get(payload.site.upper(), {}).get("due_slack_shifts", 0)
+        ),
     )
 
     # Solve with capacity overload diagnosis
@@ -2203,6 +2322,8 @@ def run_solver(payload: SolvePayload):
         "fg_balance": fg_balance_data,
         "sf_balance": sf_balance_data,
         "tasks": task_schedule_list,
+        "sequence_plan": result.sequence_plan or [],
+        "routing_decisions": routing_decisions,
         "checks": checks_data,
         "compliance_matrix": compliance_rows,
         "inventory_projection": inventory_data,

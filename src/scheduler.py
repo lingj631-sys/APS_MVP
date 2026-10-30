@@ -115,6 +115,7 @@ class ScheduleResult:
     allow_105_fg: bool = False
     allow_105_sf: bool = False
     capacity_note: str = ""
+    sequence_plan: Optional[List[Dict[str, Any]]] = None
 
 
 class _SchedulerCompileContext:
@@ -302,6 +303,14 @@ class APSScheduler:
         changeover_minutes: float = DEFAULT_CHANGEOVER_MINUTES,
         setup_reserve: Optional[Dict[Tuple[str, int], float]] = None,
         sequence_setup: bool = False,
+        setup_technicians_available: int = 0,
+        inventory_policies: Optional[Dict[Any, Any]] = None,
+        inventory_hard: bool = False,
+        operation_lead_times: Optional[Dict[Any, Any]] = None,
+        campaign_families: Optional[Dict[Any, Any]] = None,
+        enforce_campaign: bool = False,
+        enforce_lead_time: bool = False,
+        due_slack_shifts: int = 0,
         sequence_feedback: bool = False,
         setup_matrix: Optional[Dict[Any, Any]] = None,
         setup_matrix_path: Optional[str] = None,
@@ -360,6 +369,15 @@ class APSScheduler:
         self.setup_matrix = dict(setup_matrix or {})
         self.setup_matrix_path = setup_matrix_path
         self.sequence_setup = bool(sequence_setup)
+        self.setup_technicians_available = max(0, int(setup_technicians_available or 0))
+        self.inventory_policies = dict(inventory_policies or {})
+        self.inventory_hard = bool(inventory_hard)
+        self.operation_lead_times = dict(operation_lead_times or {})
+        self.campaign_families = dict(campaign_families or {})
+        self.enforce_campaign = bool(enforce_campaign)
+        self.enforce_lead_time = bool(enforce_lead_time)
+        self.due_slack_shifts = max(0, int(due_slack_shifts or 0))
+        self._sequence_vars = {}
         if self.sequence_setup:
             try:
                 from src.sequence import load_setup_matrix
@@ -774,6 +792,7 @@ class APSScheduler:
             allow_105_fg=self.allow_105_utilization_fg,
             allow_105_sf=self.allow_105_utilization_sf,
             capacity_note=self.capacity_note,
+            sequence_plan=self._extract_sequence(solver) if self.sequence_setup else None,
         )
         return result, result.status_name, solver.WallTime()
 
@@ -823,6 +842,7 @@ class APSScheduler:
             allow_105_fg=self.allow_105_utilization_fg,
             allow_105_sf=self.allow_105_utilization_sf,
             capacity_note=self.capacity_note,
+            sequence_plan=self._extract_sequence(last_solver) if self.sequence_setup else None,
         )
         return result, result.status_name, total_wall
 
@@ -968,7 +988,7 @@ class APSScheduler:
 
         kernel_material = use_kernel and self._use_kernel("material_balance")
         cumulative = None
-        if kernel_material or self.enforce_material_balance:
+        if kernel_material or self.enforce_material_balance or self.inventory_policies:
             cumulative = self._create_cumulative(model, x)
             if not kernel_material:
                 self._legacy_material_balance(model, cumulative)
@@ -976,6 +996,9 @@ class APSScheduler:
             self._compile_rules_for(
                 "material_balance", model, x, active, started, end_of, {}, {}, {}, cumulative=cumulative, force_hard=True
             )
+        inventory_penalty = self._add_inventory_constraints(model, cumulative) if self.inventory_policies else None
+        lead_time_penalty = self._add_lead_time_penalty(model, end_of) if self.enforce_lead_time else None
+        slack_penalty = self._add_due_slack_penalty(model, end_of) if self.due_slack_shifts > 0 else None
         shortfall, violations, overloads, opening, tails, loads, kernel_objective = self._add_line_capacity(
             model, x, active, started, end_of, utilization_mode, gap_cap, use_kernel=use_kernel
         )
@@ -1164,6 +1187,10 @@ class APSScheduler:
                 group_terms["G3_CHANGEOVER"].append(CONCURRENCY_WEIGHT * sum(concurrency_penalties))
         if concurrency_objective is not None:
             group_terms["G3_CHANGEOVER"].append(concurrency_objective)
+        if self.enforce_campaign and self.campaign_families:
+            campaign_penalty = self._add_campaign_penalty(model, active)
+            if campaign_penalty is not None:
+                group_terms["G3_CHANGEOVER"].append(campaign_penalty)
 
         # Inventory Bound: 库存上下限与覆盖天数约束 (SC-06, SC-07)
         kernel_inventory_bound = use_kernel and self._use_kernel("inventory_bound")
@@ -1215,6 +1242,12 @@ class APSScheduler:
             group_terms["G2_CAPACITY"].append(kernel_objective)
         if sequence_setup_penalty is not None:
             group_terms["G2_CAPACITY"].append(sequence_setup_penalty)
+        if inventory_penalty is not None:
+            group_terms["G4_INVENTORY"].append(inventory_penalty)
+        if lead_time_penalty is not None:
+            group_terms["G1_DELIVERY"].append(lead_time_penalty)
+        if slack_penalty is not None:
+            group_terms["G1_DELIVERY"].append(slack_penalty)
         all_terms = [term for group in group_terms.values() for term in group]
         model.Minimize(sum(all_terms))
         return model, x, {"open": opening, "tail": tails, "load": loads, "group_terms": group_terms}
@@ -1411,16 +1444,205 @@ class APSScheduler:
             print(f"  [kernel] {warning}")
         return compiled
 
+    def _add_campaign_penalty(self, model, active):
+        """C5-a: soft penalty for mixing campaign groups inside one line/shift."""
+        penalties = []
+        for line in self.lines:
+            line_tasks = [t for t in self.tasks if t.line == line]
+            for s in range(self.num_shifts):
+                groups = {}
+                for task in line_tasks:
+                    family = self.campaign_families.get(str(task.part_no))
+                    if family is None or not family.campaign_group:
+                        continue
+                    if (task.task_id, s) not in active:
+                        continue
+                    groups.setdefault(family.campaign_group, []).append(task)
+                if len(groups) <= 1:
+                    continue
+                present = []
+                for group, members in groups.items():
+                    p = model.NewBoolVar(f"campaign.{line}.{s}.{group}")
+                    for task in members:
+                        model.Add(p >= active[task.task_id, s])
+                    model.Add(p <= sum(active[task.task_id, s] for task in members))
+                    present.append(p)
+                excess = model.NewIntVar(0, len(present), f"campaign_excess.{line}.{s}")
+                model.Add(excess >= sum(present) - 1)
+                penalties.append(excess)
+        return 20 * sum(penalties) if penalties else None
+
+    def _add_due_slack_penalty(self, model, end_of):
+        """C5-b: soft buffer before due; encourages completion N shifts early."""
+        penalties = []
+        for task in self.plan.fg_tasks:
+            if task.task_id not in end_of:
+                continue
+            due = self._due_shift(task)
+            target = due - self.due_slack_shifts
+            if target <= 0:
+                continue
+            lag = model.NewIntVar(0, self.due_slack_shifts, f"slack_lag.{task.task_id}")
+            model.Add(lag >= end_of[task.task_id] - target)
+            penalties.append(lag)
+        return 10 * sum(penalties) if penalties else None
+
+    def _add_lead_time_penalty(self, model, end_of):
+        """C4-a: soft SF operation lead-time gap before parent FG completion."""
+        shifts_per_day = max(1, int(getattr(self.topology, "shifts_per_day", 3)))
+        by_id = {t.task_id: t for t in self.plan.tasks}
+        penalties = []
+        for sf_task in self.plan.sf_tasks:
+            parent = by_id.get(getattr(sf_task, "parent_task_id", None))
+            if parent is None or parent.task_id not in end_of or sf_task.task_id not in end_of:
+                continue
+            lead_days = float(getattr(sf_task, "lead_time_days", 0.0) or 0.0)
+            if lead_days <= 0 and not self.operation_lead_times:
+                continue
+            from src.leadtime import lead_shifts as _lead_shifts
+            entry = self.operation_lead_times.get((self.site, sf_task.part_no, 10))
+            lead_shift_count = _lead_shifts(entry, lead_time_days=lead_days, shift_hours=self.shift_hours, quantity=float(getattr(sf_task, "quantity", 0.0) or 0.0))
+            if lead_shift_count <= 0:
+                continue
+            lead_shifts = lead_shift_count
+            lag = model.NewIntVar(0, lead_shifts, f"lead_lag.{sf_task.task_id}")
+            model.Add(lag >= lead_shifts - (end_of[parent.task_id] - end_of[sf_task.task_id]))
+            penalties.append(lag)
+        return 10 * sum(penalties) if penalties else None
+
+    def _add_inventory_constraints(self, model, cumulative):
+        """B4-b: soft time-phased FG inventory cap from Inventory-Policy.
+
+        This is intentionally FG-only and soft: SF inventory is still governed by
+        the two-stage material-balance ledger. The policy quantity is expressed in
+        days of average demand, matching the B4-a policy table.
+        """
+        from src.inventory_policy import policy_for_day
+        if not cumulative:
+            return None
+        shifts_per_day = max(1, int(getattr(self.topology, "shifts_per_day", 3)))
+        horizon_days = max(1.0, self.num_shifts / shifts_per_day)
+        penalties = []
+        seen_parts = set()
+        for task in self.plan.fg_tasks:
+            part = str(task.part_no)
+            if part in seen_parts:
+                continue
+            seen_parts.add(part)
+            peers = [t for t in self.plan.fg_tasks if str(t.part_no) == part]
+            if not peers:
+                continue
+            total_demand = sum(int(round(float(t.quantity))) for t in peers)
+            if total_demand <= 0:
+                continue
+            daily = total_demand / horizon_days
+            opening = int(round(float(getattr(self.plan, "initial_stock", {}).get(part, 0.0))))
+            due_qty = {}
+            for peer in peers:
+                due_qty[self._due_shift(peer)] = due_qty.get(self._due_shift(peer), 0) + int(round(float(peer.quantity)))
+            for s in range(self.num_shifts):
+                policy = policy_for_day(self.inventory_policies, self.site, part, s // shifts_per_day + 1)
+                if policy is None:
+                    continue
+                cumulative_demand = sum(int(qty) for due, qty in due_qty.items() if due <= s)
+                prod_terms = []
+                for peer in peers:
+                    slots = cumulative.get(peer.task_id, {})
+                    if not slots:
+                        continue
+                    eligible = [idx for idx in slots if idx <= s]
+                    if not eligible:
+                        continue
+                    prod_terms.append(slots[max(eligible)] * self._unit_pieces(peer))
+                if not prod_terms:
+                    continue
+                inventory = opening + sum(prod_terms) - cumulative_demand
+                ceiling = int(round(policy.max_days * daily + max(0.0, policy.max_stock)))
+                if self.inventory_hard:
+                    model.Add(inventory <= ceiling)
+                else:
+                    over = model.NewIntVar(
+                        0, max(1, int(total_demand + opening + 1)), f"inv_over.{part}.{s}"
+                    )
+                    model.Add(over >= inventory - ceiling)
+                    penalties.append(over)
+        sf_penalty = self._add_sf_inventory_penalties(model, cumulative)
+        if not penalties and sf_penalty is None:
+            return None
+        return 50 * sum(penalties) + (sf_penalty if sf_penalty is not None else 0)
+
+    def _add_sf_inventory_penalties(self, model, cumulative):
+        """B4-b extension: soft time-phased SF inventory cap.
+
+        SF demand is the variable FG production multiplied by the BOM ratio;
+        supply is cumulative SF production plus opening stock.
+        """
+        from src.inventory_policy import policy_for_day
+        if not cumulative:
+            return None
+        shifts_per_day = max(1, int(getattr(self.topology, "shifts_per_day", 3)))
+        horizon_days = max(1.0, self.num_shifts / shifts_per_day)
+        fg_by_part = {}
+        for task in self.plan.fg_tasks:
+            fg_by_part.setdefault(str(task.part_no), []).append(task)
+        consumers = {}
+        for fg_pn, entries in getattr(self.plan, "bom", {}).items():
+            for sf_pn, ratio in entries:
+                consumers.setdefault(str(sf_pn), []).extend(
+                    (task, ratio) for task in fg_by_part.get(str(fg_pn), [])
+                )
+        sf_parts = {str(t.part_no) for t in self.plan.sf_tasks} | set(consumers)
+        penalties = []
+        for part in sorted(sf_parts):
+            supply_tasks = [t for t in self.plan.sf_tasks if str(t.part_no) == part]
+            if not supply_tasks:
+                continue
+            total = sum(int(round(float(t.quantity))) for t in supply_tasks)
+            if total <= 0:
+                continue
+            daily = total / horizon_days
+            opening = int(round(float(getattr(self.plan, "initial_stock", {}).get(part, 0.0))))
+            for s in range(self.num_shifts):
+                policy = policy_for_day(self.inventory_policies, self.site, part, s // shifts_per_day + 1)
+                if policy is None:
+                    continue
+                supply = []
+                for task in supply_tasks:
+                    slots = cumulative.get(task.task_id, {})
+                    eligible = [idx for idx in slots if idx <= s]
+                    if eligible:
+                        supply.append(slots[max(eligible)] * self._unit_pieces(task) * 1000)
+                if not supply:
+                    continue
+                demand = []
+                for fg_task, ratio in consumers.get(part, []):
+                    slots = cumulative.get(fg_task.task_id, {})
+                    eligible = [idx for idx in slots if idx <= s]
+                    if eligible:
+                        coeff = int(round(float(ratio) * 1000))
+                        demand.append(slots[max(eligible)] * self._unit_pieces(fg_task) * coeff)
+                ceiling = int(round((policy.max_days * daily + max(0.0, policy.max_stock)) * 1000))
+                inventory = opening * 1000 + sum(supply) - sum(demand)
+                if self.inventory_hard:
+                    model.Add(inventory <= ceiling)
+                else:
+                    over = model.NewIntVar(0, max(1, total * 2000 + 1), f"sf_inv_over.{part}.{s}")
+                    model.Add(over >= inventory - ceiling)
+                    penalties.append(over)
+        return 50 * sum(penalties) if penalties else None
+
     def _add_sequence_constraints(self, model, x, active, loads):
-        """C1-b-2: optional intra-shift sequence + SDST + cross-shift carry-over.
+        """C1-b-3: optional intra-shift sequence, SDST, start/end and carry-over.
 
         For each line/shift, active tasks form one path (first -> ... -> last).
-        ``trans[a,b]`` carries setup time inside the shift; ``carry[a,b]`` carries
-        the last mold of shift s-1 into the first mold of shift s. The initial
-        setup before the first planned shift is still 0 (no known previous mold).
+        ``trans[a,b]`` orders tasks inside the shift; ``carry[a,b]`` inherits the
+        last mold of shift s-1 into the first task of shift s. Each task gets
+        ``start/end/setup`` variables so the result can expose numeric sequence
+        and setup minutes, not just an aggregate capacity penalty.
         """
         if not self.sequence_setup or not self.setup_matrix:
             return
+        self._sequence_vars = {}
 
         def setup_ms_for(from_task, to_task):
             from_mold = str(getattr(from_task, "mold_id", "") or getattr(from_task, "part_no", ""))
@@ -1433,15 +1655,30 @@ class APSScheduler:
             minutes = float(edge.minutes) if edge is not None else 60.0
             return int(round(minutes * 60 * TIME_SCALE))
 
+        def setup_tech_for(from_task, to_task):
+            from_mold = str(getattr(from_task, "mold_id", "") or getattr(from_task, "part_no", ""))
+            to_mold = str(getattr(to_task, "mold_id", "") or getattr(to_task, "part_no", ""))
+            if from_mold == to_mold:
+                return 0
+            edge = self.setup_matrix.get((self.site, line, from_mold, to_mold))
+            if edge is None:
+                edge = self.setup_matrix.get((self.site, line, to_mold, from_mold))
+            return max(0, int(getattr(edge, "technicians", 1) or 1)) if edge is not None else 1
+
         seq_index = 0
         setup_overflow_terms = []
+        setup_intervals_by_shift = defaultdict(list)
         for line in self.lines:
             line_tasks = [t for t in self.tasks if t.line == line]
             base_max = self._get_line_max_shift_ms(line)
+            big_m = 4 * base_max
             tasks_by_slot = {}
             first_by_slot = {}
             last_by_slot = {}
-            setup_terms_by_slot = defaultdict(list)
+            starts_by_slot = {}
+            ends_by_slot = {}
+            incoming_by_slot = {}
+            incoming_tech_by_slot = {}
 
             for s in range(self.num_shifts):
                 tasks = [
@@ -1475,16 +1712,45 @@ class APSScheduler:
                         model.Add(
                             order[a.task_id] - order[b.task_id] + n * trans[a.task_id, b.task_id] <= n - 1
                         )
+
+                reserve_ms = int(round(float(self.setup_reserve.get((line, s), 0.0)) * 60 * TIME_SCALE))
+                slot_max = max(1, base_max - reserve_ms)
+                time_max = slot_max if self.sequence_setup_hard else slot_max + 2 * base_max
+                incoming = {t.task_id: [] for t in tasks}
+                incoming_tech = {t.task_id: [] for t in tasks}
+                starts = {}
+                ends = {}
+                for t in tasks:
+                    st = model.NewIntVar(0, time_max, f"seq_start.{seq_index}.{t.task_id}")
+                    en = model.NewIntVar(0, time_max, f"seq_end.{seq_index}.{t.task_id}")
+                    proc = x[t.task_id, s] * self._unit_millis(t)
+                    model.Add(en == st + proc)
+                    model.Add(st <= time_max * active[t.task_id, s])
+                    model.Add(en <= time_max * active[t.task_id, s])
+                    starts[t.task_id] = st
+                    ends[t.task_id] = en
+
                 for a in tasks:
                     for b in tasks:
                         if a.task_id == b.task_id:
                             continue
                         term = setup_ms_for(a, b)
                         if term:
-                            setup_terms_by_slot[s].append(trans[a.task_id, b.task_id] * term)
+                            incoming[b.task_id].append(trans[a.task_id, b.task_id] * term)
+                            incoming_tech[b.task_id].append(trans[a.task_id, b.task_id] * setup_tech_for(a, b))
+                        model.Add(
+                            starts[b.task_id]
+                            >= ends[a.task_id] + term
+                            - big_m * (1 - trans[a.task_id, b.task_id])
+                        )
+
                 tasks_by_slot[s] = tasks
                 first_by_slot[s] = first
                 last_by_slot[s] = last
+                starts_by_slot[s] = starts
+                ends_by_slot[s] = ends
+                incoming_by_slot[s] = incoming
+                incoming_tech_by_slot[s] = incoming_tech
                 seq_index += 1
 
             # Cross-shift carry-over: last mold of s-1 -> first mold of s.
@@ -1518,23 +1784,87 @@ class APSScheduler:
                     for b in current:
                         term = setup_ms_for(a, b)
                         if term:
-                            setup_terms_by_slot[s].append(carry[a.task_id, b.task_id] * term)
+                            incoming_by_slot[s][b.task_id].append(carry[a.task_id, b.task_id] * term)
+                            incoming_tech_by_slot[s][b.task_id].append(carry[a.task_id, b.task_id] * setup_tech_for(a, b))
+                            model.Add(starts_by_slot[s][b.task_id] >= carry[a.task_id, b.task_id] * term)
 
-            for s, terms in setup_terms_by_slot.items():
-                if not terms:
-                    continue
+            for s, tasks in tasks_by_slot.items():
                 reserve_ms = int(round(float(self.setup_reserve.get((line, s), 0.0)) * 60 * TIME_SCALE))
                 slot_max = max(1, base_max - reserve_ms)
+                setup_vars = []
+                for b in tasks:
+                    setup_var = model.NewIntVar(0, big_m, f"seq_setup.{line}.{s}.{b.task_id}")
+                    terms = incoming_by_slot[s][b.task_id]
+                    model.Add(setup_var == (sum(terms) if terms else 0))
+                    tech_terms = incoming_tech_by_slot[s][b.task_id]
+                    tech_var = model.NewIntVar(0, 10, f"seq_tech.{line}.{s}.{b.task_id}")
+                    model.Add(tech_var == (sum(tech_terms) if tech_terms else 0))
+                    model.Add(starts_by_slot[s][b.task_id] <= setup_var + big_m * (1 - first_by_slot[s][b.task_id]))
+                    setup_vars.append(setup_var)
+                    setup_start = model.NewIntVar(0, big_m, f"seq_setup_start.{line}.{s}.{b.task_id}")
+                    model.Add(setup_start == starts_by_slot[s][b.task_id] - setup_var)
+                    setup_intervals_by_shift[s].append((
+                        model.NewOptionalIntervalVar(
+                            setup_start, setup_var, starts_by_slot[s][b.task_id],
+                            active[b.task_id, s], f"seq_setup_interval.{line}.{s}.{b.task_id}",
+                        ),
+                        tech_var,
+                    ))
+                    self._sequence_vars[(b.task_id, s)] = {
+                        "active": active[b.task_id, s],
+                        "start": starts_by_slot[s][b.task_id],
+                        "end": ends_by_slot[s][b.task_id],
+                        "setup": setup_var,
+                        "first": first_by_slot[s][b.task_id],
+                        "last": last_by_slot[s][b.task_id],
+                        "line": line,
+                        "shift": self.shifts[s],
+                    }
                 if self.sequence_setup_hard:
-                    model.Add(loads[line, s] + sum(terms) <= slot_max)
+                    model.Add(loads[line, s] + sum(setup_vars) <= slot_max)
                 else:
                     over = model.NewIntVar(0, base_max, f"seq_setup_over.{line}.{s}")
-                    model.Add(loads[line, s] + sum(terms) <= slot_max + over)
+                    model.Add(loads[line, s] + sum(setup_vars) <= slot_max + over)
                     setup_overflow_terms.append(over)
+
+        if self.setup_technicians_available > 0:
+            for s, pairs in setup_intervals_by_shift.items():
+                if pairs:
+                    intervals = [pair[0] for pair in pairs]
+                    demands = [pair[1] for pair in pairs]
+                    model.AddCumulative(intervals, demands, self.setup_technicians_available)
 
         if setup_overflow_terms:
             return 200 * sum(setup_overflow_terms)
         return None
+
+    def _extract_sequence(self, solver):
+        records = []
+        for (task_id, slot), rec in getattr(self, "_sequence_vars", {}).items():
+            try:
+                if solver.Value(rec["active"]) <= 0:
+                    continue
+                shift = rec["shift"]
+                records.append({
+                    "task_id": task_id,
+                    "line": rec["line"],
+                    "shift_key": f"{shift.date_str} {shift.shift_name}",
+                    "shift_index": slot,
+                    "start_min": round(solver.Value(rec["start"]) / 60000.0, 3),
+                    "end_min": round(solver.Value(rec["end"]) / 60000.0, 3),
+                    "setup_min": round(solver.Value(rec["setup"]) / 60000.0, 3),
+                    "first": bool(solver.Value(rec["first"])),
+                    "last": bool(solver.Value(rec["last"])),
+                })
+            except Exception:
+                continue
+        records.sort(key=lambda r: (r["line"], r["shift_index"], r["start_min"], r["task_id"]))
+        seq_by_key = {}
+        for rec in records:
+            key = (rec["line"], rec["shift_key"])
+            seq_by_key[key] = seq_by_key.get(key, 0) + 1
+            rec["sequence"] = seq_by_key[key]
+        return records
 
     def _compile_capacity_kernel(self, model, x, active, started, end_of, opening, tails, loads):
         """Compile capacity rules, respecting each rule's hard/soft nature.

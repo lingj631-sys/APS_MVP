@@ -196,7 +196,7 @@
 | `test_golden_baseline` | 13 项 PASS（内核迁移 + 105 口径 + 组目标） |
 | **合计** | **57 项 PASS，375.0s** |
 
-> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **97 项（97 绿，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
+> 本表是 2026-10-26 的 57 项基线，保留用于历史对比。2026-10-28 代码更新后测试已迁入 `tests/`，当前全量为 **101 项（101 绿，见 §8）**，不要再用本表的“全部 PASS”作为当前结论。
 
 ### 4.3 独立审计（ACT-09 / ACT-10）
 
@@ -461,7 +461,7 @@ CLI `python src/main.py`（active WL_PHASE1，180s）
 ```bash
 python src/main.py                 # CLI 全流程 + 17 项校验
 python run_tests.py --fast         # 快速单元/回归（49 项，约 61s）
-python run_tests.py                # 全量 15 套件（97 项，含黄金基线与端到端）
+python run_tests.py                # 全量 15 套件（101 项，含黄金基线与端到端）
 python -m unittest discover -s tests -v
 ```
 
@@ -472,12 +472,12 @@ python -m unittest discover -s tests -v
 - `585f44d`：引入 `src/domain/` 领域实体骨架、`src/services/manual_audit.py` 服务骨架、统一 `run_tests.py`，测试迁入 `tests/`；
   - **注意**：`src/domain/` 尚未被 scheduler/server 主链使用；`src/services/manual_audit.py` 尚未接线，`/api/audit_manual_schedule` 仍走 `server.py` 旧编排。
 - `9727dc4`：新增 `.env.example`、`Dockerfile`，`run_web.py` 支持 HOST/PORT/RELOAD，README 补部署说明。
-- `5727e4c`：REG-01～08 算法修复；详见 [`aps_algorithm_defect_remediation_log.md`](aps_algorithm_defect_remediation_log.md)。
+- `5727e4c`：REG-01～08 算法修复；详见 [`aps_algorithm_defect_remediation_log.md`](../archive/Specification/aps_algorithm_defect_remediation_log.md)。
 
 ### 8.1 当前测试口径
 
-- 快速回归：`run_tests.py --fast` 54/54 + `test_regressions` 8/8 = **62/62 绿**；
-- 全量：**97/97 绿，1386.0s**；
+- 快速回归：`run_tests.py --fast` 59/59 + `test_regressions` 8/8 = **67/67 绿**；
+- 全量：**105/105 绿（新增 slack 测试；最新完整跑 104）**；
 - 全量回归已闭环。
 
 ---
@@ -498,7 +498,7 @@ python -m unittest discover -s tests -v
 - min_batch 新增参数：asis=shift|order、quantity_source=MPQ|MOQ、	ail_exempt、moq_override；默认值保持现有班次 MPQ 行为。
 - asis=order 时按工单总量约束；quantity_source=MOQ 读取 ProductionTask.moq；	ail_exempt 仅对总量低于门槛的收尾/急单放行。
 - 主数据 Parameters-FG/SFN 已追加 MOQ；ProductParam.moq/ProductionTask.moq 已加载。
-- 快速回归 54/54 仍绿；尚未把新 MOQ 规则写入 active seed，因此当前排产行为不变。
+- 快速回归 55/55 仍绿；尚未把新 MOQ 规则写入 active seed，因此当前排产行为不变。
 
 ### B3 软产能（已开始）
 
@@ -591,7 +591,7 @@ python -m unittest discover -s tests -v
 - 现象：`POST /api/solve` 在 active WL 规则集下 500，`AttributeError: 'SumArray' object has no attribute 'total_objective'`。
 - 原因：`_compile_capacity_kernel` 写成 `compiled.total_objective().total_objective()`；`total_objective()` 已直接返回 OR-Tools `SumArray`。
 - 修复：改为 `return compiled.total_objective()`。
-- 验证：`POST /api/solve` 返回 `status=success`、19 tasks、17 checks；快速回归 54/54。
+- 验证：`POST /api/solve` 返回 `status=success`、19 tasks、17 checks；快速回归 56/56。
 - 说明：自动化套件此前未覆盖 hard kernel capacity 的非空目标路径，实际 active rule set 才触发。
 
 ### C1-b-1 / C1-b-2 班内 sequence + SDST + 跨班 carry-over（已开始）
@@ -599,7 +599,7 @@ python -m unittest discover -s tests -v
 - `APSScheduler(sequence_setup=True)` / `POST /api/solve.sequence_setup=true` 开启班内 sequence 变量：`first/last/trans` + MTZ 子环消除，setup 时间从 `Setup-Matrix.csv` 读取。
 - setup 直接进入该线/班次容量约束：`load + sum(trans × setup_min) <= slot_max`；开启时不再叠加旧的 `changeover_minutes` 固定扣减。
 - C1-b-2 已补跨班 carry-over：上一班 last mold -> 下一班 first mold，空闲班次用 `both` 互锁避免误约束；技术员真实 setup 区间仍未做。
-- 新增 `tests/test_capacity_kernel.py`：P0 capacity kernel 回归 + sequence_setup 求解；快速套件 54/54。
+- 新增 `tests/test_capacity_kernel.py`：P0 capacity kernel 回归 + sequence_setup 求解；快速套件 56/56。
 
 ### 2026-10-29 UI/主数据/规则版本更新
 
@@ -626,7 +626,7 @@ python -m unittest discover -s tests -v
 - `/api/inputs/upload` 改为严格模板校验：Sheet 名称/顺序 + 第 1 行表头必须与 `dataSource.xlsx` 一致；错误表头直接 400。
 - 上传文件按站点保存为 `data/uploads/current_WL.xlsx` / `current_SY38.xlsx`，不覆盖仓库模板。
 - 第六页新增站点级 `sequence_setup` 开关；`FACTORY_SITE` 支持每厂独立实例。
-- 最终验证：全量 97/97，快速 54/54；真实 API `/api/solve` success / 19 tasks / 17 checks。
+- 最终验证：全量 105/105，快速 59/59；真实 API `/api/solve` success / 19 tasks / 17 checks。
 - 仍待完成：C1-b 真正班内 sequence 变量、C2-b CP-SAT Assign(i,m)、B4-b CP-SAT 库存约束、C4/C5。
 
 ### 2026-10-29 P0 重大修复：调度器算子接线断层与旧布尔门控死锁闭环
@@ -645,6 +645,68 @@ python -m unittest discover -s tests -v
   - 新增 `tests/test_operator_wiring.py` 6/6 全部绿色通过（0.10s）；
   - 将用例加入 `run_tests.py --fast`，快速回归套件扩充至 **60/60 全部 PASS（60.5s）**；
   - 黄金基线 `tests/test_golden_baseline.py` 13/13 项全绿通过（720s），既有排产业务与物理不变量零退化。
+
+### C1-b-3 班内 start/end + setup 数值化
+
+- `_add_sequence_constraints` 为每个 line/shift 的任务增加 `seq_start/seq_end/seq_setup`；`end = start + processing`，并受班次时间上限约束。
+- `trans` 相邻任务约束 `start_b >= end_a + setup`；跨班 `carry` 约束下一班首件 setup；`first` 首件无 carry 时从 0 开始。
+- 新增 `ScheduleResult.sequence_plan`：输出 task/line/shift/start_min/end_min/setup_min/first/last/sequence；`/api/solve` 返回 `sequence_plan`。
+- Gantt 页新增“班内 Sequence / SDST 明细”面板，直接展示每条任务开始/结束/setup/首末件。
+- WL 5 天 sequence_setup=true 实测：19 tasks、63 条 sequence 记录、900 setup 分钟。
+- `tests/test_capacity_kernel.py` 增加数值断言：`end >= start >= 0`，setup 总和 > 0。
+- 仍是可选开关；默认关闭，Setup-Matrix 仍为 mock。
+
+### C1-b-4 换模技术员 setup 区间
+
+- `APSScheduler(setup_technicians_available=N)` 在 sequence 开启时为每个 setup 建立可选区间 `[start-setup, start]`，按班次做 `AddCumulative`，限制同时进行的换模数量。
+- 站点设置增加 `setup_technicians_available`（默认 0 = 不启用），第六页可配置；`/api/solve` 可传同名字段。
+- 技术员需求已按 Setup-Matrix 边的 `Technicians Required` 计，不再统一按 1 人；能力不足仍可能不可行。
+- 新增 `tests/test_capacity_kernel.py` 第 3 项；全量 98/98、快速 55/55。
+
+### B4-b FG 库存软约束
+
+- `APSScheduler(inventory_policies=...)` 新增 FG 逐时点库存上限 soft penalty：opening + 累计产出 - 累计需求，按 Inventory-Policy 的 max_days/max_stock 计罚。
+- 站点设置新增 `inventory_policy_enabled`（默认 false）与第六页开关；`/api/solve` 可传同名字段。
+- 当前 FG 与 SF 都做 soft 上限；SF 需求由 FG 累计产出 × BOM 比例计算；`inventory_hard_enabled` 可切换为硬上限，默认关闭；库存策略仍是 mock 值。
+- 新增 `tests/test_capacity_kernel.py` 第 4 项；全量 99/99、快速 56/56。
+
+### C2-b-a 路线重指派接线
+
+- `routing_assign_enabled` 站点开关接入 `/api/solve`；服务端在建 plan 后调用 `assign_routing_lines()`，返回 `routing_decisions`。
+- 这是 preprocessor：主线负荷超过 95% 时移备线，不是 CP-SAT Assign(i,m)。
+- WL 5 天实测 `status=success`，当前数据无过载决策（0 条）；功能路径已通。
+
+### 2026-10-29 hotfix：排产后页面空白（sequencePlan 未 expose）
+
+- 现象：排产 80s 后页面空白，Vue 报 `Cannot read properties of undefined (reading 'length')`。
+- 原因：`sequencePlan` 被误插入 `backupAutoScheduleData`，但未加入 Vue setup return；模板 `sequencePlan.length` 读取 undefined。
+- 修复：从 backup object 移除，加入真正 setup return；`sequencePlan` 初始化为 `[]`。
+- 验证：Playwright headless 加载页面 + mock `/api/solve` 响应，`pageerror=0`；页面正常显示生产平衡。
+
+### C2-b-0 CP-SAT 路线分配阶段
+
+- `src/routing.py::solve_routing_assignment()`：对每个有候选线的任务建立 CP-SAT 选址变量，按产线总工时容量 + 主候选惩罚求解；主排产仍由 scheduler 执行。
+- `/api/solve` 的 `routing_assign_enabled` 先调这个 CP-SAT 阶段，失败/无决策时回退到启发式 `assign_routing_lines()`。
+- 新增 `tests/test_routing.py` 第 5 项；全量 100/100、快速 56/56。
+- 边界：这是上游 assignment 阶段，尚未把 Assign(i,m) 与班次容量/换型/技术员联立；SY38 5 天当前无任务，未产生决策。
+
+### C4-a 工序提前期软约束
+
+- `ProductionTask.lead_time_days` 从 Parameters-SFN 透传；`enforce_lead_time` / 站点 `leadtime_enabled` 开启后，SF 完工与父 FG 完工之间按 `ceil(lead_days × shifts_per_day)` 计 soft lag penalty。
+- 已把 Operation-LeadTime 的 setup/queue/inspection/move 与 `lead_time_days` 合并为 shift gap；Transfer Batch Qty 用于计算 move 次数并计入 gap。
+- 新增 `tests/test_capacity_kernel.py` 第 5 项；全量 101/101、快速 57/57。
+
+### C5-a Campaign Group 软约束
+
+- 新增 `src/campaign.py` 读取 Campaign-Families；`campaign_enabled` / 站点开关开启后，同一产线/班次出现多个 Campaign Group 时产生 soft penalty。
+- 新增 `tests/test_campaign.py` 2 项，并在 `test_capacity_kernel.py` 增加 campaign 求解用例；全量 104/104、快速 58/58。
+- 当前只做同班次分组惩罚，不做跨班 campaign 连续、Pull 或 Slack。
+
+### C5-b 交期 Slack 软约束
+
+- `APSScheduler(due_slack_shifts=N)` / 站点 `due_slack_shifts`：对 FG 完工早于 due 的 N 个班次做 soft lag penalty；0 = 关闭。
+- 新增第六页数值配置；API 实测 `due_slack_shifts=2` 返回 success / 19 tasks。
+- Pull 仍复用 30 天 lookahead，没有单独的 Pull 规则。
 
 ### 待做
 

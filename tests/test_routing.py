@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from src.routing import RoutingOption, assign_routing_lines, candidates_for, load_routing, primary_line
+from src.routing import RoutingOption, assign_routing_lines, candidates_for, load_routing, primary_line, solve_routing_assignment
 
 
 class TestRoutingCandidates(unittest.TestCase):
@@ -49,6 +49,30 @@ class TestRoutingCandidates(unittest.TestCase):
         task = Task()
         decisions = assign_routing_lines(
             [task], routing, site="SY38", capacity_hours_by_line={"PU07": 0.5, "PU22": 10.0}
+        )
+        self.assertEqual(task.line, "PU22")
+        self.assertEqual(decisions[0]["to"], "PU22")
+
+
+    def test_cpsat_assignment_moves_overloaded_primary(self):
+        class Task:
+            task_id = "T1"
+            part_no = "P1"
+            stage = "FG"
+            line = "PU07"
+            quantity = 100.0
+            ct_seconds = 72.0
+            trp = 1.0
+
+        routing = {
+            ("SY38", "P1", 20): [
+                RoutingOption("SY38", "P1", "FG", 20, "总装", "PU07", "PU07", "PU07-M1", True, 72, 1.0, 30, 1),
+                RoutingOption("SY38", "P1", "FG", 20, "总装", "PU07", "PU22", "PU22-M1", True, 80, 1.0, 30, 2),
+            ]
+        }
+        task = Task()
+        decisions = solve_routing_assignment(
+            [task], routing, site="SY38", capacity_hours_by_line={"PU07": 1.0, "PU22": 10.0}
         )
         self.assertEqual(task.line, "PU22")
         self.assertEqual(decisions[0]["to"], "PU22")

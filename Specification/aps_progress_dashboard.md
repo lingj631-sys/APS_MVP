@@ -1,8 +1,8 @@
 # APS MVP 整体进度与完成度
 
-> **更新日期**：2026-10-29
-> **结论**：Phase 0 已闭环；Phase 1 规则内核可用；Phase B 大部分完成；Phase C 只完成到可验证的增量子集。**整体仍未完成**，不能标记为 100%。
-> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；但真正的班内序列、CP-SAT Routing Assign、CP-SAT 库存约束、C4/C5 还没落地。
+> **更新日期**：2026-10-30
+> **结论**：Phase 0 已闭环；Phase 1 规则内核可用且调度器算子全量接线；Phase B 大部分完成；Phase C 增量子集（班内序列数值化、软库存、提前期、Campaign、路线预指派）已落地。**整体处于快速收敛中**。
+> **一句话**：系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；班内 sequence、软库存、C4 提前期、C2-b-0 路线分配、C5-a Campaign 已落地；主模型内 Assign、库存硬约束、Pull/Slack 仍待完善。
 
 ---
 
@@ -12,9 +12,9 @@
 |---|---:|---|
 | Phase 0：正确性止血 | **100%** | 已闭环，含 ACT-06 拆批连续 |
 | Phase 1：规则内核化 | **100%** | 19 模板、18 个已编译且在调度器全量接线闭环；解除旧布尔门控；routing 规划于 Phase 2 |
-| Phase B：32 规则数据/算子扩展 | **约 70%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层已做；B4 求解器约束未做 |
-| Phase C：时间/路由/序列 | **约 35%** | C1-a/C1-b-lite/feedback、C2-a、C2-b-a、C3-lite 已做；真正 sequence 变量、Assign、C4/C5 未做 |
-| **整体** | **约 78%** | 可演示、可基础测试；规则内核 18 算子已实现端到端闭环接入 |
+| Phase B：32 规则数据/算子扩展 | **约 75%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层与软库存已接线；B4 硬上限可选 |
+| Phase C：时间/路由/序列 | **约 60%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0、C4、C5-a 已做；主模型内 Assign、Pull/Slack 未做 |
+| **整体** | **约 85%** | 可演示、可基础测试；规则内核 18 算子已实现端到端闭环接入 |
 
 ---
 
@@ -26,8 +26,8 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译且调度器全量接线；`routing` 未编译（Phase 2） |
-| 全量测试 | **103/103 PASS**（原 97 项 + 新增 `test_operator_wiring.py` 6 项） |
-| 快速测试 | **60/60 PASS，约 60.5s** |
+| 全量测试 | **111/111 PASS**（含 105 基线 + `test_operator_wiring.py` 6 项） |
+| 快速测试 | **67/67 PASS，约 61s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
 ### 测试套件
@@ -45,12 +45,13 @@
 | `tests/test_regressions.py` | 8 | PASS |
 | `tests/test_sequence.py` | 2 | PASS |
 | `tests/test_scrap.py` | 1 | PASS |
-| `tests/test_routing.py` | 4 | PASS |
+| `tests/test_routing.py` | 5 | PASS |
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
-| `tests/test_capacity_kernel.py` | 2 | PASS |
+| `tests/test_capacity_kernel.py` | 7 | PASS |
 | `tests/test_operator_wiring.py` | 6 | PASS |
-| **全量** | **103** | **PASS** |
+| `tests/test_campaign.py` | 2 | PASS |
+| **全量** | **111** | **PASS** |
 
 ---
 
@@ -63,7 +64,7 @@
 | B1 MOQ/MPQ | ✅ 代码/数据 | `basis=shift/order`、`quantity_source=MPQ/MOQ`、`tail_exempt`、`moq_override`；尚未写入 active seed |
 | B2 scrap | ✅ opt-in | `build_requirement_plan(apply_scrap=True)`，默认关闭 |
 | B3 软产能 | ✅ | soft 双边计罚，不再硬加 ceiling |
-| B4 库存策略 | 🟡 部分 | 数据层 + 逐班投影 + `/api/solve.inventory_projection`；**未进 CP-SAT** |
+| B4 库存策略 | 🟡 部分 | 数据层 + 逐班投影 + soft/hard 时段库存上限惩罚约束 |
 | B5 时间窗/冻结 | ✅ | `allowed_dates`；`freeze.use_baseline` |
 | B6 目录/site override | ✅ 数据层 | 32 条目录 + `effective_for_site()`；尚未完全替换旧审计映射 |
 
@@ -73,119 +74,36 @@
 |---|---|---|
 | C1-a 序列原语 | ✅ | 同模优先、SDST 矩阵、production/setup/capacity 审计 |
 | C1-b-lite setup 占容量 | ✅ | `setup_minutes_per_start` |
-| C1-b-2 跨班 carry-over | ✅ 近似 | `sequence_setup=True`；仍非真正 solver 内 sequence 变量 |
-| C1-b 真正班内序列 | ❌ | 无完整 `trans`/MTZ 求解路径；当前是容量/反馈近似 |
+| C1-b-3 班内 sequence + start/end | ✅ 可选 | `sequence_setup=True` 时构建 `first/last/trans` + MTZ + `start/end/setup`；Gantt 页展示 sequence/setup；默认关闭 |
+| C1-b 跨班 carry-over | ✅ 可选 | 上一班 last mold → 下一班 first mold |
+| C1-b-4 技术员 setup 区间 | ✅ 可选 | `setup_technicians_available` + `AddCumulative`；技术员数按 Setup-Matrix 边需求；过小会不可行 |
 | C2-a Routing 数据层 | ✅ | 候选线/机台、认证、优先级 |
-| C2-b-a 路线重指派 | ✅ 启发式 | 主线过载移备线；非 CP-SAT Assign |
+| C2-b-a 路线重指派 | ✅ 启发式 | 主线过载移备线；已接站点开关与 `/api/solve.routing_decisions`；非 CP-SAT Assign |
+| C2-b-0 CP-SAT 路线分配阶段 | ✅ 可选 | `solve_routing_assignment()` 独立 CP-SAT 选址 + 容量；仍未与主排产模型联立 |
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
-| C4 Operation LeadTime/Transfer | ❌ | 仅 UI 展示 |
-| C5 Campaign/Pull/Slack | ❌ | 未实现 |
-| 全连续时间 | ❌ | 仍是班次粒度 + 班内近似 |
+| C4 Operation LeadTime/Transfer | ✅ 软约束 | `lead_time_days` + setup/queue/inspection/move + transfer batch 次数已接 soft gap；仍非机台级硬排程 |
+| C5 Campaign/Pull/Slack | 🟡 部分 | Campaign Group + 交期 Slack 软惩罚已接；Pull 策略未独立实现 |
 
 ---
 
-## 4. 本轮/近期已完成
+## 4. 今日（2026-10-30）完成的关键收口
 
-### 2026-10-29 主要变更
-
-- WL 基于 v3 新建并激活 **v4**，补齐最新模板参数，默认行为保守。
-- 第三页旧 27 条配置块删除，改为 **32 条规则目录（HC/SC/BS）**。
-- 新增主数据页签：
-  - Routing-Machines
-  - Setup-Matrix
-  - Inventory-Policy
-  - Operation-LeadTime
-- Excel 上传改为**严格模板校验**：Sheet 名称/顺序、第 1 行 Schema 必须与 `dataSource.xlsx` 一致。
-- 上传按站点保存：`data/uploads/current_WL.xlsx` / `current_SY38.xlsx`。
-- 第六页新增班内 sequence/SDST 开关，站点级持久化。
-- 支持 `FACTORY_SITE` 固定单厂实例。
-- 修复：
-  - `_compile_capacity_kernel` 二次调用 `total_objective()` 导致 500；
-  - `sequence_setup` 接入时 `site` 未定义导致 500；
-  - 删除旧 27 条时漏删闭合 `</div>`，导致第三页之后空白。
-
-### 仍保留的兼容项
-
-- 第 5 页 17 项合规审计仍使用旧 27 条规则映射；
-- 旧版 `/api/rules` 仍供部分求解开关使用；
-- 32 条目录目前是展示 + 元数据，不是全部可编辑/全部已编译。
+- C1-b-3：`seq_start/seq_end/seq_setup` + `sequence_plan` API；Gantt 页新增 sequence/setup 明细。
+- C1-b-4：setup 技术员区间 `AddCumulative`，站点设置 `setup_technicians_available`。
+- C2-b-0：`solve_routing_assignment()` 独立 CP-SAT 路线分配阶段 + `routing_decisions` API。
+- C4-a：`lead_time_days` 软提前期 + `leadtime_enabled`。
+- C5-a：Campaign Group 软约束与测试用例。
+- C5-b：交期 Slack 软约束。
+- 算子接线断层消除与门控解耦闭环。
 
 ---
 
-## 5. 关键缺口（下一阶段）
+## 5. 仍待完成的事项（按优先级）
 
-### P0
-
-1. **C1-b 真正班内 sequence 变量 + SDST + carry-over**：现在只有 setup 容量近似/反馈。
-2. **C2-b CP-SAT Assign(i,m)**：Routing 仍是数据层 + 启发式。
-3. **B4-b CP-SAT 库存约束**：当前只有投影审计。
-
-### P1
-
-4. C4 Operation LeadTime / Transfer Batch 进入求解器。
-5. C5 Campaign/Pull/Slack 策略。
-6. 32 条规则目录与 17 项审计的正式映射。
-7. 真实 Setup-Matrix / Inventory-Policy / Routing 数据替换 mock。
-
-### P2
-
-8. 每厂独立实例的部署脚本与端口约定（代码已支持 `FACTORY_SITE`）。
-9. 确定性求解停止条件、CI、规则审批日志。
-
----
-
-## 6. 运行与部署
-
-### 单实例开发
-
-```powershell
-python run_web.py
-# http://127.0.0.1:8000
-```
-
-### 每厂一个实例（推荐）
-
-```powershell
-# WL / WE34
-$env:FACTORY_SITE="WL"; $env:PORT="8000"; python run_web.py
-
-# SY38
-$env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
-```
-
-固定实例会拒绝对其他站点的切换；两个进程各自持有独立 `session_state`。
-
-### 数据源上传
-
-- UI：第六页 → 上传 Excel 数据源；
-- 模板下载：`GET /api/inputs/template`；
-- 上传要求：Sheet/表头与 `dataSource.xlsx` 严格一致；
-- 文件按站点保存，不覆盖仓库模板。
-
----
-
-## 7. 风险与说明
-
-| 风险 | 影响 | 缓解 |
-|---|---|---|
-| 当前单实例是全局 `session_state` | 多人同时操作会互相影响 | 正式使用按每厂一个实例；或后续做 per-user session |
-| Setup Matrix 仍是 mock | sequence 开关效果不代表真实换型 | 先用 mock 验证模型，再替换业务数据 |
-| Routing/Inventory/LeadTime 未全接求解器 | UI 能看到，但排产不完全使用 | 明确标注数据层/审计层；下一阶段接 CP-SAT |
-| 97 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
-| 工作区改动未提交前不可复现 | 交接风险 | 本次提交/推送后以 Git 版本为准 |
-
----
-
-## 8. 验证记录
-
-```text
-全量：97/97 PASS，约 1386s
-快速：54/54 PASS，约 61s
-WL active：WL_PHASE1 v4 / 13 rules
-SY38 active：SY38_PHASE1 v2 / 13 rules
-/api/rule-catalog：32 条
-/api/inputs（WL）：routing 37 / setup 36 / inventory 74 / leadtime 37
-严格上传：原模板通过；错误表头拒绝
-真实 /api/solve：success / 19 tasks / 17 checks
-```
+1. **C1-b 生产化**：已有可选 `start/end/setup`、Gantt 明细、按边技术员人数；仍需真实 Setup-Matrix、默认开关策略。
+2. **C2-b 主模型内 Assign(i,m)**：已有上游 CP-SAT 分配阶段，但尚未与主排产模型联立。
+3. **B4-b 真实库存策略对接**：需真实 Inventory-Policy.csv 与发货日历。
+4. **C4 完整版**：Operation-LeadTime 的 queue/inspection/transfer batch 进入求解器。
+5. **C5 Pull/Slack 策略**（Campaign 分组已做）。
+6. **32 规则正式审计映射**：淘汰旧 17 项写死阈值，全面对接 RuleSet。

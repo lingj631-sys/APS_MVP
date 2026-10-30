@@ -477,7 +477,7 @@ python -m unittest discover -s tests -v
 ### 8.1 当前测试口径
 
 - 快速回归：`run_tests.py --fast` 59/59 + `test_regressions` 8/8 = **67/67 绿**；
-- 全量：**105/105 绿（新增 slack 测试；最新完整跑 104）**；
+- 全量：**105/105 绿，1387.6s**；
 - 全量回归已闭环。
 
 ---
@@ -707,6 +707,12 @@ python -m unittest discover -s tests -v
 - `APSScheduler(due_slack_shifts=N)` / 站点 `due_slack_shifts`：对 FG 完工早于 due 的 N 个班次做 soft lag penalty；0 = 关闭。
 - 新增第六页数值配置；API 实测 `due_slack_shifts=2` 返回 success / 19 tasks。
 - Pull 仍复用 30 天 lookahead，没有单独的 Pull 规则。
+
+### 2026-10-30 阶段收口
+
+- 全量 105/105、快速 59/59。
+- 已推送 main：C1-b-3/4、B4-b FG/SF soft/hard 选项、C2-b-0 CP-SAT 路线分配阶段、C4 lead time + transfer batch、C5-a Campaign、C5-b Slack。
+- 仍未完成：C2-b 主模型内 Assign(i,m)、C5 Pull 独立策略、32 条规则与 17 项审计映射、真实主数据替换。
 
 ### 待做
 

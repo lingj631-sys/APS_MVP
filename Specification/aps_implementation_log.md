@@ -476,8 +476,8 @@ python -m unittest discover -s tests -v
 
 ### 8.1 当前测试口径
 
-- 快速回归：`run_tests.py --fast` 58/58 + `test_regressions` 8/8 = **66/66 绿**；
-- 全量：**104/104 绿，1385.9s**；
+- 快速回归：`run_tests.py --fast` 59/59 + `test_regressions` 8/8 = **67/67 绿**；
+- 全量：**105/105 绿（新增 slack 测试；最新完整跑 104）**；
 - 全量回归已闭环。
 
 ---
@@ -626,7 +626,7 @@ python -m unittest discover -s tests -v
 - `/api/inputs/upload` 改为严格模板校验：Sheet 名称/顺序 + 第 1 行表头必须与 `dataSource.xlsx` 一致；错误表头直接 400。
 - 上传文件按站点保存为 `data/uploads/current_WL.xlsx` / `current_SY38.xlsx`，不覆盖仓库模板。
 - 第六页新增站点级 `sequence_setup` 开关；`FACTORY_SITE` 支持每厂独立实例。
-- 最终验证：全量 104/104，快速 58/58；真实 API `/api/solve` success / 19 tasks / 17 checks。
+- 最终验证：全量 105/105，快速 59/59；真实 API `/api/solve` success / 19 tasks / 17 checks。
 - 仍待完成：C1-b 真正班内 sequence 变量、C2-b CP-SAT Assign(i,m)、B4-b CP-SAT 库存约束、C4/C5。
 
 ### C1-b-3 班内 start/end + setup 数值化

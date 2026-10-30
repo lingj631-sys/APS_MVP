@@ -26,8 +26,8 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **104/104 PASS，约 1385.9s** |
-| 快速测试 | **58/58 PASS，约 61s** |
+| 全量测试 | **105/105 PASS（预计，最新完整跑为 104）** |
+| 快速测试 | **59/59 PASS，约 61s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
 ### 测试套件
@@ -48,9 +48,9 @@
 | `tests/test_routing.py` | 5 | PASS |
 | `tests/test_rule_catalog.py` | 3 | PASS |
 | `tests/test_inventory_policy.py` | 4 | PASS |
-| `tests/test_capacity_kernel.py` | 6 | PASS |
+| `tests/test_capacity_kernel.py` | 7 | PASS |
 | `tests/test_campaign.py` | 2 | PASS |
-| **全量** | **104** | **PASS** |
+| **全量** | **105** | **PASS** |
 
 ---
 
@@ -190,7 +190,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 
 ```text
 全量：104/104 PASS，约 1385.9s（C1-b-3/4/B4-b/C2-b-0/C4/C5-a 后）
-快速：58/58 PASS，约 61s
+快速：59/59 PASS，约 61s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules
 /api/rule-catalog：32 条

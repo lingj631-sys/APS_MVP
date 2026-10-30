@@ -2,7 +2,7 @@
 
 > **更新日期**：2026-10-30
 > **结论**：Phase 0 已闭环；Phase 1 规则内核可用；Phase B 大部分完成；Phase C 只完成到可验证的增量子集。**整体仍未完成**，不能标记为 100%。
-> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；班内 sequence、软库存、C4-a 提前期、C2-b-0 路线分配阶段已落地；主模型内 Assign、库存硬约束、C5 仍未完成。
+> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；班内 sequence、软库存、C4 提前期、C2-b-0 路线分配、C5-a Campaign 已落地；主模型内 Assign、库存硬约束、Pull/Slack 仍未完成。
 
 ---
 
@@ -13,8 +13,8 @@
 | Phase 0：正确性止血 | **100%** | 已闭环，含 ACT-06 拆批连续 |
 | Phase 1：规则内核化 | **95%** | 19 模板、18 编译；routing 仍未编译 |
 | Phase B：32 规则数据/算子扩展 | **约 70%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层已做；B4 求解器约束未做 |
-| Phase C：时间/路由/序列 | **约 50%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0、C4-a 已做；主模型内 Assign、C5 未做 |
-| **整体** | **约 80%** | 可演示、可基础测试；不是完整 32 规则求解器 |
+| Phase C：时间/路由/序列 | **约 55%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0、C4、C5-a 已做；主模型内 Assign、Pull/Slack 未做 |
+| **整体** | **约 82%** | 可演示、可基础测试；不是完整 32 规则求解器 |
 
 ---
 
@@ -133,7 +133,7 @@
 ### P1
 
 4. C4 完整版：Operation-LeadTime 的 queue/inspection/transfer batch 进入求解器。
-5. C5 Campaign/Pull/Slack 策略。
+5. C5 Pull/Slack 策略（Campaign 分组已做）。
 6. 32 条规则目录与 17 项审计的正式映射。
 7. 真实 Setup-Matrix / Inventory-Policy / Routing 数据替换 mock。
 

@@ -1,8 +1,8 @@
 # APS MVP 整体进度与完成度
 
-> **更新日期**：2026-10-29
+> **更新日期**：2026-10-30
 > **结论**：Phase 0 已闭环；Phase 1 规则内核可用；Phase B 大部分完成；Phase C 只完成到可验证的增量子集。**整体仍未完成**，不能标记为 100%。
-> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；但真正的班内序列、CP-SAT Routing Assign、CP-SAT 库存约束、C4/C5 还没落地。
+> **一句话**：现有系统可跑通 WL/SY38 排产、17 项校验、规则集编辑、严格模板上传；班内 sequence、软库存、C4-a 提前期、C2-b-0 路线分配阶段已落地；主模型内 Assign、库存硬约束、C5 仍未完成。
 
 ---
 
@@ -13,8 +13,8 @@
 | Phase 0：正确性止血 | **100%** | 已闭环，含 ACT-06 拆批连续 |
 | Phase 1：规则内核化 | **95%** | 19 模板、18 编译；routing 仍未编译 |
 | Phase B：32 规则数据/算子扩展 | **约 70%** | MOQ/MPQ、软产能、时间窗、冻结、scrap、库存策略数据层已做；B4 求解器约束未做 |
-| Phase C：时间/路由/序列 | **约 40%** | C1-a/C1-b-3、C2-a、C2-b-a、C3-lite 已做；CP-SAT Assign、C4/C5 未做 |
-| **整体** | **约 77%** | 可演示、可基础测试；不是完整 32 规则求解器 |
+| Phase C：时间/路由/序列 | **约 50%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0、C4-a 已做；主模型内 Assign、C5 未做 |
+| **整体** | **约 80%** | 可演示、可基础测试；不是完整 32 规则求解器 |
 
 ---
 
@@ -22,7 +22,7 @@
 
 | 项 | 当前值 |
 |---|---|
-| 分支 | `main` @ `5d5908d`（本地已提交；GitHub 推送因 TLS 网络失败待重试） |
+| 分支 | `main` @ `55fd955`（已推送 GitHub） |
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
@@ -80,7 +80,7 @@
 | C2-b-0 CP-SAT 路线分配阶段 | ✅ 可选 | `solve_routing_assignment()` 独立 CP-SAT 选址 + 容量；仍未与主排产模型联立 |
 | C2-b CP-SAT Assign | ❌ | 未实现 |
 | C3-lite 技术员容量 | ✅ 近似 | 按班次 run start 数限制 |
-| C4 Operation LeadTime/Transfer | 🟡 部分 | `lead_time_days` 软约束 + 站点开关；Operation-LeadTime 队列/转移批量未接 |
+| C4 Operation LeadTime/Transfer | 🟡 部分 | `lead_time_days` + Operation-LeadTime 的 setup/queue/inspection/move 已接软约束；transfer batch 未接 |
 | C5 Campaign/Pull/Slack | ❌ | 未实现 |
 | 全连续时间 | ❌ | 仍是班次粒度 + 班内近似 |
 
@@ -102,8 +102,12 @@
 - 第六页新增班内 sequence/SDST 开关，站点级持久化。
 - C1-b-3：`seq_start/seq_end/seq_setup` + `sequence_plan` API；Gantt 页新增 sequence/setup 明细。
 - C1-b-4：setup 技术员区间 `AddCumulative`，站点设置 `setup_technicians_available`。
-- 测试扩到 **98 全量 / 55 快速**。
+- 测试扩到 **101 全量 / 57 快速**。
 - 支持 `FACTORY_SITE` 固定单厂实例。
+- C2-b-0：`solve_routing_assignment()` 独立 CP-SAT 路线分配阶段 + `routing_decisions` API。
+- B4-b：FG/SF 库存上限 soft penalty + `inventory_policy_enabled`。
+- C4-a：`lead_time_days` 软提前期 + `leadtime_enabled`。
+- UI 空白页修复：`sequencePlan` 未 expose；Playwright 验证 `pageerror=0`。
 - 修复：
   - `_compile_capacity_kernel` 二次调用 `total_objective()` 导致 500；
   - `sequence_setup` 接入时 `site` 未定义导致 500；
@@ -121,13 +125,13 @@
 
 ### P0
 
-1. **C1-b 生产化**：已有可选 `start/end/setup`、Gantt 明细、技术员 setup 区间；仍需真实 Setup-Matrix、默认开关策略、按模具区分技术员人数。
-2. **C2-b CP-SAT Assign(i,m)**：Routing 仍是数据层 + 启发式。
-3. **B4-b CP-SAT 库存约束**：当前只有投影审计。
+1. **C1-b 生产化**：已有可选 `start/end/setup`、Gantt 明细、按边技术员人数；仍需真实 Setup-Matrix、默认开关策略。
+2. **C2-b 主模型内 Assign(i,m)**：已有上游 CP-SAT 分配阶段，但尚未与主排产模型联立。
+3. **B4-b 库存硬约束/SF 硬上限**：当前 FG/SF 都是 soft；硬上限未做。
 
 ### P1
 
-4. C4 Operation LeadTime / Transfer Batch 进入求解器。
+4. C4 完整版：Operation-LeadTime 的 queue/inspection/transfer batch 进入求解器。
 5. C5 Campaign/Pull/Slack 策略。
 6. 32 条规则目录与 17 项审计的正式映射。
 7. 真实 Setup-Matrix / Inventory-Policy / Routing 数据替换 mock。

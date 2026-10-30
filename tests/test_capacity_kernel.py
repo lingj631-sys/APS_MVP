@@ -15,6 +15,7 @@ if BASE_DIR not in sys.path:
 
 from src.data_loader import build_requirement_plan, load_aps_database
 from src.inventory_policy import load_inventory_policy
+from src.leadtime import lead_shifts, load_operation_lead_times
 from src.kernel.types import GroupMode, Nature, RuleGroup, RuleInstance, RuleSet, Scope
 from src.scheduler import APSScheduler
 from src.shift_manager import CalendarMode
@@ -118,12 +119,19 @@ class TestCapacityKernelWiring(unittest.TestCase):
 
     def test_lead_time_soft_constraint_solves(self):
         snap, plan, start = _wl_plan(5)
+        entries = load_operation_lead_times(
+            os.path.join(BASE_DIR, "data", "master", "Operation-LeadTime.csv"), site="WL"
+        )
+        self.assertTrue(entries)
+        entry = next(iter(entries.values()))
+        self.assertGreaterEqual(lead_shifts(entry, lead_time_days=1.0, shift_hours=8.0), 1)
         sched = APSScheduler(
             plan,
             start_datetime=start,
             planning_days=5,
             calendar_mode=CalendarMode.SEVEN_ZERO,
             site="WL",
+            operation_lead_times=entries,
             enforce_lead_time=True,
         )
         result = sched.solve(time_limit_seconds=10.0)

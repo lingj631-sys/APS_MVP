@@ -305,6 +305,7 @@ class APSScheduler:
         sequence_setup: bool = False,
         setup_technicians_available: int = 0,
         inventory_policies: Optional[Dict[Any, Any]] = None,
+        operation_lead_times: Optional[Dict[Any, Any]] = None,
         enforce_lead_time: bool = False,
         sequence_feedback: bool = False,
         setup_matrix: Optional[Dict[Any, Any]] = None,
@@ -366,6 +367,7 @@ class APSScheduler:
         self.sequence_setup = bool(sequence_setup)
         self.setup_technicians_available = max(0, int(setup_technicians_available or 0))
         self.inventory_policies = dict(inventory_policies or {})
+        self.operation_lead_times = dict(operation_lead_times or {})
         self.enforce_lead_time = bool(enforce_lead_time)
         self._sequence_vars = {}
         if self.sequence_setup:
@@ -1368,9 +1370,14 @@ class APSScheduler:
             if parent is None or parent.task_id not in end_of or sf_task.task_id not in end_of:
                 continue
             lead_days = float(getattr(sf_task, "lead_time_days", 0.0) or 0.0)
-            if lead_days <= 0:
+            if lead_days <= 0 and not self.operation_lead_times:
                 continue
-            lead_shifts = max(1, int(math.ceil(lead_days * shifts_per_day)))
+            from src.leadtime import lead_shifts as _lead_shifts
+            entry = self.operation_lead_times.get((self.site, sf_task.part_no, 10))
+            lead_shift_count = _lead_shifts(entry, lead_time_days=lead_days, shift_hours=self.shift_hours)
+            if lead_shift_count <= 0:
+                continue
+            lead_shifts = lead_shift_count
             lag = model.NewIntVar(0, lead_shifts, f"lead_lag.{sf_task.task_id}")
             model.Add(lag >= lead_shifts - (end_of[parent.task_id] - end_of[sf_task.task_id]))
             penalties.append(lag)

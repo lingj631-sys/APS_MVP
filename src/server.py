@@ -44,6 +44,7 @@ from src.exporter import export_production_plan, export_validation_matrix_excel
 from src.kernel.rule_mapping import describe_legacy_rule
 from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
+from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
 from src.rule_catalog import load_catalog
 from src.routing import assign_routing_lines, load_routing, solve_routing_assignment
@@ -1799,6 +1800,15 @@ def run_solver(payload: SolvePayload):
         load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"), site=payload.site.upper())
         if inventory_enabled else {}
     )
+    leadtime_enabled = (
+        payload.leadtime_enabled
+        if payload.leadtime_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("leadtime_enabled", False)
+    )
+    operation_lead_times = (
+        load_operation_lead_times(os.path.join(DATA_DIR, "master", "Operation-LeadTime.csv"), site=payload.site.upper())
+        if leadtime_enabled else {}
+    )
     scheduler = APSScheduler(
         plan=plan,
         start_datetime=start_dt,
@@ -1831,11 +1841,8 @@ def run_solver(payload: SolvePayload):
             else site_settings_store.get(payload.site.upper(), {}).get("setup_technicians_available", 0)
         ),
         inventory_policies=inventory_policies,
-        enforce_lead_time=(
-            payload.leadtime_enabled
-            if payload.leadtime_enabled is not None
-            else site_settings_store.get(payload.site.upper(), {}).get("leadtime_enabled", False)
-        ),
+        operation_lead_times=operation_lead_times,
+        enforce_lead_time=leadtime_enabled,
     )
 
     # Solve with capacity overload diagnosis

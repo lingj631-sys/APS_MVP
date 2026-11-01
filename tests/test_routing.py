@@ -7,7 +7,16 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from src.routing import RoutingOption, assign_routing_lines, capability_violations, candidates_for, load_routing, primary_line, solve_routing_assignment
+from src.routing import (
+    RoutingOption,
+    assign_routing_lines,
+    available_hours_by_line,
+    capability_violations,
+    candidates_for,
+    load_routing,
+    primary_line,
+    solve_routing_assignment,
+)
 
 
 class TestRoutingCandidates(unittest.TestCase):
@@ -93,6 +102,22 @@ class TestRoutingCandidates(unittest.TestCase):
         bad = capability_violations([Task()], routing, site="SY38")
         self.assertEqual(len(bad), 1)
         self.assertEqual(bad[0]["line"], "BAD")
+
+    def test_available_hours_uses_work_shifts_and_subtracts_pm(self):
+        class Shift:
+            def __init__(self, work):
+                self.is_work_shift = work
+
+        class PM:
+            line = "PU07"
+            downtime_hours = 8.0
+
+        shifts = [Shift(True)] * 5 + [Shift(False)] * 2
+        hours = available_hours_by_line(
+            shifts, shift_hours=12.0, lines=["PU07", "PU22"], pm_schedules=[PM()]
+        )
+        self.assertEqual(hours["PU22"], 60.0)
+        self.assertEqual(hours["PU07"], 52.0)
 
 
 

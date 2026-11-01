@@ -1,8 +1,8 @@
 """
 Shift calendar manager and dynamic calendar scheduler for the APS MVP.
 
-Implements R-AR-01 (Line-Calendar decoupling), R-CL-01..03 (Three-tier intelligent
-calendar selection: 4/3, 5/2, 7/0), and R-BK-01 (holiday backwards due date shift).
+Implements R-AR-01 (Line-Calendar decoupling), R-CL-01..04 (Four-tier intelligent
+calendar selection: 4/3, 5/2, 6/1, 7/0), and R-BK-01 (holiday backwards due date shift).
 
 Option B three-shift pattern:
 - 早班 07:00-15:00, 中班 15:00-23:00, 晚班 23:00-07:00(+1)
@@ -93,17 +93,59 @@ def get_topology(site: Optional[str] = "WL") -> PlantTopology:
     return WL_TOPOLOGY
 
 
+def build_topology(
+    site: Optional[str] = "WL",
+    shift_hours: Optional[float] = None,
+    shifts_per_day: Optional[int] = None,
+) -> PlantTopology:
+    """PlantTopology honouring the workbook's 产线基础数据 (hours × shifts/day).
+
+    The workbook is authoritative for shift geometry; the site constants remain
+    the fallback when the sheet is missing or incomplete.
+    """
+    base = get_topology(site)
+    if not shift_hours and not shifts_per_day:
+        return base
+    hours = float(shift_hours or base.shift_hours)
+    count = int(shifts_per_day or base.shifts_per_day)
+    count = max(1, min(4, count))
+    if count == base.shifts_per_day:
+        start_hour = base.shift_boundaries[0][0]
+        names = base.shift_names
+    else:
+        start_hour = {1: 8, 2: 8, 3: 7}.get(count, 6)
+        names = {
+            1: ("早班",),
+            2: ("早班", "晚班"),
+            3: ("早班", "中班", "晚班"),
+            4: ("早班", "中班", "晚班", "夜班"),
+        }[count]
+    boundaries = tuple((int((start_hour + i * hours) % 24), 0) for i in range(count))
+    due_hour = int(round((start_hour + hours) % 24)) or 24
+    return PlantTopology(
+        site=base.site,
+        shift_hours=hours,
+        shifts_per_day=count,
+        shift_names=names,
+        shift_boundaries=boundaries,
+        due_time_hour=due_hour,
+        min_utilization=base.min_utilization,
+    )
+
+
 class CalendarMode(str, Enum):
     AUTO = "AUTO"              # Auto-select based on demand load ratio
     FOUR_THREE = "FOUR_THREE"  # 做四休三: Mon-Thu worked, Fri-Sun off
     FIVE_TWO = "FIVE_TWO"      # 做五休二: Mon-Fri worked, Sat-Sun off
-    SEVEN_ZERO = "SEVEN_ZERO"  # 连续生产: Mon-Sun worked, no off days
+    SIX_ONE = "SIX_ONE"        # 做六休一: Mon-Sat worked, Sun off
+    SEVEN_ZERO = "SEVEN_ZERO"  # 做七无休: Mon-Sun worked, no off days
 
 
 # Monday is 0, Sunday is 6
 WORKING_DAYS_BY_MODE: Dict[CalendarMode, Set[int]] = {
     CalendarMode.FOUR_THREE: {0, 1, 2, 3},       # Mon, Tue, Wed, Thu
     CalendarMode.FIVE_TWO: {0, 1, 2, 3, 4},       # Mon, Tue, Wed, Thu, Fri
+    CalendarMode.SIX_ONE: {0, 1, 2, 3, 4, 5},     # Mon..Sat, Sun off
     CalendarMode.SEVEN_ZERO: {0, 1, 2, 3, 4, 5, 6}, # All 7 days
 }
 
@@ -142,7 +184,11 @@ class LineCalendar:
 
 
 def decide_calendar_mode(demand_hours: float, full_weekly_capacity_hours: float) -> CalendarMode:
-    """R-CL-01..03: Select calendar mode by load ratio against full 7-day capacity."""
+    """R-CL-01..04: Select calendar mode by load ratio against full 7-day capacity.
+
+    极度空闲 → 做四休三；正常均衡 → 做五休二；产能紧张 → 做六休一；
+    再满负荷 → 做七无休（连续生产）。
+    """
     if full_weekly_capacity_hours <= 0:
         return CalendarMode.SEVEN_ZERO
     ratio = demand_hours / full_weekly_capacity_hours
@@ -150,6 +196,8 @@ def decide_calendar_mode(demand_hours: float, full_weekly_capacity_hours: float)
         return CalendarMode.FOUR_THREE
     elif ratio <= 5.0 / 7.0:
         return CalendarMode.FIVE_TWO
+    elif ratio <= 6.0 / 7.0:
+        return CalendarMode.SIX_ONE
     else:
         return CalendarMode.SEVEN_ZERO
 
@@ -162,20 +210,25 @@ def generate_shift_calendar(
     filter_non_working: bool = True,
     day_shift_overrides: Optional[Dict[str, Any]] = None,
     site: str = "WL",
+    shift_hours: Optional[float] = None,
+    shifts_per_day: Optional[int] = None,
 ) -> List[ShiftBucket]:
     """Build calendar shifts according to the specified calendar pattern or custom overrides.
 
     Uses PlantTopology for the site to determine shift boundaries, hours, and names.
+    ``shift_hours`` / ``shifts_per_day`` override the site constants with the
+    values maintained in the workbook's 产线基础数据 sheet.
     If `filter_non_working` is True, shifts on off-days are excluded from the
     solver slots, turning off-day avoidance into a structural guarantee.
     """
-    topology = get_topology(site)
+    topology = build_topology(site, shift_hours=shift_hours, shifts_per_day=shifts_per_day)
     working_days = custom_working_days or WORKING_DAYS_BY_MODE.get(
         calendar_mode, WORKING_DAYS_BY_MODE[CalendarMode.SEVEN_ZERO]
     )
 
     shifts: List[ShiftBucket] = []
     slot_idx = 0
+    start_hour = topology.shift_boundaries[0][0]
     for day_idx in range(num_days):
         day = start_date + timedelta(days=day_idx)
         date_str = f"{day.month}/{day.day}"
@@ -194,10 +247,7 @@ def generate_shift_calendar(
         if not is_day_working and filter_non_working:
             continue
 
-        boundaries = [
-            datetime(day.year, day.month, day.day, h, m)
-            for h, m in topology.shift_boundaries
-        ]
+        midnight = datetime(day.year, day.month, day.day)
         for i, shift_name in enumerate(topology.shift_names):
             if day_override and "shifts" in day_override:
                 is_shift_working = is_day_working and bool(day_override["shifts"].get(shift_name, True))
@@ -207,13 +257,14 @@ def generate_shift_calendar(
             if not is_shift_working and filter_non_working:
                 continue
 
+            shift_start = midnight + timedelta(hours=start_hour + i * topology.shift_hours)
             shifts.append(
                 ShiftBucket(
                     index=slot_idx,
                     date_str=date_str,
                     shift_name=shift_name,
-                    start_dt=boundaries[i],
-                    end_dt=boundaries[i] + timedelta(hours=topology.shift_hours),
+                    start_dt=shift_start,
+                    end_dt=shift_start + timedelta(hours=topology.shift_hours),
                     weekday=day.weekday(),
                     is_work_shift=is_shift_working,
                 )
@@ -252,11 +303,17 @@ def evaluate_calendar_recommendation(
     horizon_days: int,
     current_calendar_mode: str = "SEVEN_ZERO",
     site: str = "WL",
+    shift_hours: Optional[float] = None,
+    shifts_per_day: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """R-CL-01..03, R-EX-04: Evaluate capacity vs demand and recommend optimal calendar mode."""
-    topology = get_topology(site)
-    # 1. Total theoretical max capacity across horizon (continuous operation)
-    max_theoretical_hours = float(horizon_days * 24.0)
+    """R-CL-01..04, R-EX-04: Evaluate capacity vs demand and recommend optimal calendar mode.
+
+    Four tiers: 做四休三 → 做五休二 → 做六休一 → 做七无休.  Shift geometry
+    (hours per shift × shifts per day) comes from 产线基础数据 when supplied.
+    """
+    topology = build_topology(site, shift_hours=shift_hours, shifts_per_day=shifts_per_day)
+    # 1. Total theoretical max capacity across horizon (all shifts, no rest day)
+    max_theoretical_hours = float(horizon_days * topology.shifts_per_day * topology.shift_hours)
 
     # 2. Compute requirements per line
     line_req_hours: Dict[str, float] = {}
@@ -281,14 +338,18 @@ def evaluate_calendar_recommendation(
     # 3. Simulate the 3 tiers
     s_label = f"{topology.shifts_per_day}班"
     mode_specs = [
-        ("FOUR_THREE", f"做四休三 (4天×{s_label})", f"做四休三 (4×{topology.shifts_per_day})", "极度空闲", "周一至周四满产，周五至周日停工", CalendarMode.FOUR_THREE),
+        ("FOUR_THREE", f"做四休三 (4天×{s_label})", f"做四休三 (4×{topology.shifts_per_day})", "极度空闲", "周一至周四满产，周五至周日停机", CalendarMode.FOUR_THREE),
         ("FIVE_TWO", f"做五休二 (5天×{s_label})", f"做五休二 (5×{topology.shifts_per_day})", "正常均衡", "周一至周五标准排产，周末双休保养", CalendarMode.FIVE_TWO),
-        ("SEVEN_ZERO", f"连续生产 (7天×{s_label})", f"连续生产 (7×{topology.shifts_per_day})", "产能紧张/保供", "周一至周日全开工，全量释放理论产能", CalendarMode.SEVEN_ZERO),
+        ("SIX_ONE", f"做六休一 (6天×{s_label})", f"做六休一 (6×{topology.shifts_per_day})", "产能紧张", "周一至周六排产，周日停机保养", CalendarMode.SIX_ONE),
+        ("SEVEN_ZERO", f"做七无休 (7天×{s_label})", f"做七无休 (7×{topology.shifts_per_day})", "产能极度紧张/保供", "周一至周日全开工，全量释放理论产能", CalendarMode.SEVEN_ZERO),
     ]
 
     tier_evaluations = []
     for code, name, short_name, tier_label, work_pattern, cm in mode_specs:
-        test_shifts = generate_shift_calendar(start_date, horizon_days, calendar_mode=cm, filter_non_working=True, site=site)
+        test_shifts = generate_shift_calendar(
+            start_date, horizon_days, calendar_mode=cm, filter_non_working=True,
+            site=site, shift_hours=topology.shift_hours, shifts_per_day=topology.shifts_per_day,
+        )
         avail_hours = sum(s.duration_hours for s in test_shifts)
         avail_workdays = len(set(s.date_str for s in test_shifts))
         load_rate = (bottleneck_req_hours / avail_hours) if avail_hours > 0 else 999.0
@@ -338,7 +399,8 @@ def evaluate_calendar_recommendation(
     # Standard rules:
     # R-CL-01: ratio <= 4/7 (57.14%) -> FOUR_THREE
     # R-CL-02: 4/7 < ratio <= 5/7 (71.43%) -> FIVE_TWO
-    # R-CL-03: ratio > 5/7 -> SEVEN_ZERO
+    # R-CL-03: 5/7 < ratio <= 6/7 (85.71%) -> SIX_ONE
+    # R-CL-04: 6/7 < ratio <= 1.0 -> SEVEN_ZERO
     # Extreme: ratio > 1.0 -> SEVEN_ZERO + Warning
     if bottleneck_ratio <= 4.0 / 7.0:
         recommended_mode = "FOUR_THREE"
@@ -374,27 +436,44 @@ def evaluate_calendar_recommendation(
             f"做五休二在当前计划期提供 {avail_hours_map.get('FIVE_TWO', 0):.1f}h 工时，可平准化覆盖全部订单交期，无需周末连续开工；",
             "周末正常停机，为冲压/注塑机台 TPM 保养与换模预留合规窗口。"
         ]
+    elif bottleneck_ratio <= 6.0 / 7.0:
+        recommended_mode = "SIX_ONE"
+        recommended_name = f"做六休一 (6天×{s_label})"
+        recommended_short_name = f"做六休一 (6×{s_short})"
+        rule_id = "R-CL-03"
+        confidence = "AI 加压推荐"
+        summary_text = (
+            f"当前 {horizon_days} 天计划期内，瓶颈产线【{bottleneck_line}】工时需求为 {bottleneck_req_hours:.1f}h，"
+            f"负荷率为 {bottleneck_ratio*100:.1f}%（处于 71.4% ~ 85.7% 的紧张区间）。"
+            f"根据排产规则 R-CL-03，属于【产能紧张】状态，推荐取消周日排休、执行做六休一工作制，"
+            f"当前计划期可用总工时为 {avail_hours_map.get('SIX_ONE', 0):.1f}h。"
+        )
+        reasons = [
+            f"产线负荷已超过做五休二的 5/7 门槛（瓶颈工时 {bottleneck_req_hours:.1f}h，负荷率 {bottleneck_ratio*100:.1f}%）；",
+            f"做六休一在当前计划期提供 {avail_hours_map.get('SIX_ONE', 0):.1f}h 工时，在保留周日保养窗口的同时补足产能缺口；",
+            "周日停机用于 TPM 保养与换模准备，避免连续满负荷造成设备劣化。"
+        ]
     elif bottleneck_ratio <= 1.0:
         recommended_mode = "SEVEN_ZERO"
-        recommended_name = f"连续生产 (7天×{s_label})"
-        recommended_short_name = f"连续生产 (7×{s_short})"
-        rule_id = "R-CL-03"
+        recommended_name = f"做七无休 (7天×{s_label})"
+        recommended_short_name = f"做七无休 (7×{s_short})"
+        rule_id = "R-CL-04"
         confidence = "AI 强力保供推荐"
         summary_text = (
             f"当前 {horizon_days} 天计划期内，瓶颈产线【{bottleneck_line}】工时需求达 {bottleneck_req_hours:.1f}h，"
-            f"理论负荷率高达 {bottleneck_ratio*100:.1f}%（突破 5/7 = 71.4% 的高负荷门槛）。"
-            f"根据排产规则 R-CL-03，属于【产能紧张】状态，必须取消常规周末排休，启动 7×{s_short} 连续生产，"
+            f"理论负荷率高达 {bottleneck_ratio*100:.1f}%（突破 6/7 = 85.7% 的高负荷门槛）。"
+            f"根据排产规则 R-CL-04，属于【产能极度紧张】状态，必须取消全部排休，启动 7×{s_short} 做七无休连续生产，"
             f"释放当前计划期全量 {max_theoretical_hours:.0f} 小时产能，以确保 100% 达成客户准时交付。"
         )
         reasons = [
-            f"订单需求高企，瓶颈产线工时已达 {bottleneck_req_hours:.1f}h，若采用做五休二将造成严重交付缺口；",
-            f"根据 R-CL-03 升阶机制：打破常规周末休假，全开 7×{s_short} 班次释放极限交付能力；",
+            f"订单需求高企，瓶颈产线工时已达 {bottleneck_req_hours:.1f}h，若采用做六休一仍将造成交付缺口；",
+            f"根据 R-CL-04 升阶机制：取消周日休息，全开 7×{s_short} 班次释放极限交付能力；",
             "全量开工后负荷率平准至达标区间，避免因批次换型与排产碎片化造成延期违约。"
         ]
     else:
         recommended_mode = "SEVEN_ZERO"
-        recommended_name = f"连续生产 (7天×{s_label}) + 周期扩展"
-        recommended_short_name = "连续生产 (超载预警)"
+        recommended_name = f"做七无休 (7天×{s_label}) + 周期扩展"
+        recommended_short_name = "做七无休 (超载预警)"
         rule_id = "R-EX-04"
         confidence = "AI 极端超载告警"
         summary_text = (

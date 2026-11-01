@@ -286,8 +286,8 @@ def _rules_lex():
 
 
 class TestRuleKernel(unittest.TestCase):
-    def test_01_registry_has_19_templates(self):
-        self.assertEqual(len(TEMPLATES), 19)
+    def test_01_registry_has_20_templates(self):
+        self.assertEqual(len(TEMPLATES), 20)
         self.assertTrue(IMPLEMENTED_TEMPLATES.issubset(set(TEMPLATES)))
         self.assertIn("capacity_utilization", TEMPLATES)
         self.assertIn("labor_capacity", TEMPLATES)

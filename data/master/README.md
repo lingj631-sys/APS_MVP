@@ -1,15 +1,31 @@
 # APS 扩展主数据（Mock / Schema 示例）
 
 > 目的：为 2026-10-28 版 32 条新规则（HC/SC/BS）补齐主数据字段与表格。
-> **当前状态**：`MOQ` 已接入 `ProductParam/ProductionTask`；本目录其余表格是**待接线的扩展主数据**，当前求解器不会读取，因此不影响现有排产；后续按模板/核心模型改造逐步接线。
-> **数据性质**：除 `Parameters-FG/SFN` 的 MOQ 外，本目录全部为**模拟数据**，用于结构、校验和算法联调，不代表真实业务值。
+> **当前状态**：Routing（CT/产线/人数）、Setup-Matrix、Inventory-Policy、Operation-LeadTime、Campaign-Families、Customer-Priority、PM、Tooling 已接线；Labor 仍为部分接线；MOQ 只进入 `ProductParam/ProductionTask`，尚未参与约束。
+> **数据性质**：本目录除 `Parameters-FG/SFN` 的 MOQ 外，其余为**模拟数据**，用于结构、校验和算法联调，不代表真实业务值。
+
+## 0.1 2026-10 主数据框架（新增）
+
+业务侧已改用 15 表工作簿 `APS_DataSource_Template.xlsx`，后台适配如下：
+
+- **工作簿优先**：当站点存在上传文件 `data/uploads/current_<site>.xlsx` 时，Routing / Setup-Matrix /
+  Inventory-Policy / Operation-LeadTime 直接从工作簿读取（`src/master_rows.py`），本目录 CSV 仅作为
+  未上传时的基线回退；
+- **字段取源变化**：`CT` 与 `人数` 取自 Routing-Machines，`目标库存` 取 Inventory-Policy 安全库存，
+  `产线` 取 Routing 主候选线，`TRP/工时/班次` 取新增的『产线基础数据』；
+- **灰色列忽略**：FG/SFN 的 `产线`/`效率 TRP`、Routing 的 `备选候选线`/`机台`/`TRP`、
+  Material-Arrival-ETA 的 `放行工时`/`关联排产零件`/`状态` 已确认删除，加载器不再读取；
+- **旧版兼容**：CSV/旧 25 表工作簿仍按旧字段读取，便于对比与回滚。
+
+> 2026-10-31：新版模板中算法必需但为空的字段（人数、SF 提前期、产线基础数据、模具、产品族、ETA 时间、
+> 准备时间、W268001/2）已用模拟值补齐，详见 `Specification/masterdata_simulation_notes.md`。
 
 ## 0. 与现有 `data/` 的关系
 
 - `data/Parameters-FG.csv`、`data/Parameters-SFN.csv`：已追加 `MOQ (Minimum Order Qty)` 列；
 - `dataSource.xlsx`：同步追加 `MOQ` 列，并新增本目录对应的 sheet；
 - 本目录：扩展主数据 CSV，便于版本管理、审阅和后续加载；
-- `data/master/labor/`：人力三表的 mock 版本，避免直接覆盖 `data/templates/labor` 空模板。
+- `data/master/labor/`：人力三表的 mock 版本，避免直接覆盖 `data/templates/labor` 空模板；`Labor-Availability`/`Line-Staffing` 仍未接入班次人数上限。
 
 ## 1. MOQ 与 MPQ 的口径
 

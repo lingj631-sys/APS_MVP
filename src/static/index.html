@@ -546,6 +546,30 @@
           </button>
         </div>
 
+        <div v-if="kpi && kpi.strict_capacity_hard && kpi.allow_soft_capacity_fallback && (kpi.avg_line_utilization || 0) < 95" class="bg-amber-50 border-b border-amber-300 text-amber-950 px-4 py-2 text-xs font-medium">
+          <b>硬 95% 已降级为软约束</b>：当前平均利用率 {{ kpi.avg_line_utilization }}%，存在低于 95% 的班次。此结果不是硬约束达标；如需硬约束，请关闭“允许硬 95% 失败时软回退”并前拉订单/调整日历。
+        </div>
+        <div v-if="autoTruncated && deferredOrders.length" class="bg-orange-50 border-b border-orange-300 text-orange-950 px-4 py-2 text-xs">
+          <div class="font-bold mb-1">本期自动顺延 {{ deferredOrders.length }} 个订单（未纳入当前排程）<span v-if="truncationSummary.late_before !== undefined" class="ml-2 font-normal">延期 {{ truncationSummary.late_before }} → {{ truncationSummary.late_after }}</span></div>
+          <div class="max-h-28 overflow-y-auto">
+            <table class="w-full text-[11px]">
+              <thead class="text-orange-800">
+                <tr><th class="text-left pr-3">订单号</th><th class="text-left pr-3">批次</th><th class="text-right pr-3">顺延数量</th><th class="text-left pr-3">目标订单</th><th class="text-left">原因</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(d, idx) in deferredOrders" :key="'defer-'+idx">
+                  <td class="pr-3 font-mono">{{ d.order_id }}</td>
+                  <td class="pr-3">{{ d.batch_id || '-' }}</td>
+                  <td class="pr-3 text-right">{{ d.qty ?? '-' }}</td>
+                  <td class="pr-3">{{ d.target_order_id || '-' }}</td>
+                  <td>{{ d.reason || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="text-[10px] text-orange-700 mt-1">这些订单需人工确认后再下发或顺延到下一周期。</div>
+        </div>
+
         <!-- Top Toolbar & Filter Bar -->
         <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center space-x-3">
@@ -1524,20 +1548,83 @@
 
       <!-- ================= TAB 3: RULES & CONSTRAINTS CONFIG ================= -->
       <div v-show="currentTab === 'rules'" class="space-y-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
+            <div class="text-[10px] text-slate-400 font-medium">32 条规则目录</div>
+            <div class="text-lg font-bold font-mono text-indigo-600">{{ ruleCatalog.length }}/32</div>
+            <div class="text-[10px] text-slate-500">HC / SC / BS 分类</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
+            <div class="text-[10px] text-slate-400 font-medium">内核算子模板</div>
+            <div class="text-lg font-bold font-mono text-indigo-600">{{ ruleTemplates.length }}</div>
+            <div class="text-[10px] text-slate-500">可配置作用域 / 软硬 / 权重</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
+            <div class="text-[10px] text-slate-400 font-medium">当前规则集</div>
+            <div class="text-sm font-bold text-slate-800 truncate" :title="activeRuleSetName">{{ activeRuleSetName }}</div>
+            <div class="text-[10px] text-slate-500">{{ activeRuleSetRules.length }} 条规则 · hard {{ activeRuleSetHardCount }} / soft {{ activeRuleSetSoftCount }}</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
+            <div class="text-[10px] text-slate-400 font-medium">规则覆盖</div>
+            <div class="text-sm font-bold text-slate-800">可配置 {{ ruleCoverage.by_status?.configurable || 0 }} · 部分 {{ ruleCoverage.by_status?.partial || 0 }}</div>
+            <div class="text-[10px] text-slate-500">待建模 {{ ruleCoverage.by_status?.needs_model || 0 }}</div>
+          </div>
+        </div>
+        <div v-if="activeRuleSet && !activeRuleSetRules.some(r => r.template === 'hc16')" class="bg-amber-50 border border-amber-300 text-amber-950 rounded-xl px-3 py-2 text-[11px]">
+          当前活动规则集未包含 <b>HC-16</b>；V6 候选可在规则集编辑器中新增 <span class="font-mono">hc16</span>，并在页面设置 hard/soft。
+        </div>
         <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div class="text-xs font-bold text-indigo-900 uppercase tracking-wider">规则集版本（内核）</div>
             <p class="text-xs text-indigo-700/80 mt-1">
-              19 个固定算子 · 作用域 / 软硬 / 权重 / 分组 · Excel 导入 · 版本对比与回滚。下方是旧版规则开关；两者同时存在时，内核规则集优先。班次上限以规则集 <span class="font-mono">capacity_utilization.max_util</span> 为准（1.00 / 1.05），下方 95%~105% 单选不会覆盖规则集。
+              {{ ruleTemplates.length }} 个固定算子 · 作用域 / 软硬 / 权重 / 分组 · Excel 导入 · 版本对比与回滚。下方是旧版规则开关；两者同时存在时，内核规则集优先。班次上限以规则集 <span class="font-mono">capacity_utilization.max_util</span> 为准（1.00 / 1.05），下方 95%~105% 单选不会覆盖规则集。
             </p>
             <p class="text-[11px] text-indigo-700/70 mt-1">
-              本页只保留 32 条新规则目录（HC/SC/BS）。17/17 是校验检查项；拆分版内核规则集 13 条（11 个算子，capacity/min_batch 各拆 FG/SF；active 以 /rule-sets 为准）。旧版 27 条业务规则不再在界面展示。
+              本页只保留 32 条新规则目录（HC/SC/BS）。17/17 是校验检查项；当前规则集 {{ activeRuleSetRules.length }} 条（{{ activeRuleSet?.payload?.rules?.length || 0 }} 个算子，capacity/min_batch 各拆 FG/SF；active 以 /rule-sets 为准）。旧版 27 条业务规则不再在界面展示。
             </p>
           </div>
           <a href="/rule-sets" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded transition">
             打开规则集编辑器 →
           </a>
         </div>
+        <details class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <summary class="cursor-pointer text-xs font-bold text-slate-900 uppercase tracking-wider">
+            当前站点规则集明细（{{ activeRuleSetName }}）
+            <span class="ml-2 text-[10px] font-normal text-slate-500">hard {{ activeRuleSetHardCount }} · soft {{ activeRuleSetSoftCount }}</span>
+          </summary>
+          <div class="mt-3 border border-slate-200 rounded-xl overflow-auto max-h-[360px]">
+            <table class="min-w-full text-[11px] text-left">
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th class="py-2 px-2">规则 ID</th>
+                  <th class="py-2 px-2">模板</th>
+                  <th class="py-2 px-2">作用域</th>
+                  <th class="py-2 px-2">软/硬</th>
+                  <th class="py-2 px-2">权重</th>
+                  <th class="py-2 px-2">参数</th>
+                  <th class="py-2 px-2">启用</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr v-for="r in activeRuleSetRules" :key="r.id" class="hover:bg-slate-50">
+                  <td class="py-1.5 px-2 font-mono font-bold text-indigo-700">{{ r.id }}</td>
+                  <td class="py-1.5 px-2 font-mono">{{ r.template }}</td>
+                  <td class="py-1.5 px-2 text-slate-600">{{ r.scope?.stage || '*' }} / {{ r.scope?.line || '*' }}</td>
+                  <td class="py-1.5 px-2">
+                    <span :class="r.nature === 'hard' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-1.5 py-0.5 rounded border text-[10px] font-bold">{{ r.nature }}</span>
+                  </td>
+                  <td class="py-1.5 px-2 font-mono">{{ r.weight }}</td>
+                  <td class="py-1.5 px-2 text-slate-500 max-w-[360px] truncate" :title="JSON.stringify(r.params)">{{ JSON.stringify(r.params) }}</td>
+                  <td class="py-1.5 px-2">{{ r.enabled ? '是' : '否' }}</td>
+                </tr>
+                <tr v-if="activeRuleSetRules.length === 0">
+                  <td colspan="7" class="py-4 text-center text-slate-400">{{ ruleSetLoading ? '加载中…' : '未加载到活动规则集' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-2">软/硬、权重、参数以 /rule-sets 活动版本为准；本页只读，修改请打开规则集编辑器。</p>
+        </details>
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
@@ -1668,6 +1755,11 @@
                 </span>
               </button>
 
+              <button @click="inputMenu = 'line_base'" :class="inputMenu === 'line_base' ? 'bg-indigo-600 text-white shadow-sm font-semibold' : 'text-slate-700 hover:bg-slate-200/70'" class="w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition">
+                <div class="flex items-center space-x-2"><span class="text-sm">🏭</span><span>产线基础数据</span></div>
+                <span :class="inputMenu === 'line_base' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-600'" class="text-[10px] font-bold px-1.5 py-0.2 rounded-full">{{ (inputData.line_base || []).length }}</span>
+              </button>
+
               <button @click="inputMenu = 'bom'" :class="inputMenu === 'bom' ? 'bg-indigo-600 text-white shadow-sm font-semibold' : 'text-slate-700 hover:bg-slate-200/70'" class="w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition">
                 <div class="flex items-center space-x-2">
                   <svg class="w-4 h-4 text-slate-500" :class="inputMenu === 'bom' ? 'text-white' : 'text-slate-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path></svg>
@@ -1700,7 +1792,7 @@
                   <span>班次日历与工时标准</span>
                 </div>
                 <span :class="inputMenu === 'calendar' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-600'" class="text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-                  3班制
+                  {{ calendarInfo.shifts_per_day || 3 }}班×{{ calendarInfo.shift_hours || 8 }}h
                 </span>
               </button>
 
@@ -1895,19 +1987,19 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">装配产线代码</div>
-                <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">PGLINKAGE</div>
+                <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">{{ (inputData.fg_params && inputData.fg_params[0] ? inputData.fg_params[0].line : '-') }}</div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">标准单班工时</div>
-                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">8.0 <span class="text-xs font-normal">小时</span></div>
+                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">{{ (inputData.fg_params && inputData.fg_params[0] ? inputData.fg_params[0].hours_per_shift : '-') }} <span class="text-xs font-normal">小时</span></div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">资源效率 (TRP)</div>
-                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">0.71 <span class="text-xs font-normal">(71%)</span></div>
+                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">{{ (inputData.fg_params && inputData.fg_params[0] ? inputData.fg_params[0].trp : '-') }}</div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                <div class="text-slate-500 text-[11px]">平均单班定额产能</div>
-                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">~639 <span class="text-xs font-normal">件/班</span></div>
+                <div class="text-slate-500 text-[11px]">成品款数 / 平均单班产能</div>
+                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">{{ (inputData.fg_params || []).length }} <span class="text-xs font-normal">款</span></div>
               </div>
             </div>
 
@@ -1917,35 +2009,29 @@
                 <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                   <tr>
                     <th class="py-2.5 px-3">成品料号</th>
-                    <th class="py-2.5 px-3">产线</th>
                     <th class="py-2.5 px-3">品名描述</th>
-                    <th class="py-2.5 px-3 text-right">单件节拍 CT (秒)</th>
-                    <th class="py-2.5 px-3 text-right">效率 TRP</th>
-                    <th class="py-2.5 px-3 text-right">排产批量 MPQ</th>
-                    <th class="py-2.5 px-3 text-right">MOQ</th>
-                    <th class="py-2.5 px-3 text-right">提前期 (d)</th>
-                    <th class="py-2.5 px-3 text-right">报废率</th>
-                    <th class="py-2.5 px-3 text-right">最大库存</th>
-                    <th class="py-2.5 px-3 text-right">人数</th>
-                    <th class="py-2.5 px-3 text-right">单班定额产能 (件)</th>
-                    <th class="py-2.5 px-3 text-right">安全库存标准</th>
+                    <th class="py-2.5 px-3 text-right">最小包装量 MPQ</th>
+                    <th class="py-2.5 px-3 text-right">单班工时</th>
+                    <th class="py-2.5 px-3 text-right">每天班次数</th>
+                    <th class="py-2.5 px-3 text-right">最小生产量 MOQ</th>
+                    <th class="py-2.5 px-3">产品族名</th>
+                    <th class="py-2.5 px-3">模具编号</th>
+                    <th class="py-2.5 px-3">特殊班次</th>
+                    <th class="py-2.5 px-3 text-center">同时生产</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200">
                   <tr v-for="p in inputData.fg_params" :key="p.part_no" class="hover:bg-slate-50">
                     <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ p.part_no }}</td>
-                    <td class="py-2 px-3 font-semibold text-slate-800">{{ p.line }}</td>
                     <td class="py-2 px-3 text-[11px] text-slate-600">{{ p.description }}</td>
-                    <td class="py-2 px-3 text-right font-mono font-bold">{{ p.ct_seconds }}s</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.trp }}</td>
                     <td class="py-2 px-3 text-right font-mono font-bold text-indigo-700">{{ p.mpq }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ p.hours_per_shift }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ p.shifts_per_day }}</td>
                     <td class="py-2 px-3 text-right font-mono">{{ p.moq || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.lead_time_days || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.scrap_rate ? (p.scrap_rate * 100).toFixed(1) + '%' : '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.max_stock || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.headcount || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono font-bold text-slate-800">{{ p.output_per_shift }}</td>
-                    <td class="py-2 px-3 text-right font-mono text-slate-500">{{ p.target_stock || '-' }}</td>
+                    <td class="py-2 px-3 text-[11px] text-slate-600">{{ p.product_family || '-' }}</td>
+                    <td class="py-2 px-3 font-mono text-[11px]">{{ p.mold_id || '-' }}</td>
+                    <td class="py-2 px-3 text-[11px]">{{ p.special_shift || '-' }}</td>
+                    <td class="py-2 px-3 text-center"><span v-if="p.simultaneous_production" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">{{ p.simultaneous_production }}</span><span v-else class="text-slate-400">-</span></td>
                   </tr>
                 </tbody>
               </table>
@@ -1958,19 +2044,19 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">冲压产线代码</div>
-                <div class="text-lg font-bold text-amber-700 font-mono mt-0.5">轴套6</div>
+                <div class="text-lg font-bold text-amber-700 font-mono mt-0.5">{{ (inputData.sf_params && inputData.sf_params[0] ? inputData.sf_params[0].line : '-') }}</div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">标准单班工时</div>
-                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">8.0 <span class="text-xs font-normal">小时</span></div>
+                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">{{ (inputData.sf_params && inputData.sf_params[0] ? inputData.sf_params[0].hours_per_shift : '-') }} <span class="text-xs font-normal">小时</span></div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">资源效率 (TRP)</div>
-                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">0.85 <span class="text-xs font-normal">(85%)</span></div>
+                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">{{ (inputData.sf_params && inputData.sf_params[0] ? inputData.sf_params[0].trp : '-') }}</div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                <div class="text-slate-500 text-[11px]">平均单班定额产能</div>
-                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">~1,065 <span class="text-xs font-normal">件/班</span></div>
+                <div class="text-slate-500 text-[11px]">半成品件号数</div>
+                <div class="text-lg font-bold text-slate-800 font-mono mt-0.5">{{ (inputData.sf_params || []).length }} <span class="text-xs font-normal">种</span></div>
               </div>
             </div>
 
@@ -1980,35 +2066,27 @@
                 <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                   <tr>
                     <th class="py-2.5 px-3">半成品料号</th>
-                    <th class="py-2.5 px-3">产线</th>
                     <th class="py-2.5 px-3">品名描述</th>
-                    <th class="py-2.5 px-3 text-right">单件节拍 CT (秒)</th>
-                    <th class="py-2.5 px-3 text-right">效率 TRP</th>
                     <th class="py-2.5 px-3 text-right">最小起投批量 MPQ</th>
-                    <th class="py-2.5 px-3 text-right">MOQ</th>
-                    <th class="py-2.5 px-3 text-right">提前期 (d)</th>
                     <th class="py-2.5 px-3 text-right">报废率</th>
-                    <th class="py-2.5 px-3 text-right">最大库存</th>
-                    <th class="py-2.5 px-3 text-right">人数</th>
-                    <th class="py-2.5 px-3 text-right">单班定额产能 (件)</th>
-                    <th class="py-2.5 px-3 text-right">安全库存天数</th>
+                    <th class="py-2.5 px-3 text-right">最大库存 (件)</th>
+                    <th class="py-2.5 px-3 text-right">最小起订量 MOQ</th>
+                    <th class="py-2.5 px-3">产品族名</th>
+                    <th class="py-2.5 px-3">模具编号</th>
+                    <th class="py-2.5 px-3">特殊班次</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200">
                   <tr v-for="p in inputData.sf_params" :key="p.part_no" class="hover:bg-slate-50">
                     <td class="py-2 px-3 font-mono font-bold text-amber-700">{{ p.part_no }}</td>
-                    <td class="py-2 px-3 font-semibold text-slate-800">{{ p.line }}</td>
                     <td class="py-2 px-3 text-[11px] text-slate-600">{{ p.description }}</td>
-                    <td class="py-2 px-3 text-right font-mono font-bold">{{ p.ct_seconds }}s</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.trp }}</td>
                     <td class="py-2 px-3 text-right font-mono font-bold text-amber-700">{{ p.mpq }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.moq || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.lead_time_days || '-' }}</td>
                     <td class="py-2 px-3 text-right font-mono">{{ p.scrap_rate ? (p.scrap_rate * 100).toFixed(1) + '%' : '-' }}</td>
                     <td class="py-2 px-3 text-right font-mono">{{ p.max_stock || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono">{{ p.headcount || '-' }}</td>
-                    <td class="py-2 px-3 text-right font-mono font-bold text-slate-800">{{ p.output_per_shift }}</td>
-                    <td class="py-2 px-3 text-right font-mono text-slate-500">{{ p.target_stock_days ? p.target_stock_days + '天' : '-' }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ p.moq || '-' }}</td>
+                    <td class="py-2 px-3 text-[11px] text-slate-600">{{ p.product_family || '-' }}</td>
+                    <td class="py-2 px-3 font-mono text-[11px]">{{ p.mold_id || '-' }}</td>
+                    <td class="py-2 px-3 text-[11px]">{{ p.special_shift || '-' }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -2059,27 +2137,50 @@
           </div>
 
           <!-- 6. Factory Calendar & Horizon Workstation -->
+          <div v-if="inputMenu === 'line_base'" class="space-y-4">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600">
+              <b>产线基础数据</b>：2026-10 新增表，集中维护产线级 效率 TRP / 单班工时 / 每天班次数；成品与半成品参数表不再重复维护。标记为“参数表派生”的行取自旧版 FG/SFN 字段。
+            </div>
+            <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <table class="min-w-full text-xs text-left">
+                <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                  <tr><th class="py-2 px-3">产线</th><th class="py-2 px-3 text-right">效率 TRP</th><th class="py-2 px-3 text-right">单班工时 (小时)</th><th class="py-2 px-3 text-right">每天班次数</th><th class="py-2 px-3">来源</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                  <tr v-for="(r, idx) in (inputData.line_base || [])" :key="'line-'+idx" class="hover:bg-slate-50">
+                    <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r.line }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.trp }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.hours_per_shift }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.shifts_per_day }}</td>
+                    <td class="py-2 px-3 text-[11px]" :class="r.source === '产线基础数据' ? 'text-emerald-700' : 'text-amber-700'">{{ r.source }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div v-if="inputMenu === 'routing'" class="space-y-4">
           <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600">
-            <b>工艺路线 / 候选机台</b>：来自 <span class="font-mono">Routing-Machines</span>；展示主候选、备候选、认证和 CT/TRP/Setup。
+            <b>工艺路线与候选机台</b>：来自新版 <span class="font-mono">Routing-Machines</span>。同一料号有多条产线时按多行填写主候选线；灰色列（备选候选线 / 机台 / TRP）已废弃，不再展示。
           </div>
           <div class="border border-slate-200 rounded-xl overflow-auto shadow-sm max-h-[560px]">
             <table class="min-w-full text-xs text-left">
               <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0">
-                <tr><th class="py-2 px-3">料号</th><th class="py-2 px-3">阶段</th><th class="py-2 px-3">工序</th><th class="py-2 px-3">主候选线</th><th class="py-2 px-3">候选线</th><th class="py-2 px-3">机台</th><th class="py-2 px-3">认证</th><th class="py-2 px-3 text-right">CT(s)</th><th class="py-2 px-3 text-right">TRP</th><th class="py-2 px-3 text-right">Setup(min)</th></tr>
+                <tr><th class="py-2 px-3">料号</th><th class="py-2 px-3">阶段</th><th class="py-2 px-3">工序</th><th class="py-2 px-3">主候选线</th><th class="py-2 px-3">认证</th><th class="py-2 px-3 text-right">CT(s)</th><th class="py-2 px-3 text-right">换型(min)</th><th class="py-2 px-3 text-right">优先级</th><th class="py-2 px-3 text-right">单班定额产能</th><th class="py-2 px-3 text-right">人数</th><th class="py-2 px-3">产品族名</th></tr>
               </thead>
               <tbody class="divide-y divide-slate-200">
                 <tr v-for="(r, idx) in (inputData.routing || [])" :key="'route-'+idx" class="hover:bg-slate-50">
-                  <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r['Part No.'] }}</td>
-                  <td class="py-2 px-3">{{ r['Stage'] }}</td>
-                  <td class="py-2 px-3">{{ r['Operation Seq'] }} · {{ r['Operation Name'] }}</td>
-                  <td class="py-2 px-3">{{ r['Primary Line'] }}</td>
-                  <td class="py-2 px-3">{{ r['Candidate Line'] }}</td>
-                  <td class="py-2 px-3 font-mono">{{ r['Machine ID'] }}</td>
-                  <td class="py-2 px-3"><span :class="String(r['Certified']).toUpperCase() === 'TRUE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'" class="px-1.5 py-0.5 rounded border text-[10px] font-bold">{{ String(r['Certified']).toUpperCase() === 'TRUE' ? '认证' : '未认证' }}</span></td>
-                  <td class="py-2 px-3 text-right font-mono">{{ r['CT Seconds'] }}</td>
-                  <td class="py-2 px-3 text-right font-mono">{{ r['TRP'] }}</td>
-                  <td class="py-2 px-3 text-right font-mono">{{ r['Setup Min'] }}</td>
+                  <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r.part_no }}</td>
+                  <td class="py-2 px-3">{{ r.stage }}</td>
+                  <td class="py-2 px-3">{{ r.op_seq }} · {{ r.op_name }}</td>
+                  <td class="py-2 px-3 font-semibold">{{ r.primary_line }}</td>
+                  <td class="py-2 px-3"><span :class="r.certified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'" class="px-1.5 py-0.5 rounded border text-[10px] font-bold">{{ r.certified ? '认证' : '未认证' }}</span></td>
+                  <td class="py-2 px-3 text-right font-mono">{{ r.ct_seconds }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ r.setup_min }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ r.priority }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ r.output_per_shift || '-' }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ r.headcount || '-' }}</td>
+                  <td class="py-2 px-3 text-[11px] text-slate-600">{{ r.product_family || '-' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2087,13 +2188,13 @@
         </div>
 
         <div v-if="inputMenu === 'setup_matrix'" class="space-y-4">
-          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"><b>换模矩阵</b>：C1-b sequence 的 from→to 换模分钟。</div>
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"><b>换模矩阵</b>：新版以模具编号定义 from→to 换模分钟，已删除产品族维度。</div>
           <div class="border border-slate-200 rounded-xl overflow-auto shadow-sm max-h-[560px]">
             <table class="min-w-full text-xs text-left">
-              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0"><tr><th class="py-2 px-3">产线</th><th class="py-2 px-3">From Mold</th><th class="py-2 px-3">To Mold</th><th class="py-2 px-3 text-right">Setup (min)</th><th class="py-2 px-3 text-right">技术员</th></tr></thead>
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0"><tr><th class="py-2 px-3">产线</th><th class="py-2 px-3">起始模具</th><th class="py-2 px-3">目标模具</th><th class="py-2 px-3 text-right">换模工时 (min)</th><th class="py-2 px-3 text-right">技术员</th><th class="py-2 px-3">需清洁</th><th class="py-2 px-3">生效日期</th></tr></thead>
               <tbody class="divide-y divide-slate-200">
                 <tr v-for="(r, idx) in (inputData.setup_matrix || [])" :key="'setup-'+idx" class="hover:bg-slate-50">
-                  <td class="py-2 px-3">{{ r['Line'] }}</td><td class="py-2 px-3 font-mono">{{ r['From Mold'] }}</td><td class="py-2 px-3 font-mono">{{ r['To Mold'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Setup Minutes'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Technicians Required'] }}</td>
+                  <td class="py-2 px-3">{{ r.line }}</td><td class="py-2 px-3 font-mono">{{ r.from_mold }}</td><td class="py-2 px-3 font-mono">{{ r.to_mold }}</td><td class="py-2 px-3 text-right font-mono">{{ r.setup_minutes }}</td><td class="py-2 px-3 text-right font-mono">{{ r.technicians }}</td><td class="py-2 px-3">{{ r.cleaning_required ? 'Y' : 'N' }}</td><td class="py-2 px-3 font-mono">{{ r.effective_from }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2101,13 +2202,13 @@
         </div>
 
         <div v-if="inputMenu === 'inventory_policy'" class="space-y-4">
-          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"><b>库存策略</b>：NORMAL / MONTH_END 的目标与上限；当前用于库存投影审计，尚未成为 CP-SAT 硬约束。</div>
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"><b>库存策略</b>：NORMAL / MONTH_END 的目标与上限；其『安全库存』同时作为成品目标库存的来源。</div>
           <div class="border border-slate-200 rounded-xl overflow-auto shadow-sm max-h-[560px]">
             <table class="min-w-full text-xs text-left">
-              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0"><tr><th class="py-2 px-3">料号</th><th class="py-2 px-3">周期</th><th class="py-2 px-3">Day</th><th class="py-2 px-3 text-right">Target(d)</th><th class="py-2 px-3 text-right">Max(d)</th><th class="py-2 px-3 text-right">Safety</th><th class="py-2 px-3 text-right">Max Stock</th></tr></thead>
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0"><tr><th class="py-2 px-3">料号</th><th class="py-2 px-3">周期</th><th class="py-2 px-3">Day</th><th class="py-2 px-3 text-right">目标天数</th><th class="py-2 px-3 text-right">最大天数</th><th class="py-2 px-3 text-right">安全库存</th><th class="py-2 px-3 text-right">最大库存</th><th class="py-2 px-3">生效日期</th></tr></thead>
               <tbody class="divide-y divide-slate-200">
                 <tr v-for="(r, idx) in (inputData.inventory_policy || [])" :key="'inv-'+idx" class="hover:bg-slate-50">
-                  <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r['Part No.'] }}</td><td class="py-2 px-3">{{ r['Period Type'] }}</td><td class="py-2 px-3">{{ r['From Day'] }}-{{ r['To Day'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Target Days'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Max Days'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Safety Stock'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Max Stock'] }}</td>
+                  <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r.part_no }}</td><td class="py-2 px-3">{{ r.period_type }}</td><td class="py-2 px-3">{{ r.from_day }}-{{ r.to_day }}</td><td class="py-2 px-3 text-right font-mono">{{ r.target_days }}</td><td class="py-2 px-3 text-right font-mono">{{ r.max_days }}</td><td class="py-2 px-3 text-right font-mono">{{ r.safety_stock }}</td><td class="py-2 px-3 text-right font-mono">{{ r.max_stock }}</td><td class="py-2 px-3 font-mono">{{ r.effective_from }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2115,13 +2216,13 @@
         </div>
 
         <div v-if="inputMenu === 'operation_leadtime'" class="space-y-4">
-          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"><b>工序提前期</b>：Operation LeadTime / Transfer Batch，当前先展示，C4 再接入求解器。</div>
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"><b>工序提前期</b>：『提前准备时间』承载半成品的静置/等待时间（通常 4~12h，最快 45min）。C4 计算前置期时按“静置时间 + 首批转运批量×CT/TRP”折算，首批未完成并静置前不允许向下游转运。</div>
           <div class="border border-slate-200 rounded-xl overflow-auto shadow-sm max-h-[560px]">
             <table class="min-w-full text-xs text-left">
-              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0"><tr><th class="py-2 px-3">料号</th><th class="py-2 px-3">阶段</th><th class="py-2 px-3">工序</th><th class="py-2 px-3 text-right">Setup(min)</th><th class="py-2 px-3 text-right">Run CT(s)</th><th class="py-2 px-3 text-right">Queue(min)</th><th class="py-2 px-3 text-right">Transfer Batch</th></tr></thead>
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0"><tr><th class="py-2 px-3">料号</th><th class="py-2 px-3">阶段</th><th class="py-2 px-3">工序</th><th class="py-2 px-3 text-right">静置/准备 (min)</th><th class="py-2 px-3 text-right">转运批量 (件)</th><th class="py-2 px-3 text-right">首批加工 (min)</th><th class="py-2 px-3 text-right">前置合计 (min)</th><th class="py-2 px-3">容器</th></tr></thead>
               <tbody class="divide-y divide-slate-200">
                 <tr v-for="(r, idx) in (inputData.operation_leadtime || [])" :key="'lead-'+idx" class="hover:bg-slate-50">
-                  <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r['Part No.'] }}</td><td class="py-2 px-3">{{ r['Stage'] }}</td><td class="py-2 px-3">{{ r['Operation Seq'] }} · {{ r['Operation Name'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Setup Min'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Run CT Seconds'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Queue Min'] }}</td><td class="py-2 px-3 text-right font-mono">{{ r['Transfer Batch'] }}</td>
+                  <td class="py-2 px-3 font-mono font-bold text-indigo-700">{{ r.part_no }}</td><td class="py-2 px-3">{{ r.stage }}</td><td class="py-2 px-3">{{ r.op_seq }} · {{ r.op_name }}</td><td class="py-2 px-3 text-right font-mono font-bold text-amber-700">{{ r.prep_minutes }}</td><td class="py-2 px-3 text-right font-mono">{{ r.transfer_batch }}</td><td class="py-2 px-3 text-right font-mono">{{ leadBatchMinutes(r).toFixed(1) }}</td><td class="py-2 px-3 text-right font-mono font-bold text-indigo-700">{{ leadTotalMinutes(r).toFixed(0) }}</td><td class="py-2 px-3">{{ r.container }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2248,13 +2349,16 @@
               <div class="flex items-center space-x-2">
                 <span class="text-slate-500 font-medium">典型工作制模板一键应用:</span>
                 <button @click="applyCalendarTemplate('SEVEN_ZERO')" :class="calendarMode === 'SEVEN_ZERO' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
-                  7×{{ selectedSite === 'SY38' ? '2' : '3' }} 连续生产 (全周24h连产)
+                  7×{{ calendarInfo.shifts_per_day || 3 }} 做七无休 (全周连产)
+                </button>
+                <button @click="applyCalendarTemplate('SIX_ONE')" :class="calendarMode === 'SIX_ONE' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
+                  6×{{ calendarInfo.shifts_per_day || 3 }} 做六休一 (周一至六 / 周日保养)
                 </button>
                 <button @click="applyCalendarTemplate('FIVE_TWO')" :class="calendarMode === 'FIVE_TWO' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
-                  5×{{ selectedSite === 'SY38' ? '2' : '3' }} 做五休二 (周一至五24h / 周末双休)
+                  5×{{ calendarInfo.shifts_per_day || 3 }} 做五休二 (周一至五 / 周末双休)
                 </button>
                 <button @click="applyCalendarTemplate('FOUR_THREE')" :class="calendarMode === 'FOUR_THREE' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'" class="px-2.5 py-1 rounded-lg border text-[11px] transition">
-                  4×{{ selectedSite === 'SY38' ? '2' : '3' }} 做四休三 (周一至四24h / 周五六日休)
+                  4×{{ calendarInfo.shifts_per_day || 3 }} 做四休三 (周一至四 / 周五至日休)
                 </button>
               </div>
 
@@ -2405,10 +2509,10 @@
                 <div class="p-3 rounded-lg bg-violet-50/50 border border-violet-200 space-y-1">
                   <div class="font-bold text-violet-900 flex items-center space-x-1.5">
                     <span class="w-1.5 h-1.5 rounded-full bg-violet-600"></span>
-                    <span>5. 产能负荷预检与 AI 增班/加班推荐 (Rule R-CL-01..03)</span>
+                    <span>5. 产能负荷预检与 AI 工作制推荐 (Rule R-CL-01..04)</span>
                   </div>
                   <p class="text-slate-600 text-[11px] leading-relaxed">
-                    当用户选做五休二导致总负荷超过 5/7 极限产能时，Precheck 自动弹窗推荐“建议周六加开 2 个班次”；反之在淡季负荷低时推荐“做四休三”，一键优化工时成本。
+                    依据“周总需求 / 极限产能”比值四档推荐：≤4/7 做四休三、≤5/7 做五休二、≤6/7 做六休一、>6/7 做七无休；每天班次数与单班工时取『产线基础数据』，一键切换并联动求解。
                   </p>
                 </div>
 
@@ -2435,7 +2539,7 @@
                 </div>
                 <div class="text-sm font-mono font-bold text-indigo-700">{{ shift.time_range }}</div>
                 <div class="text-[11px] text-slate-600">{{ shift.description }}</div>
-                <div class="text-[10px] text-slate-400 border-t border-slate-200 pt-1">标准工时: 8.0 小时 (28,800 秒) · 最小利用率门槛 95% (27,360 秒)</div>
+                <div class="text-[10px] text-slate-400 border-t border-slate-200 pt-1">标准工时: {{ shift.duration_hours }} 小时 · 每天 {{ calendarInfo.shifts_per_day }} 班 · 最小利用率门槛 {{ Math.round((calendarInfo.min_utilization || 0.95) * 100) }}%</div>
               </div>
             </div>
 
@@ -2502,9 +2606,6 @@
                       <th class="py-2.5 px-3">适用零件料号</th>
                       <th class="py-2.5 px-3 text-center">可用套数 (独占)</th>
                       <th class="py-2.5 px-3 text-right">换模工时</th>
-                      <th class="py-2.5 px-3">冲次使用寿命与进度</th>
-                      <th class="py-2.5 px-3 text-right">保养周期</th>
-                      <th class="py-2.5 px-3 text-center">物理状态</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200">
@@ -2532,27 +2633,6 @@
                       </td>
                       <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-700">
                         {{ m.changeover_time_min }} 分钟
-                      </td>
-                      <td class="py-2.5 px-3 min-w-[150px]">
-                        <div class="flex justify-between text-[10px] text-slate-500 font-mono mb-1">
-                          <span>{{ m.current_strokes.toLocaleString() }}</span>
-                          <span>/ {{ m.max_life_strokes.toLocaleString() }} 次</span>
-                        </div>
-                        <div class="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            class="h-1.5 rounded-full transition-all"
-                            :class="(m.current_strokes / m.max_life_strokes) > 0.8 ? 'bg-rose-500' : ((m.current_strokes / m.max_life_strokes) > 0.5 ? 'bg-amber-500' : 'bg-emerald-500')"
-                            :style="{ width: Math.min(100, Math.round(m.current_strokes / m.max_life_strokes * 100)) + '%' }"
-                          ></div>
-                        </div>
-                      </td>
-                      <td class="py-2.5 px-3 text-right font-mono text-slate-600">
-                        每 {{ (m.maintenance_cycle_strokes / 1000).toFixed(0) }}k 冲次
-                      </td>
-                      <td class="py-2.5 px-3 text-center">
-                        <span :class="m.status.includes('可用') ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'" class="px-2 py-0.5 rounded text-[10px] font-semibold">
-                          {{ m.status }}
-                        </span>
                       </td>
                     </tr>
                   </tbody>
@@ -2616,46 +2696,38 @@
                 <table class="min-w-full text-xs text-left">
                   <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
-                      <th class="py-2.5 px-3">计划单号 (PM No)</th>
                       <th class="py-2.5 px-3">产线</th>
-                      <th class="py-2.5 px-3">设备/工序名称</th>
-                      <th class="py-2.5 px-3">维保等级/类型</th>
-                      <th class="py-2.5 px-3">开始班次</th>
-                      <th class="py-2.5 px-3">结束班次</th>
+                      <th class="py-2.5 px-3">维保项目/内容</th>
+                      <th class="py-2.5 px-3">开始日期</th>
+                      <th class="py-2.5 px-3">开始时间</th>
+                      <th class="py-2.5 px-3">结束日期</th>
+                      <th class="py-2.5 px-3">结束时间</th>
                       <th class="py-2.5 px-3 text-right">停机工时</th>
                       <th class="py-2.5 px-3 text-center">期间产能</th>
                       <th class="py-2.5 px-3">工单处置策略</th>
-                      <th class="py-2.5 px-3">责任班组</th>
-                      <th class="py-2.5 px-3 text-center">状态</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200">
-                    <tr v-for="p in filteredPMSchedules" :key="p.pm_plan_no" class="hover:bg-slate-50/80 transition">
-                      <td class="py-2.5 px-3 font-mono font-bold text-indigo-700">{{ p.pm_plan_no }}</td>
+                    <tr v-for="(p, idx) in filteredPMSchedules" :key="'pm-'+idx" class="hover:bg-slate-50/80 transition">
                       <td class="py-2.5 px-3 font-semibold text-slate-800">{{ p.line }}</td>
-                      <td class="py-2.5 px-3 text-slate-600">{{ p.equipment_name }}</td>
                       <td class="py-2.5 px-3">
                         <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 rounded px-1.5 py-0.5 text-[10px]">
                           {{ p.pm_type }}
                         </span>
                       </td>
-                      <td class="py-2.5 px-3 font-mono text-slate-700">{{ p.start_date }} {{ p.start_shift }}</td>
-                      <td class="py-2.5 px-3 font-mono text-slate-700">{{ p.end_date }} {{ p.end_shift }}</td>
+                      <td class="py-2.5 px-3 font-mono text-slate-700">{{ p.start_date }}</td>
+                      <td class="py-2.5 px-3 font-mono text-slate-700">{{ p.start_time || p.start_shift || '-' }}</td>
+                      <td class="py-2.5 px-3 font-mono text-slate-700">{{ p.end_date }}</td>
+                      <td class="py-2.5 px-3 font-mono text-slate-700">{{ p.end_time || p.end_shift || '-' }}</td>
                       <td class="py-2.5 px-3 text-right font-mono font-bold text-rose-600">{{ p.downtime_hours }}h</td>
                       <td class="py-2.5 px-3 text-center">
                         <span class="bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                          {{ p.capacity_rate }}% (产能置零)
+                          {{ p.capacity_rate }}%
                         </span>
                       </td>
                       <td class="py-2.5 px-3">
                         <span class="bg-amber-50 text-amber-800 border border-amber-200 rounded px-1.5 py-0.5 text-[10px] font-medium">
                           {{ p.handling_strategy }}
-                        </span>
-                      </td>
-                      <td class="py-2.5 px-3 text-slate-500 text-[11px]">{{ p.responsible_team || '-' }}</td>
-                      <td class="py-2.5 px-3 text-center">
-                        <span :class="p.status.includes('执行中') ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'" class="px-2 py-0.5 rounded text-[10px] font-semibold">
-                          {{ p.status }}
                         </span>
                       </td>
                     </tr>
@@ -2670,7 +2742,7 @@
             <!-- Summary KPI Cards -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
-                <div class="text-slate-500 text-[11px]">关键物料在途采购单</div>
+                <div class="text-slate-500 text-[11px]">关键物料到货计划</div>
                 <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">{{ inputData.material_arrivals ? inputData.material_arrivals.length : 0 }} <span class="text-xs font-normal">笔</span></div>
                 <div class="text-[10px] text-indigo-500 mt-1">涵盖芯片、钢管、销轴等外购关键件</div>
               </div>
@@ -2680,11 +2752,12 @@
                 <div class="text-[10px] text-emerald-600 mt-1">Task_Start ≥ 物料预计入库 ETA</div>
               </div>
               <div class="bg-amber-50/60 border border-amber-100 rounded-xl p-3">
-                <div class="text-slate-500 text-[11px]">在途/质检放行物料</div>
+                <div class="text-slate-500 text-[11px]">涉及供应商 / 最早 ETA</div>
                 <div class="text-lg font-bold text-amber-700 font-mono mt-0.5">
-                  {{ (inputData.material_arrivals || []).filter(m => m.status.includes('在途')).length }} 笔在途 / {{ (inputData.material_arrivals || []).filter(m => m.status.includes('质检')).length }} 笔质检
+                  {{ (inputData.material_arrivals || []).map(m => m.supplier).filter((v, i, a) => a.indexOf(v) === i).length }} 家
+                  <span class="text-xs font-normal">/ {{ (inputData.material_arrivals || []).map(m => m.eta_date).filter(Boolean).sort()[0] || '-' }}</span>
                 </div>
-                <div class="text-[10px] text-amber-600 mt-1">平均检验放行周期 1.7 小时</div>
+                <div class="text-[10px] text-amber-600 mt-1">按预计入库日期与班次参与齐套判断</div>
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div class="text-slate-500 text-[11px]">排产算法约束映射</div>
@@ -2699,7 +2772,7 @@
                 <input
                   v-model="materialEtaSearch"
                   type="text"
-                  placeholder="快速筛选采购PO单号/供应商/物料料号/品名..."
+                  placeholder="快速筛选供应商/物料料号/品名/预计入库日期..."
                   class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition"
                 />
                 <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -2720,36 +2793,24 @@
                 <table class="min-w-full text-xs text-left">
                   <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
-                      <th class="py-2.5 px-3">采购单号 (PO No)</th>
                       <th class="py-2.5 px-3">合格供应商</th>
                       <th class="py-2.5 px-3">物料料号 (Part No)</th>
                       <th class="py-2.5 px-3">物料描述</th>
-                      <th class="py-2.5 px-3">预计入库班次 (ETA)</th>
+                      <th class="py-2.5 px-3">预计入库日期</th>
+                      <th class="py-2.5 px-3">预计入库班次</th>
+                      <th class="py-2.5 px-3">预计入库时间</th>
                       <th class="py-2.5 px-3 text-right">送达数量</th>
-                      <th class="py-2.5 px-3 text-right">放行工时</th>
-                      <th class="py-2.5 px-3">关联排产零件</th>
-                      <th class="py-2.5 px-3 text-center">状态</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200">
-                    <tr v-for="m in filteredMaterialArrivals" :key="m.po_number" class="hover:bg-slate-50/80 transition">
-                      <td class="py-2.5 px-3 font-mono font-bold text-indigo-700">{{ m.po_number }}</td>
+                    <tr v-for="(m, idx) in filteredMaterialArrivals" :key="'mat-'+idx" class="hover:bg-slate-50/80 transition">
                       <td class="py-2.5 px-3 font-semibold text-slate-800">{{ m.supplier }}</td>
                       <td class="py-2.5 px-3 font-mono text-indigo-600">{{ m.part_no }}</td>
                       <td class="py-2.5 px-3 text-slate-600 text-[11px]">{{ m.description }}</td>
-                      <td class="py-2.5 px-3 font-mono font-bold text-amber-700">
-                        <span class="bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded text-[10px]">
-                          {{ m.eta_date }} {{ m.eta_shift }}
-                        </span>
-                      </td>
+                      <td class="py-2.5 px-3 font-mono font-bold text-amber-700">{{ m.eta_date }}</td>
+                      <td class="py-2.5 px-3 font-mono">{{ m.eta_shift || '-' }}</td>
+                      <td class="py-2.5 px-3 font-mono">{{ m.eta_time || '-' }}</td>
                       <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-800">{{ m.quantity.toLocaleString() }}</td>
-                      <td class="py-2.5 px-3 text-right font-mono text-slate-500">{{ m.qc_release_hours }}h</td>
-                      <td class="py-2.5 px-3 font-mono text-indigo-700 font-semibold">{{ m.associated_part || '-' }}</td>
-                      <td class="py-2.5 px-3 text-center">
-                        <span :class="m.status.includes('合格') ? 'bg-emerald-100 text-emerald-800' : (m.status.includes('入库') ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800')" class="px-2 py-0.5 rounded text-[10px] font-semibold">
-                          {{ m.status }}
-                        </span>
-                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -3379,9 +3440,10 @@
               <div class="space-y-2">
                 <label class="block text-xs font-medium text-slate-700">工作制模式选择:</label>
                 <select v-model="calendarMode" @change="applyCalendarTemplate(calendarMode)" class="w-full bg-slate-50 border border-slate-300 text-slate-800 font-bold rounded-xl py-2 px-3 text-xs shadow-xs focus:ring-2 focus:ring-indigo-500">
-                  <option value="SEVEN_ZERO">连续生产 (7天×{{ selectedSite === 'SY38' ? '2' : '3' }}班 - 开工日全天24h / 极限产能)</option>
-                  <option value="FIVE_TWO">做五休二 (5天×{{ selectedSite === 'SY38' ? '2' : '3' }}班 - 开工日全天24h / 周末双休)</option>
-                  <option value="FOUR_THREE">做四休三 (4天×{{ selectedSite === 'SY38' ? '2' : '3' }}班 - 开工日全天24h / 周五六日休)</option>
+                  <option value="SEVEN_ZERO">做七无休 (7天×{{ calendarInfo.shifts_per_day || 3 }}班 - 全周连产 / 极限产能)</option>
+                  <option value="SIX_ONE">做六休一 (6天×{{ calendarInfo.shifts_per_day || 3 }}班 - 周一至六 / 周日保养)</option>
+                  <option value="FIVE_TWO">做五休二 (5天×{{ calendarInfo.shifts_per_day || 3 }}班 - 周一至五 / 周末双休)</option>
+                  <option value="FOUR_THREE">做四休三 (4天×{{ calendarInfo.shifts_per_day || 3 }}班 - 周一至四 / 周五至日休)</option>
                 </select>
               </div>
 
@@ -3467,10 +3529,94 @@
               </label>
               <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                 <div>
+                  <div class="text-xs font-semibold text-slate-800">启用路线主模型内分配 (C2-b-2)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">在主 CP-SAT 中同时选择产线（assign task,line）并按线分摊容量；候选线任务 ≤2 时 sequence 同模型，规模更大时自动先分配再精排。</div>
+                </div>
+                <input v-model="siteSettings.routing_assign_in_model" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
                   <div class="text-xs font-semibold text-slate-800">启用工序提前期软约束 (C4-a)</div>
                   <div class="text-[11px] text-slate-500 mt-0.5">SF 完工需早于父 FG 完工 lead_time_days；当前为软惩罚。</div>
                 </div>
                 <input v-model="siteSettings.leadtime_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用计划平稳度软约束 (SC-09 Jitter)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">相对上一次排产基线，尽量保持工单完成班次与产线不变；首次排产无基线时不生效。</div>
+                </div>
+                <input v-model="siteSettings.jitter_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用 HC-16-lite 工单连续生产</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">实验：每个工单最多 1 个生产块；10 天全量开启可能因 95% 地板/物料/PM 冲突不可行，仅用于评估。</div>
+                </div>
+                <input v-model="siteSettings.hc16_lite_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用三班负荷平滑 (SC-10)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">按日最小化早/中/晚班机时偏差；当前为 L1 偏差代理，非二次方差。</div>
+                </div>
+                <input v-model="siteSettings.labor_smoothing_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用顺位前置填补 (SC-08)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">同线按自然交期顺序，软罚完成顺序倒置；当前为配对倒置代理，非平方序位。</div>
+                </div>
+                <input v-model="siteSettings.sc08_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用同模合批软约束 (BS-05)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">按同模/同 campaign 惩罚额外生产段数，鼓励同模连续生产；不改变订单 identity。</div>
+                </div>
+                <input v-model="siteSettings.campaign_batching_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用交期裕度退避 (BS-06)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">合批导致其他订单 Slack<0 时，自动回退为不合批方案；选更少延期/更大最小裕度的结果。</div>
+                </div>
+                <input v-model="siteSettings.slack_fallback_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用自动截断/顺延 (BS-06)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">按 batch 建议顺延尾单，重排剩余订单并返回 deferred_orders；需人工确认后再下发。</div>
+                </div>
+                <input v-model="siteSettings.truncation_auto_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">允许硬 95% 失败时软回退</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">默认关闭：规则集把 95% 设为硬约束时，不自动降级，直接提示不可行。打开后会生成低于 95% 的软约束方案。</div>
+                </div>
+                <input v-model="siteSettings.allow_soft_capacity_fallback" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用 D+1 备货时钟 (SC-01)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">按日末库存对次日 FG 需求做软罚；当前未加“当日早班追产”硬兜底。</div>
+                </div>
+                <input v-model="siteSettings.d1_clock_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">D+1 备货改为硬约束</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">次日需求缺口必须为 0；当前业务答复要求硬约束，默认关闭以便先观察软罚效果。</div>
+                </div>
+                <input v-model="siteSettings.d1_clock_hard_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">启用逆向拉动偏好 (BS-04)</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">以交期/窗口为锚，倾向晚开工 JIT；当前为软偏好，不是独立 Pull 求解器。</div>
+                </div>
+                <input v-model="siteSettings.pull_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
               </label>
               <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                 <div>
@@ -3508,10 +3654,21 @@
                   <span class="text-[11px] text-emerald-700">刷新当前站点</span>
                 </label>
 
-                <a href="/api/inputs/template" class="flex items-center justify-between px-1 text-[11px] text-slate-500 hover:text-indigo-700">
-                  <span>下载业务填写模板 (dataSource.xlsx)</span>
+                <a :href="'/api/inputs/template?site=' + selectedSite" class="flex items-center justify-between px-1 text-[11px] text-slate-500 hover:text-indigo-700">
+                  <span>下载主数据填写模板 (APS_DataSource_Template.xlsx · 15 表 · 当前站点 {{ selectedSite }})</span>
                   <span>↓</span>
                 </a>
+
+                <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600 space-y-1">
+                  <div class="flex items-center justify-between">
+                    <span>当前数据源框架</span>
+                    <span class="font-mono font-bold" :class="inputData.layout === 'v2' ? 'text-emerald-700' : 'text-amber-700'">{{ inputData.layout === 'v2' ? '2026-10 新版 15 表' : (inputData.layout === 'legacy' ? '旧版 25 表（兼容）' : (inputData.layout === 'csv' ? 'CSV 基线（旧版列）' : '-')) }}</span>
+                  </div>
+                  <div v-if="(inputData.warnings || []).length" class="text-amber-700 leading-snug">
+                    <div class="font-semibold">数据提示 {{ (inputData.warnings || []).length }} 条</div>
+                    <div v-for="(w, i) in (inputData.warnings || []).slice(0, 3)" :key="'warn-'+i" class="truncate" :title="w">· {{ w }}</div>
+                  </div>
+                </div>
 
                 <button @click="resetInputs" :disabled="solving" class="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-xs">
                   <div class="flex items-center space-x-2">
@@ -3627,7 +3784,7 @@
 
           <!-- Line Load Table -->
           <div v-if="overloadInfo.line_loads && overloadInfo.line_loads.length" class="space-y-1.5">
-            <h4 class="font-bold text-slate-800 uppercase text-[11px] tracking-wider">产线负荷极限对比:</h4>
+            <h4 class="font-bold text-slate-800 uppercase text-[11px] tracking-wider">{{ overloadInfo.error_type === 'HARD_95_INFEASIBLE' ? '总工时负荷（仅供参照，不是班次达标率）' : '产线负荷极限对比' }}:</h4>
             <div class="border border-slate-200 rounded-xl overflow-hidden">
               <table class="min-w-full text-xs">
                 <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
@@ -3647,19 +3804,23 @@
                     <td class="py-2 px-3 text-center font-mono font-bold" :class="ll.is_overloaded ? 'text-rose-600' : 'text-slate-700'">{{ ll.utilization_rate }}%</td>
                     <td class="py-2 px-3 text-center">
                       <span :class="ll.is_overloaded ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'" class="px-2 py-0.5 rounded text-[10px] font-bold">
-                        {{ ll.is_overloaded ? '严重超载' : '负荷饱和' }}
+                        {{ ll.is_overloaded ? '严重超载' : (overloadInfo.error_type === 'HARD_95_INFEASIBLE' ? '总工时充足' : '负荷饱和') }}
                       </span>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            <p v-if="overloadInfo.error_type === 'HARD_95_INFEASIBLE'" class="text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-2 leading-relaxed">
+              总工时充足不代表 95% 达标：95% 是「每个已开班次」的硬下限；当前有班次低于 95%，所以硬约束不可行。
+              表中负荷率是整线总工时口径，不是班次达标率。
+            </p>
           </div>
 
           <!-- Actionable Suggestions -->
           <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5">
             <h4 class="font-bold text-amber-900 flex items-center space-x-1 text-[11px]">
-              <span>排产优化建议 (基于业务规则 R-CL-01..03):</span>
+              <span>排产优化建议 (基于业务规则 R-CL-01..04):</span>
             </h4>
             <div v-for="(s, idx) in overloadInfo.suggestions" :key="idx" class="text-amber-950 text-[11.5px] leading-relaxed flex items-start space-x-1.5">
               <span class="text-amber-600 font-bold">•</span>
@@ -3672,7 +3833,7 @@
         <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div class="flex items-center space-x-2">
             <button @click="resolveOverloadWith7x3" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
-              一键切换为 7×3 连续生产并排产
+              一键切换为 7×{{ calendarInfo.shifts_per_day || 3 }} 做七无休并排产
             </button>
             <button @click="resolveOverloadWith15Days" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
               一键切换为 15 天计划并排产
@@ -3981,8 +4142,9 @@
         });
 
         const calendarModeDisplay = computed(() => {
-          const sLabel = (selectedSite.value === 'SY38' ? '2' : '3');
-          if (calendarMode.value === 'SEVEN_ZERO') return `连续生产 (7×${sLabel})`;
+          const sLabel = String((calendarInfo.value && calendarInfo.value.shifts_per_day) || 3);
+          if (calendarMode.value === 'SEVEN_ZERO') return `做七无休 (7×${sLabel})`;
+          if (calendarMode.value === 'SIX_ONE') return `做六休一 (6×${sLabel})`;
           if (calendarMode.value === 'FIVE_TWO') return `做五休二 (5×${sLabel})`;
           if (calendarMode.value === 'FOUR_THREE') return `做四休三 (4×${sLabel})`;
           return calendarMode.value;
@@ -4063,6 +4225,14 @@
           fg_params: [],
           sf_params: [],
           bom: [],
+          routing: [],
+          setup_matrix: [],
+          inventory_policy: [],
+          operation_leadtime: [],
+          material_arrival_rows: [],
+          line_base: [],
+          layout: '',
+          warnings: [],
           tooling_molds: [],
           pm_schedules: [],
           material_arrivals: [],
@@ -4117,11 +4287,17 @@
         const ganttHorizon = ref(null);
         const shiftsInfo = ref([]);
         const sequencePlan = ref([]);
+        const deferredOrders = ref([]);
+        const autoTruncated = ref(false);
+        const truncationSummary = ref({});
         const sequenceSetupTotal = computed(() => (sequencePlan.value || []).reduce((sum, r) => sum + Number(r.setup_min || 0), 0));
         const psiProductionFilter = ref("ALL");
         const showOnlyProductionPlanRows = ref(false);
         const ruleCatalog = ref([]);
         const ruleCoverage = ref({});
+        const ruleTemplates = ref([]);
+        const activeRuleSet = ref(null);
+        const ruleSetLoading = ref(false);
         const ruleCatalogSearch = ref("");
         const ruleCatalogClass = ref("ALL");
         const emptyShiftReasons = ref({});
@@ -4251,6 +4427,14 @@
           );
         });
 
+        const activeRuleSetRules = computed(() => activeRuleSet.value?.payload?.rules || []);
+        const activeRuleSetHardCount = computed(() => activeRuleSetRules.value.filter(r => r.enabled && r.nature === 'hard').length);
+        const activeRuleSetSoftCount = computed(() => activeRuleSetRules.value.filter(r => r.enabled && r.nature === 'soft').length);
+        const activeRuleSetName = computed(() => {
+          const active = activeRuleSet.value;
+          return active ? `${active.rule_set_id} · v${active.version}` : '未加载';
+        });
+
         const ruleStatusLabel = (status) => ({
           configurable: "可配置", partial: "部分实现", needs_model: "待建模",
           preprocess: "预处理", postprocess: "后处理"
@@ -4258,6 +4442,7 @@
 
         const loadRuleCatalog = async () => {
           try {
+            ruleSetLoading.value = true;
             const res = await fetch('/api/rule-catalog');
             const data = await res.json();
             ruleCatalog.value = data.rules || [];
@@ -4265,8 +4450,18 @@
               const cov = await fetch('/api/rule-coverage');
               if (cov.ok) ruleCoverage.value = await cov.json();
             } catch (_) {}
+            try {
+              const tpl = await fetch('/api/rule-sets/templates');
+              if (tpl.ok) ruleTemplates.value = await tpl.json();
+            } catch (_) {}
+            try {
+              const active = await fetch(`/api/rule-sets/active?site=${selectedSite.value || 'WL'}`);
+              if (active.ok) activeRuleSet.value = (await active.json()).active || null;
+            } catch (_) {}
           } catch (e) {
             console.error("rule catalog load failed", e);
+          } finally {
+            ruleSetLoading.value = false;
           }
         };
 
@@ -4583,10 +4778,9 @@
           if (!pmSearch.value.trim()) return inputData.value.pm_schedules;
           const q = pmSearch.value.trim().toLowerCase();
           return inputData.value.pm_schedules.filter(p =>
-            p.pm_plan_no.toLowerCase().includes(q) ||
-            p.line.toLowerCase().includes(q) ||
-            p.equipment_name.toLowerCase().includes(q) ||
-            p.pm_type.toLowerCase().includes(q)
+            (p.line || '').toLowerCase().includes(q) ||
+            (p.pm_type || '').toLowerCase().includes(q) ||
+            (p.handling_strategy || '').toLowerCase().includes(q)
           );
         });
 
@@ -4595,13 +4789,24 @@
           if (!materialEtaSearch.value.trim()) return inputData.value.material_arrivals;
           const q = materialEtaSearch.value.trim().toLowerCase();
           return inputData.value.material_arrivals.filter(m =>
-            m.po_number.toLowerCase().includes(q) ||
-            m.supplier.toLowerCase().includes(q) ||
-            m.part_no.toLowerCase().includes(q) ||
-            m.description.toLowerCase().includes(q) ||
-            (m.associated_part && m.associated_part.toLowerCase().includes(q))
+            (m.supplier || '').toLowerCase().includes(q) ||
+            (m.part_no || '').toLowerCase().includes(q) ||
+            (m.description || '').toLowerCase().includes(q) ||
+            (m.eta_date || '').toLowerCase().includes(q)
           );
         });
+
+        const partParamFor = (pn) => {
+          const all = (inputData.value.fg_params || []).concat(inputData.value.sf_params || []);
+          return all.find(p => p.part_no === pn) || null;
+        };
+        const leadBatchMinutes = (r) => {
+          const p = partParamFor(r.part_no);
+          const batch = Number(r.transfer_batch || 0);
+          if (!p || !p.ct_seconds || !batch) return 0;
+          return batch * Number(p.ct_seconds) / Math.max(1e-9, Number(p.trp || 1)) / 60;
+        };
+        const leadTotalMinutes = (r) => Number(r.prep_minutes || 0) + leadBatchMinutes(r);
 
         const filteredCustomerTiers = computed(() => {
           if (!inputData.value.customer_tiers) return [];
@@ -4810,8 +5015,9 @@
           calendarMode.value = mode;
           dayShiftOverrides.value = {};
           await saveCalendarConfig(false);
-          const modeName = mode === 'SEVEN_ZERO' ? '7×3 连续生产' : (mode === 'FIVE_TWO' ? '5×3 做五休二' : '4×3 做四休三');
-          showToast(`已切换为【${modeName}】工作制。请调整参数后点击右上角【执行智能排产】进行计算。`);
+          const sLabel = String((calendarInfo.value && calendarInfo.value.shifts_per_day) || 3);
+          const names = { SEVEN_ZERO: `7×${sLabel} 做七无休`, SIX_ONE: `6×${sLabel} 做六休一`, FIVE_TWO: `5×${sLabel} 做五休二`, FOUR_THREE: `4×${sLabel} 做四休三` };
+          showToast(`已切换为【${names[mode] || mode}】工作制。请调整参数后点击右上角【执行智能排产】进行计算。`);
         };
 
         const saveCalendarConfig = async (notify = true) => {
@@ -4905,6 +5111,18 @@
                 inventory_policy_enabled: !!siteSettings.value.inventory_policy_enabled,
                 inventory_hard_enabled: !!siteSettings.value.inventory_hard_enabled,
                 routing_assign_enabled: !!siteSettings.value.routing_assign_enabled,
+                routing_assign_in_model: !!siteSettings.value.routing_assign_in_model,
+                jitter_enabled: !!siteSettings.value.jitter_enabled,
+                hc16_lite_enabled: !!siteSettings.value.hc16_lite_enabled,
+                labor_smoothing_enabled: !!siteSettings.value.labor_smoothing_enabled,
+                sc08_enabled: !!siteSettings.value.sc08_enabled,
+                campaign_batching_enabled: !!siteSettings.value.campaign_batching_enabled,
+                slack_fallback_enabled: !!siteSettings.value.slack_fallback_enabled,
+                truncation_auto_enabled: !!siteSettings.value.truncation_auto_enabled,
+                allow_soft_capacity_fallback: !!siteSettings.value.allow_soft_capacity_fallback,
+                d1_clock_enabled: !!siteSettings.value.d1_clock_enabled,
+                d1_clock_hard_enabled: !!siteSettings.value.d1_clock_hard_enabled,
+                pull_enabled: !!siteSettings.value.pull_enabled,
                 leadtime_enabled: !!siteSettings.value.leadtime_enabled,
                 campaign_enabled: !!siteSettings.value.campaign_enabled,
                 due_slack_shifts: Number(siteSettings.value.due_slack_shifts || 0),
@@ -4948,6 +5166,9 @@
             sfBalance.value = data.sf_balance;
             tasks.value = data.tasks;
             sequencePlan.value = data.sequence_plan || [];
+            deferredOrders.value = data.deferred_orders || [];
+            autoTruncated.value = !!data.auto_truncated;
+            truncationSummary.value = data.truncation_summary || {};
             checks.value = data.checks;
             complianceMatrix.value = data.compliance_matrix;
             ganttHorizon.value = data.gantt_horizon;
@@ -5054,7 +5275,9 @@
             if (!res.ok) throw new Error(data.detail || '上传失败');
             await loadInputs();
             await loadCalendar();
-            showToast(data.message || `已载入 ${file.name}`);
+            const warnCount = (data.warnings || []).length;
+            const counts = `成品 ${data.fg_params ?? '-'} / 半成品 ${data.sf_params ?? '-'} / 订单 ${data.orders ?? '-'}，数据提示 ${warnCount} 条`;
+            showToast(`${data.message || `已载入 ${file.name}`}（${data.layout === 'v2' ? '新版 15 表' : '旧版格式'}：${counts}）`);
           } catch (e) {
             alert("上传失败: " + e.message);
           } finally {
@@ -5077,6 +5300,7 @@
             await loadInputs();
             await loadCalendar();
             await loadRules(selectedSite.value);
+            await loadRuleCatalog();
             kpi.value = null;
             hasSolved.value = false;
             showToast(`已切换至【${selectedSite.value}】工厂，生产策略配置已同步更新为该工厂专属设置！`);
@@ -5328,6 +5552,8 @@
           filteredToolingMolds,
           filteredPMSchedules,
           filteredMaterialArrivals,
+          leadBatchMinutes,
+          leadTotalMinutes,
           filteredCustomerTiers,
           showAddOrderModal,
           newOrder,
@@ -5428,6 +5654,16 @@
           showOnlyProductionPlanRows,
           ruleCatalog,
           ruleCoverage,
+          ruleTemplates,
+          activeRuleSet,
+          activeRuleSetRules,
+          activeRuleSetHardCount,
+          activeRuleSetSoftCount,
+          activeRuleSetName,
+          ruleSetLoading,
+          deferredOrders,
+          autoTruncated,
+          truncationSummary,
           ruleCatalogSearch,
           ruleCatalogClass,
           filteredRuleCatalog,

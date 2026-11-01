@@ -126,6 +126,14 @@ TEMPLATES: Dict[str, TemplateSpec] = {
         ),
         "soft", "G3_CHANGEOVER",
     ),
+    "hc16": TemplateSpec(
+        "hc16", "同模连产（v0：工单连续近似，无同模窗口硬模型）",
+        (
+            ParamSpec("max_blocks", "int", 1, 1, 1000),
+            ParamSpec("allow_delivery_override", "bool", True),
+        ),
+        "soft", "G3_CHANGEOVER",
+    ),
     "changeover": TemplateSpec(
         "changeover", "换型次数/工时（TRP 已含换型时 setup_minutes=0）",
         (
@@ -171,7 +179,7 @@ TEMPLATES: Dict[str, TemplateSpec] = {
     "calendar": TemplateSpec(
         "calendar", "工作日历/班次模式",
         (
-            ParamSpec("mode", "enum", "SEVEN_ZERO", choices=("AUTO", "SEVEN_ZERO", "FIVE_TWO", "FOUR_THREE")),
+            ParamSpec("mode", "enum", "SEVEN_ZERO", choices=("AUTO", "SEVEN_ZERO", "SIX_ONE", "FIVE_TWO", "FOUR_THREE")),
             ParamSpec("weekend_off", "bool", False),
         ),
         "hard", "G2_CAPACITY",
@@ -280,6 +288,7 @@ IMPLEMENTED_TEMPLATES = frozenset(
         "concurrency",
         "labor_capacity",
         "contiguity",
+        "hc16",
         "calendar",
         "time_window",
         "inventory_bound",

@@ -11,7 +11,7 @@ import json
 import math
 import os
 import sys
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,6 +40,22 @@ class ProductParam:
     headcount: float = 0.0
     moq: float = 0.0  # minimum order/start quantity; distinct from packaging MPQ
     max_stock: float = 0.0
+    # 2026-10 framework fields
+    mold_id: Optional[str] = None
+    special_shift: str = ""
+    simultaneous_production: str = ""
+    product_family: str = ""
+
+
+@dataclass
+class LineBase:
+    """Line-level capacity data (new 产线基础数据 sheet)."""
+
+    line: str
+    trp: float = 0.71
+    hours_per_shift: float = 8.0
+    shifts_per_day: int = 3
+    source: str = ""
 
 
 @dataclass
@@ -83,6 +99,8 @@ class PreventiveMaintenance:
     handling_strategy: str = "避让顺延 (Shift_Delay)"
     responsible_team: str = ""
     status: str = "已排定 (Planned)"
+    start_time: str = ""
+    end_time: str = ""
 
 
 @dataclass
@@ -95,6 +113,7 @@ class MaterialArrival:
     eta_date: str
     eta_shift: str
     quantity: float
+    eta_time: str = ""
     qc_release_hours: float = 2.0
     associated_part: str = ""
     status: str = "质检合格 (Released)"
@@ -125,6 +144,10 @@ class ProductionInputSnapshot:
     pm_schedules: List[PreventiveMaintenance] = field(default_factory=list)
     material_arrivals: List[MaterialArrival] = field(default_factory=list)
     customer_tiers: List[CustomerTier] = field(default_factory=list)
+    line_base: List[LineBase] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    source_path: str = ""
+    layout: str = ""
 
 
 @dataclass
@@ -244,6 +267,7 @@ def snapshot_from_dict(d: Dict[str, Any]) -> ProductionInputSnapshot:
     pm_schedules = [PreventiveMaintenance(**p) for p in d.get("pm_schedules", [])]
     material_arrivals = [MaterialArrival(**a) for a in d.get("material_arrivals", [])]
     customer_tiers = [CustomerTier(**c) for c in d.get("customer_tiers", [])]
+    line_base = [LineBase(**l) for l in d.get("line_base", [])]
     return ProductionInputSnapshot(
         fg_params=fg_params,
         sf_params=sf_params,
@@ -255,6 +279,10 @@ def snapshot_from_dict(d: Dict[str, Any]) -> ProductionInputSnapshot:
         pm_schedules=pm_schedules,
         material_arrivals=material_arrivals,
         customer_tiers=customer_tiers,
+        line_base=line_base,
+        warnings=list(d.get("warnings", [])),
+        source_path=d.get("source_path", ""),
+        layout=d.get("layout", ""),
     )
 
 
@@ -554,6 +582,29 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
                     associated_products=prods,
                 ))
 
+    # Derive mold ids from the tooling master (the CSV parameters have no mold
+    # column; the 2026-10 workbook carries it explicitly).
+    tooling_by_part: Dict[str, str] = {}
+    for mold in tooling_molds:
+        for part in mold.applicable_parts:
+            tooling_by_part.setdefault(part, mold.mold_id)
+    for param in list(fg_params.values()) + list(sf_params.values()):
+        if not param.mold_id:
+            param.mold_id = tooling_by_part.get(param.part_no)
+
+    # Derive a line-level table from the CSV parameters (the new workbook has a
+    # dedicated 产线基础数据 sheet; CSV mode has none).
+    line_base_map: "OrderedDict[str, LineBase]" = OrderedDict()
+    for param in list(fg_params.values()) + list(sf_params.values()):
+        if param.line and param.line not in line_base_map:
+            line_base_map[param.line] = LineBase(
+                line=param.line,
+                trp=param.trp,
+                hours_per_shift=param.hours_per_shift,
+                shifts_per_day=param.shifts_per_day,
+                source="参数表派生",
+            )
+
     snapshot = ProductionInputSnapshot(
         fg_params=fg_params,
         sf_params=sf_params,
@@ -565,6 +616,9 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
         pm_schedules=pm_schedules,
         material_arrivals=material_arrivals,
         customer_tiers=customer_tiers,
+        line_base=list(line_base_map.values()),
+        source_path=data_dir,
+        layout="csv",
     )
 
     try:
@@ -577,193 +631,14 @@ def load_aps_csv(data_dir: str = "data", site_filter: str = "WL") -> ProductionI
 
 
 def _load_aps_excel(excel_path: str, site_filter: str = "WL") -> ProductionInputSnapshot:
-    wb = openpyxl.load_workbook(excel_path, data_only=True)
+    """Load a planner workbook.
 
-    ct_map: Dict[str, float] = {}
-    if "WL CT " in wb.sheetnames:
-        ws_ct = wb["WL CT "]
-        for r in range(2, ws_ct.max_row + 1):
-            material = str(ws_ct.cell(r, 1).value or "").strip()
-            ct_value = ws_ct.cell(r, 3).value
-            if material and ct_value is not None:
-                try:
-                    ct_map[material] = float(ct_value)
-                except ValueError:
-                    pass
+    Supports the 2026-10 15-sheet framework (Chinese headers, line-base sheet)
+    and the legacy 25-sheet English workbook; see ``src.excel_loader``.
+    """
+    from src.excel_loader import load_workbook_snapshot
 
-    fg_params = _load_params(wb["Parameters-FG"], site_filter, ct_map, default_ct=40.0, default_trp=0.71, default_mpq=1.0)
-    sf_params = _load_params(wb["Parameters-SFN"], site_filter, ct_map, default_ct=25.0, default_trp=0.85, default_mpq=100.0, semi_finished=True)
-
-    ws_bom = wb["BOM List"]
-    bom: Dict[str, List[Tuple[str, float]]] = {}
-    for r in range(2, ws_bom.max_row + 1):
-        if str(ws_bom.cell(r, 1).value or "").strip() != site_filter:
-            continue
-        fg = str(ws_bom.cell(r, 2).value or "").strip()
-        sf = str(ws_bom.cell(r, 4).value or "").strip()
-        if fg and sf:
-            bom.setdefault(fg, []).append((sf, _to_float(ws_bom.cell(r, 6).value, 1.0)))
-
-    ws_stock = wb["Initial Stock"]
-    initial_stock: Dict[str, float] = {}
-    for r in range(2, ws_stock.max_row + 1):
-        if str(ws_stock.cell(r, 1).value or "").strip() != site_filter:
-            continue
-        pn = str(ws_stock.cell(r, 3).value or "").strip()
-        if pn:
-            initial_stock[pn] = _to_float(ws_stock.cell(r, 5).value)
-
-    ws_dem = wb["Customer Demand"]
-    demand_dates = []
-    for c in range(4, ws_dem.max_column + 1):
-        v = ws_dem.cell(2, c).value
-        if v is None:
-            continue
-        if isinstance(v, (int, float)) and v > 40000:
-            dt_h = datetime(1899, 12, 30) + timedelta(days=int(v))
-            demand_dates.append(f"{dt_h.month}/{dt_h.day}")
-        elif isinstance(v, datetime):
-            demand_dates.append(f"{v.month}/{v.day}")
-        else:
-            demand_dates.append(str(v).strip())
-    orders: List[CustomerOrder] = []
-    for r in range(3, ws_dem.max_row + 1):
-        if str(ws_dem.cell(r, 1).value or "").strip() != site_filter:
-            continue
-        pn = str(ws_dem.cell(r, 2).value or "").strip()
-        if not pn:
-            continue
-        desc = str(ws_dem.cell(r, 3).value or "").strip()
-        for i, date_str in enumerate(demand_dates):
-            qty = _to_float(ws_dem.cell(r, 4 + i).value)
-            if qty <= 0:
-                continue
-            month, day = (int(p) for p in date_str.split("/"))
-            orders.append(CustomerOrder(
-                order_id=f"ORD_{site_filter}_{pn}_{month:02d}{day:02d}",
-                part_no=pn,
-                description=desc,
-                due_date=date_str,
-                due_datetime=datetime(2026, month, day, 15, 0),
-                demand_quantity=qty,
-            ))
-
-    # Load Tooling-Mold
-    tooling_molds: List[ToolingMold] = []
-    if "Tooling-Mold" in wb.sheetnames:
-        ws_tm = wb["Tooling-Mold"]
-        for r in range(2, ws_tm.max_row + 1):
-            site_val = str(ws_tm.cell(r, 1).value or "").strip()
-            if site_val and site_val != site_filter:
-                continue
-            m_id = str(ws_tm.cell(r, 2).value or "").strip()
-            if not m_id:
-                continue
-            lines = [l.strip() for l in str(ws_tm.cell(r, 4).value or "").split(",") if l.strip()]
-            parts = [p.strip() for p in str(ws_tm.cell(r, 5).value or "").split(",") if p.strip()]
-            tooling_molds.append(ToolingMold(
-                site=site_val or site_filter,
-                mold_id=m_id,
-                mold_name=str(ws_tm.cell(r, 3).value or "").strip(),
-                applicable_lines=lines,
-                applicable_parts=parts,
-                available_qty=int(_to_float(ws_tm.cell(r, 6).value, 1)),
-                changeover_time_min=_to_float(ws_tm.cell(r, 7).value, 30.0),
-                max_life_strokes=int(_to_float(ws_tm.cell(r, 8).value, 500000)),
-                current_strokes=int(_to_float(ws_tm.cell(r, 9).value, 0)),
-                maintenance_cycle_strokes=int(_to_float(ws_tm.cell(r, 10).value, 50000)),
-                status=str(ws_tm.cell(r, 11).value or "可用 (Available)").strip(),
-            ))
-
-    # Load Preventive-Maintenance
-    pm_schedules: List[PreventiveMaintenance] = []
-    if "Preventive-Maintenance" in wb.sheetnames:
-        ws_pm = wb["Preventive-Maintenance"]
-        for r in range(2, ws_pm.max_row + 1):
-            site_val = str(ws_pm.cell(r, 1).value or "").strip()
-            if site_val and site_val != site_filter:
-                continue
-            plan_no = str(ws_pm.cell(r, 2).value or "").strip()
-            if not plan_no:
-                continue
-            pm_schedules.append(PreventiveMaintenance(
-                site=site_val or site_filter,
-                pm_plan_no=plan_no,
-                line=str(ws_pm.cell(r, 3).value or "").strip(),
-                equipment_name=str(ws_pm.cell(r, 4).value or "").strip(),
-                pm_type=str(ws_pm.cell(r, 5).value or "").strip(),
-                start_date=str(ws_pm.cell(r, 6).value or "").strip()[:10],
-                start_shift=str(ws_pm.cell(r, 7).value or "").strip(),
-                end_date=str(ws_pm.cell(r, 8).value or "").strip()[:10],
-                end_shift=str(ws_pm.cell(r, 9).value or "").strip(),
-                downtime_hours=_to_float(ws_pm.cell(r, 10).value, 8.0),
-                capacity_rate=_to_float(ws_pm.cell(r, 11).value, 0.0),
-                handling_strategy=str(ws_pm.cell(r, 12).value or "避让顺延 (Shift_Delay)").strip(),
-                responsible_team=str(ws_pm.cell(r, 13).value or "").strip(),
-                status=str(ws_pm.cell(r, 14).value or "已排定 (Planned)").strip(),
-            ))
-
-    # Load Material-Arrival-ETA
-    material_arrivals: List[MaterialArrival] = []
-    if "Material-Arrival-ETA" in wb.sheetnames:
-        ws_arr = wb["Material-Arrival-ETA"]
-        for r in range(2, ws_arr.max_row + 1):
-            site_val = str(ws_arr.cell(r, 1).value or "").strip()
-            if site_val and site_val != site_filter:
-                continue
-            po_no = str(ws_arr.cell(r, 2).value or "").strip()
-            if not po_no:
-                continue
-            material_arrivals.append(MaterialArrival(
-                site=site_val or site_filter,
-                po_number=po_no,
-                supplier=str(ws_arr.cell(r, 3).value or "").strip(),
-                part_no=str(ws_arr.cell(r, 4).value or "").strip(),
-                description=str(ws_arr.cell(r, 5).value or "").strip(),
-                eta_date=str(ws_arr.cell(r, 6).value or "").strip()[:10],
-                eta_shift=str(ws_arr.cell(r, 7).value or "").strip(),
-                quantity=_to_float(ws_arr.cell(r, 8).value, 0.0),
-                qc_release_hours=_to_float(ws_arr.cell(r, 9).value, 2.0),
-                associated_part=str(ws_arr.cell(r, 10).value or "").strip(),
-                status=str(ws_arr.cell(r, 11).value or "质检合格 (Released)").strip(),
-            ))
-
-    # Load Customer-Priority
-    customer_tiers: List[CustomerTier] = []
-    if "Customer-Priority" in wb.sheetnames:
-        ws_cust = wb["Customer-Priority"]
-        for r in range(2, ws_cust.max_row + 1):
-            site_val = str(ws_cust.cell(r, 1).value or "").strip()
-            if site_val and site_val != site_filter:
-                continue
-            c_code = str(ws_cust.cell(r, 2).value or "").strip()
-            if not c_code:
-                continue
-            prods = [p.strip() for p in str(ws_cust.cell(r, 9).value or "").split(",") if p.strip()]
-            customer_tiers.append(CustomerTier(
-                site=site_val or site_filter,
-                customer_code=c_code,
-                customer_name=str(ws_cust.cell(r, 3).value or "").strip(),
-                tier=str(ws_cust.cell(r, 4).value or "TIER_A").strip(),
-                priority_weight=int(_to_float(ws_cust.cell(r, 5).value, 3)),
-                otd_target_rate=_to_float(ws_cust.cell(r, 6).value, 98.0),
-                delivery_window=str(ws_cust.cell(r, 7).value or "0天严格保供").strip(),
-                subcontract_allowed=str(ws_cust.cell(r, 8).value or "协商外协 (Negotiable)").strip(),
-                associated_products=prods,
-            ))
-
-    return ProductionInputSnapshot(
-        fg_params=fg_params,
-        sf_params=sf_params,
-        bom=bom,
-        initial_stock=initial_stock,
-        orders=orders,
-        planning_dates=demand_dates,
-        tooling_molds=tooling_molds,
-        pm_schedules=pm_schedules,
-        material_arrivals=material_arrivals,
-        customer_tiers=customer_tiers,
-    )
+    return load_workbook_snapshot(excel_path, site_filter=site_filter)
 
 
 def load_aps_database(source_path: str = "data", site_filter: str = "WL") -> ProductionInputSnapshot:
@@ -787,51 +662,6 @@ def load_aps_database(source_path: str = "data", site_filter: str = "WL") -> Pro
         return load_aps_csv("data", site_filter=site_filter)
 
     raise FileNotFoundError(f"Cannot load APS dataset: invalid path '{source_path}'")
-
-
-def _load_params(ws, site_filter: str, ct_map: Dict[str, float], *, default_ct: float,
-                 default_trp: float, default_mpq: float, semi_finished: bool = False) -> Dict[str, ProductParam]:
-    params: Dict[str, ProductParam] = {}
-    hours_col = 11 if semi_finished else 9
-    shifts_col = 12 if semi_finished else 10
-    headcount_col = 14 if semi_finished else 12
-    headers = {
-        str(ws.cell(1, c).value).strip(): c
-        for c in range(1, ws.max_column + 1)
-    }
-    moq_col = headers.get("MOQ (Minimum Order Qty)") or headers.get("MOQ") or (16 if semi_finished else 13)
-    for r in range(2, ws.max_row + 1):
-        if str(ws.cell(r, 1).value or "").strip() != site_filter:
-            continue
-        pn = str(ws.cell(r, 4).value or "").strip()
-        if not pn:
-            continue
-        ct = _to_float(ws.cell(r, 7).value) or ct_map.get(pn, default_ct)
-        trp = _to_float(ws.cell(r, 3).value, default_trp) or default_trp
-        mpq = _to_float(ws.cell(r, 6).value, default_mpq) or default_mpq
-        max_stock_col = headers.get("Max stock") or headers.get("Max Stock") or (15 if semi_finished else 0)
-        moq = _to_float(ws.cell(r, moq_col).value, mpq) or mpq
-        hours = _to_float(ws.cell(r, hours_col).value, 8.0) or 8.0
-        params[pn] = ProductParam(
-            site=site_filter,
-            line=str(ws.cell(r, 2).value or "").strip(),
-            part_no=pn,
-            description=str(ws.cell(r, 5).value or "").strip(),
-            ct_seconds=ct,
-            trp=trp,
-            mpq=mpq,
-            output_per_shift=hours * 3600.0 / ct * trp,
-            hours_per_shift=hours,
-            shifts_per_day=int(_to_float(ws.cell(r, shifts_col).value, 3.0) or 3),
-            target_stock=0.0 if semi_finished else _to_float(ws.cell(r, 8).value),
-            target_stock_days=_to_float(ws.cell(r, 8).value) if semi_finished else 0.0,
-            lead_time_days=_to_float(ws.cell(r, 9).value) if semi_finished else 0.0,
-            scrap_rate=_to_float(ws.cell(r, 10).value) if semi_finished else 0.0,
-            headcount=_to_float(ws.cell(r, headcount_col).value),
-            max_stock=_to_float(ws.cell(r, max_stock_col).value) if max_stock_col else 0.0,
-            moq=moq,
-        )
-    return params
 
 
 TIME_SCALE = 1000
@@ -860,7 +690,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
     fg_tasks: List[ProductionTask] = []
     sf_tasks: List[ProductionTask] = []
     covered_by_stock: List[str] = []
-    warnings: List[str] = []
+    warnings: List[str] = list(snapshot.warnings)
     invalid_orders: List[Tuple[str, str]] = []
     crew_warned: set = set()
 
@@ -942,7 +772,6 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
             invalid_orders.append((order.order_id, f"成品 {order.part_no} 缺失主数据"))
             continue
         if param.headcount <= 0 and order.part_no not in crew_warned:
-            warnings.append(f"{order.part_no}: 缺少 Headcount 主数据，人力工时按 0 计")
             crew_warned.add(order.part_no)
 
         net_need = max(0.0, order.demand_quantity + param.target_stock - fg_avail[order.part_no])
@@ -978,7 +807,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
             order_id=order.order_id,
             site=site,
             due_datetime=order.due_datetime,
-            mold_id=mold_map.get(order.part_no),
+            mold_id=param.mold_id or mold_map.get(order.part_no),
             material_arrival_shift=mat_arrival_map.get(order.part_no, 0),
             customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
             line_pm_slots=line_pm_slots.get(param.line, []),
@@ -995,7 +824,6 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                 invalid_orders.append((order.order_id, f"半成品 {sf_pn} 缺失主数据"))
                 continue
             if sf_param.headcount <= 0 and sf_pn not in crew_warned:
-                warnings.append(f"{sf_pn}: 缺少 Headcount 主数据，人力工时按 0 计")
                 crew_warned.add(sf_pn)
 
             gross_need = qty * ratio
@@ -1036,7 +864,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                 stock_covered=int(round(sf_usable)),
                 due_datetime=order.due_datetime,
                 parent_task_id=fg_task.task_id,
-                mold_id=mold_map.get(sf_pn),
+                mold_id=sf_param.mold_id or mold_map.get(sf_pn),
                 material_arrival_shift=mat_arrival_map.get(sf_pn, 0),
                 customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
                 line_pm_slots=line_pm_slots.get(sf_param.line, []),
@@ -1044,6 +872,13 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                 moq=int(round(sf_param.moq or sf_param.mpq)),
                 lead_time_days=float(sf_param.lead_time_days or 0.0),
             ))
+
+    if crew_warned:
+        warnings.append(
+            f"{len(crew_warned)} 个料号缺少 Headcount/人数 主数据，人力工时按 0 计："
+            + "、".join(sorted(crew_warned)[:12])
+            + ("…" if len(crew_warned) > 12 else "")
+        )
 
     movements = [
         StockMovement(

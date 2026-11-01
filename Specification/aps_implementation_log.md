@@ -1,5 +1,7 @@
 # APS MVP 实施记录（Phase 0 闭环 + Phase 1 v1 闭环）
 
+> **阅读提示**：本文按时间追加。文中 2026-10-30 之前的“101 / 105 / 59”等数字、以及“C2-b 未实现/未做”等状态描述，都是当时的基线，不代表当前状态；当前进度以文末「当前状态汇总（2026-10-31 11:00）」和 `Specification/aps_progress_dashboard.md` 为准。
+
 > **基线**：`14ff727`（与诊断报告评估版本一致）
 > **实施日期**：2026-10-25 / 2026-10-26
 > **范围**：ACT-01 / 02 / 03 / 04 / 05 / 07 / 08 + ACT-L1 + ACT-09～14（Phase 0）+ ACT-20 / 21 / 23 / 24（Phase 1 地基 + 权重/分组）+ ACT-06（拆批连续）+ ACT-22 step 1-5（capacity / min_batch / 硬交期 / changeover / sequence / tooling / ETA / material_balance / PM）+ customer_priority / concurrency / labor_capacity / contiguity / calendar / time_window / inventory_bound / freeze / co_product + ACT-25/26/27/28/29 + ACT-L2/L3
@@ -739,3 +741,510 @@ python -m unittest discover -s tests -v
 - C4 Operation LeadTime / Transfer Batch；C5 Campaign/Pull/Slack。
 - 32 条规则目录与 17 项审计项的正式映射；旧版 `/api/rules` 兼容层迁移。
 - 真实 Setup-Matrix / Inventory-Policy / Routing 数据替换 mock。
+
+### 2026-10-30 新版 15 表主数据框架接入
+
+- 新增 `src/master_schema.py`：15 张表的唯一 Schema（中英表名/列名别名、必填列、灰色废弃列标记），
+  上传校验与加载器共用；列顺序可自由调整，灰色列可缺省。
+- 新增 `src/excel_loader.py`：按表头定位列的加载器，同时支持新版 15 表与旧版 25 表；新增
+  `layout=v2/legacy`、`line_base`、`warnings`、`source_path` 快照字段。
+- 字段重新取源：`ct_seconds`←Routing 的 CT、`line`←Routing 主候选线、`headcount`←Routing 人数、
+  `target_stock`←Inventory-Policy 安全库存、`trp/hours/shifts`←产线基础数据（缺行回退参数表/默认值）。
+- 新增 `src/master_rows.py`：上传工作簿的 Routing / Setup-Matrix / Inventory-Policy / Operation-LeadTime
+  直接转成求解器 dataclass；`/api/solve` 优先使用上传工作簿，CSV 仅作基线回退。
+- `/api/inputs/template` 改为下发 `APS_DataSource_Template.xlsx`；`/api/inputs/upload` 改为按 Schema 校验
+  （表存在 + 必需列存在，不再要求 sheet/列顺序完全一致），响应返回 `layout/site_counts/line_base/warnings`。
+- `/api/inputs` 新增 `line_base`、`material_arrival_rows`、`layout`、`warnings`，FG/SFN 增加
+  `mold_id/special_shift/simultaneous_production/product_family`。
+- Tab-4 UI 新增『产线基础数据』页签；Routing/Setup/Inventory/OpLeadTime 改为新表头字段，删除灰色列展示；
+  FG/SFN 增加模具编号/产品族/特殊班次/同时生产列。
+- 新增 `scripts/verify_master_template.py` + `Specification/master_template_verification.md`：结构、行数、
+  引用完整性、算法字段就绪度、与旧版取值一致性核对。
+- 新增 `tests/test_master_schema.py`（11 项）：模板校验、列序打乱、缺列拒绝、v2/legacy 数值一致、
+  产线去重派生、模具回退、提前期缺口告警、新增字段解析。
+- 已知业务待补：产线基础数据需去重并补 轴套6/轴套7；FG/SFN 模具编号 AA/BB 需改为 MOLD_*；
+  Routing 人数、产品族、特殊班次为空；SFN 生产提前期字段被删除，改由工序提前期『提前准备时间』替代。
+
+### 2026-10-30 第二轮：模板精简与工作日历四档
+
+- 模板表头二次精简：FG/SFN 移除 产线/TRP/单班定额产能；Tooling 移除冲次寿命/保养周期/状态；
+  Material 移除 PO/放行工时/关联零件/状态并启用『预计入库时间』；PM 仅保留 产线/项目/起止日期时间/停机/产能/策略。
+- `MaterialArrival` 新增 `eta_time`；`PreventiveMaintenance` 新增 `start_time/end_time`，PM 起止班次由时间或
+  停机工时自动推导。
+- `shift_manager` 新增 `SIX_ONE`（做六休一），`decide_calendar_mode` 改为 4/7、5/7、6/7 三档阈值；
+  `evaluate_calendar_recommendation` 四档评估（做四休三/做五休二/做六休一/做七无休）。
+- 班次几何改为读取『产线基础数据』：`build_topology(shift_hours, shifts_per_day)`，日历视图、推荐与
+  `APSScheduler` 三处统一；默认 3×8h / 2×12h 与旧拓扑一致，测试基线不变。
+- FG/SFN 的 `hours_per_shift/shifts_per_day` 不再作为主来源（v2 以产线基础数据优先，缺失回退）。
+- Tab-4 UI 对齐最新表头：FG/SFN 仅展示产品字段；工装模具/PM/物料到货裁剪废弃列并补充预计入库时间；
+  日历模板与模式下拉新增“做六休一”，班次标签改为读取产线基础数据。
+- 新增 `tests/test_calendar_modes.py`（6 项）：四档工作日、阈值、做六休一、2×12h/3×8h 几何、产线基础数据驱动加载。
+
+### 2026-10-31 主数据模拟补全（测试阶段）
+
+- 新增 `scripts/fill_simulated_masterdata.py` + `Specification/masterdata_simulation_notes.md`：
+  从 `dataSource.xlsx` / `Campaign-Families.csv` / `Inventory-Policy` 可推导的值优先沿用，其余按可解释假设模拟。
+- 产线基础数据 17 行去重为 3 行（PGLINKAGE/轴套6/轴套7，8h×3）；Routing 人数 FG=3、SF=2；
+  SFN 不再补『生产提前期』；改由工序提前期『提前准备时间』(45~480min) 承载静置时间，C4 按“静置+首批转运批量×CT/TRP”推导；SFN 最大库存取库存策略；FG/SFN/Routing 产品族回填；
+  FG 模具编号按 Campaign 回填、Tooling-Mold 适用零件同步扩展；物料 ETA 时间按班次补齐；
+  工序提前期准备时间按静置时间补 45~480 分钟。
+- 补齐 BOM 引用但主数据缺失的 `W268001/W268002`（SFN/Routing/Operation-LeadTime/Inventory-Policy），
+  消除 WB80510 的“跳过齐套”告警；填写说明行数同步为 SFN 22、Routing 39、Inventory 78、OpLead 39。
+- 效果：10 天计划 146 任务（50 FG + 96 SF），crew=0 从 134/134 降为 0，SF 前置期由静置 45~480min + 首批转运推导，计划告警 0 条；
+  5 天实跑 21 任务 / 17 项校验 / OTD 100%。
+- 模拟值均为测试假设，上线前需用真实定额覆盖；原始模板备份在
+  `archive/data/APS_DataSource_Template.pre_simulation.xlsx`，回滚一行命令即可。
+
+
+### 2026-10-31 C4 前置期改为“静置时间 + 首批转运”
+
+- 业务口径：工序提前期 → 提前准备时间（分钟） 替代 SFN 生产提前期，实际 45min~12h；
+  半成品生产后需静置，首批转运批量（如 100 件）全部完成并静置后才允许下游开工。
+- src/leadtime.py::lead_shifts 改为：前置分钟 = 静置 + min(qty, 转运批量) × CT / TRP，
+  再按单班分钟折算班次；	rp 由调度器传入。
+- src/scheduler.py 调用处补 	rp=task.trp；src/server.py 用 dataclasses.replace 回填 Routing CT
+  （OperationLeadTime 为 frozen dataclass，原直接赋值会抛异常）。
+- 模板不再新增 生产提前期 (days) 列；该字段仅旧版兼容。工序提前期按 FG=45min、
+  SF=45~480min 模拟（G38 45、CX11 240、CM2E/KP31 300、930B/L743 360、LEAP 420、DX11/E371 480）。
+- 新增 	est_lead_shift_includes_rest_and_first_transfer_batch：6h/12h/45min 三档，且只按首批计算。
+- 修正超载提示：天数/班次/工时不再硬编码 10 天、7×3，规则编号更新为 R-CL-01..04。
+- 核心 36 项测试通过；随后全量回归。
+
+
+### 2026-10-31 Tab-6 模板下载改为“当前站点数据预填”
+
+- 新增 src/master_export.py：以 15 表模板为样式底稿，把指定站点的快照 + 主数据行写回模板，
+  生成“该工厂自己的”下载文件；需求日期轴、产线基础数据、行数说明同步刷新。
+- /api/inputs/template?site=WL|SY38：按站点生成；Cache-Control: no-store 防止浏览器缓存旧模板；
+  非 WL 文件名带站点后缀。旧版/新版源都可导出（旧 25 表由 schema 行映射到 15 表）。
+- Tab-6 下载链接带上当前 selectedSite，物流同事下载到的就是本厂数据。
+- 验证：下载 WL/SY38 模板均通过 Schema 校验；WL 17 FG/22 SF/65 订单/3 线 8h×3；
+  SY38 11 FG/5 SF/16 订单/3 线 12h×2（PU07/PU22/1400T-6）。
+- 实测 SY38 上传 → /api/inputs 切换为 SY38 v2 → 10 天求解 18 任务；结束后恢复 WL 站点。
+- 新增 	ests/test_master_export.py（2 项）。局部 23 项测试通过。
+
+
+### 2026-10-31 填写说明 Instructions 重构（多站点统一标准）
+
+- 新增 src/instructions.py：从 master_schema 动态生成说明页，保证字段名与解析器永不漂移。
+- 说明页结构：使用流程 → 全局填写规则（多站点一致性）→ 表清单（用途/粒度/行数/必填/依赖）→
+  14 张表逐表字段说明（含义/类型单位/必填/取值限制/示例）→ 跨表一致性规则 → 系统校验与拒绝原因 → 版本记录。
+- 说明页强调：模板为 WL/SY38/多站点共用同一标准；站点列必须与上传时选择的工厂一致；
+  列顺序可变但表头/表名不可改；灰列可删；单位/日期/小数口径统一。
+- scripts/rebuild_instructions.py 可单独重建；ill_simulated_masterdata.py --force 与
+  master_export.export_site_workbook 都会调用同一生成器，因此下载到各厂的文件说明页完全一致。
+- 下载模板验证：WL 说明页 221 行，表清单行数 10/35/7/17/22/56/39/36/78/39/6/3/3/5；
+  SY38 为 7/16/0/11/5/9/27/4/32/16/2/3/2/0；两份文件均可直接加载（17/22/65 与 11/5/16，warnings=0）。
+- 	ests/test_master_export.py 增至 3 项：校验说明页包含全部 14 张表与所有 active 字段。
+
+
+### 2026-10-31 C2-b-1 班次级路线容量（shift-aware routing assignment）
+
+- 新增 `routing.available_hours_by_line()`：按真实工作日历统计每线可用班次工时，并扣减该线 PM 停机。
+- `/api/solve` 的 C2-b-0 上游分配不再使用 `horizon_days × shifts/day × hours` 的理论值，
+  改为：真实班次（FIVE_TWO/FOUR_THREE/SIX_ONE 等）− PM 停机；候选线只保留“产线基础数据”白名单内的线。
+- 响应新增 `routing_capacity_hours`，可与 `routing_decisions` 一起审计分配依据。
+- 新增 `tests/test_routing.py::test_available_hours_uses_work_shifts_and_subtracts_pm`（5 个工作日 × 12h − 8h PM = 52h）。
+- SY38 实测（FIVE_TWO、routing_assign_enabled=true）：18 任务、OTD 100%、9 项校验；
+  `routing_capacity_hours` 与 `routing_decisions` 正常返回。
+- 仍保留：C2-b 主模型内 Assign(i,m)（把线选择变量并入主 CP-SAT），作为下一步。
+
+
+### 2026-10-31 C2-b-2 主模型内 Assign(i,m)
+
+- `APSScheduler(line_options=...)`：多候选线任务在**同一个 CP-SAT** 内创建
+  `assign(task,line)`、`x(task,line,shift)`、`active(task,line,shift)`，exactly-one 选择产线；
+  任务级 `x/active` 由分线变量求和，原有 due/PM/物料/模具/冻结/交期约束继续复用。
+- 容量约束按 `(line, shift)` 汇总分线 `x`；PM 按产线清零；在 assign 模式下先关闭 sequence 换型
+  （`setup_ms=0`），避免在 x 维度重构时同时改动 SDST 变量。
+- 结果回写：`_apply_assignment()` 选出实际产线写入 `ScheduledTask.line`，随后恢复
+  `plan.tasks` 原始产线，保证多次求解的 `from` 不漂移；响应新增 `routing_assignment`。
+- 开关：`routing_assign_in_model`（payload/site-settings/UI 复选框）；与 C2-b-1 互斥，
+  开启后不再跑上游分配阶段。
+- 验证：SY38 10 天 FIVE_TWO，18 任务、OTD 100%、12 条 assignment、10 次实际移线、9 项校验；
+  连续两次求解 assignment 完全一致。
+- 新增 `tests/test_assign_in_model.py`（3 项：exactly-one/回写、固定线不动、重复求解 from 不漂移）。
+- 已知边界：候选线须同 TRP；PM 目前沿用 plan 的主线 PM 槽；sequence 未联立。
+
+
+### 2026-10-31 C2-b-3a 分配后 sequence 精排
+
+- `APSScheduler.sequence_requested` 保留原始 sequence 开关；assign 模式第一段仍关闭 sequence，
+  以 55% 预算完成“线选择 + 容量/交期”求解。
+- `_resequence()`：把 `assignment_decisions` 的选中线固定到 `plan.tasks`，浅拷贝一个
+  `assign_in_model=False` 的调度器，恢复 `setup_ms`、开启 `sequence_setup`，用剩余预算做第二次求解；
+  结果带 `sequence_plan`，随后恢复原始产线，保证重复求解不漂移。
+- 第二次求解失败时回退第一次结果并打印 `[assign] sequence re-solve skipped`。
+- 新增 `test_sequence_resolve_keeps_assignment`：4 项 assignment 测试通过。
+- SY38 实测（10 天 FIVE_TWO，`routing_assign_in_model=true` + `sequence_setup=true`）：
+  18 任务、OTD 100%、12 条 assignment（3 次移线）、33 条 sequence 记录、9 项校验，75s。
+- 边界：这是两阶段（先分配、后 sequence），不是同一 CP-SAT 内的 sequence 变量；
+  同一模型联立仍列为下一步。
+
+
+### 2026-10-31 C2-b-3b 同模型 sequence（小规模）+ 大规模回退
+
+- `_add_sequence_constraints` 改为按线取变量：`act(t,s)` / `xval(t,s)` 优先读
+  `_line_active/_line_x`，否则回退任务级 `active/x`；sequence 的 first/last/trans/
+  start/end/setup 现在可以跑在“候选线”上，不再要求 `task.line` 固定。
+- `_sequence_vars` 在 assign 模式下按 `(task,line,shift)` 存储；`_extract_sequence` 兼容
+  2/3 元 key，只输出实际选中线的记录。
+- 规模控制：候选线任务 ≤2 时 assign+sequence 在同一 CP-SAT；>2 时自动回退 C2-b-3a
+  （先分配，再固定线做 sequence 精排），避免模型爆炸。
+- 修复回退路径的变量串用：`fixed` 调度器清空 `_line_x/_line_active/_assign`，否则会引用
+  上一个模型的 BoolVar（`Invalid boolean literal`）。
+- 验证：小规模测试 4 项通过；SY38 10 天 FIVE_TWO 实测 18 任务、OTD 100%、
+  12 条 assignment、33 条 sequence、9 项校验、75s。
+- 快速 60/60、sequence 相关 14 项通过；全量基线此前 134/134。
+
+
+## 当前状态汇总（2026-10-31 11:00）
+
+| 维度 | 状态 |
+|---|---|
+| Phase 0 正确性止血 | 100% |
+| Phase 1 规则内核 | 95%（19 模板 / 18 编译；`routing` 模板未编译） |
+| Phase B 32 规则 | 约 75% |
+| Phase C 时间/路由/序列 | 约 78% |
+| 整体 | 约 84% |
+
+### 已落地的主线能力
+
+- 15 表主数据 v2（兼容旧 25 表）、按站点模板下载/上传、四档工作日历、班次几何；
+- C1-b 班内 sequence + SDST + 跨班 carry-over + 技术员区间；
+- C2-b-1 班次级路线容量（真实日历 + PM 扣减）；
+- C2-b-2 主模型内 Assign（`assign(task,line)` + 分线容量/PM）；
+- C2-b-3b 小规模同模型 sequence；候选项 >2 自动回退 C2-b-3a（分配后精排）；
+- C4 静置时间 + 首批转运推导；C5-a Campaign、C5-b 交期 Slack；SC-09 Jitter。
+
+### 测试
+
+- 全量 **147/147 PASS**（约 1408s）；
+- 快速 **60/60 PASS**（约 62s）；
+- 最新 SY38 10 天实跑：18 任务、OTD 100%、12 条 assignment（3 次移线）、33 条 sequence、9 项校验、75.1s。
+
+### 仍未完成
+
+- 大规模（候选项 >2）同模型 sequence；
+- C5 独立 Pull；
+- SC-08/SC-10、BS-04 等 `needs_model` 规则（SC-09 已 partial）；
+- 全连续时间、PM 精确到时刻；
+- 内核 `routing` 模板编译。
+
+
+### 2026-10-31 SC-09 计划平稳度 Jitter
+
+- `APSScheduler(enforce_jitter=True, baseline_tasks=...)`：新增 `_add_jitter_penalty`。
+- 以基线任务的 `shift_breakdown` 最后一个班次为完成基准，罚 `|end_new − end_base|`；
+  若基线产线不在候选线/当前线，再罚一次产线切换。
+- 权重：完成班次 50,000/班，产线切换 500,000；归入 G3_CHANGEOVER，避免压过交付/产能。
+- 服务端：payload/site settings `jitter_enabled`；基线取 `session_state["result"].tasks`；
+  首次排产无基线时自动为空，不产生罚分；UI 站点设置新增 SC-09 开关。
+- 规则目录：SC-09 状态从 `needs_model` 调整为 `partial`（完成班次 + 产线，尚未做 start 偏移平方项）。
+- 新增 `tests/test_jitter.py` 2 项：基线完成班次保持、无基线安全。
+- 实测 WL 5 天：开启 jitter 后，21 个任务中完成班次/产线变化由 15 降到 12；仍受交付/产能优先级影响。
+
+
+### 2026-10-31 HC-16 评估与 HC-16-lite 实验
+
+- 结论：HC-16 不是“规则没写清楚”，而是**当前只做到 partial**：
+  - `contiguity` 模板/`max_blocks_per_task` 能力存在，但没有 active 规则、没有 UI/默认开启；
+  - `campaign` 只是班次内软分组，`sequence_setup` 只是换型顺序；
+  - 没有“同模/同 campaign 跨工单防穿插”的硬窗口，Gantt 里的 6×48 尾块是模型允许的碎片化填充。
+- Gantt 实证：WBC9317 1,248 件被拆成 10 个班次块（432/48/96/384/48×5），
+  说明当前没有 block cap，95% 填充与软换型目标允许尾部小块。
+- 实验：`hc16_lite_enabled` → `max_blocks_per_task=1`。
+  - 单工单测试连续块通过；
+  - 但 WL 10 天全量开启后求解不可行（总负荷仅 76%/79%，仍无解），
+    说明“总量守恒”不等于“按 95% 班次地板 + 物料/PM/交期可排”；
+  - 因此 HC-16 不能简单全局限块，必须按 campaign 定义窗口，并显式允许 PM/缺料例外。
+- 代码保留为 opt-in 实验开关 `hc16_lite_enabled`（默认关闭），不作为 HC-16 完成依据。
+- 新增 `tests/test_hc16.py` 1 项连续块测试。
+
+
+### 2026-10-31 规则表新增「落地细则」列
+
+- Light China APS Rules.xlsx 第 1 张表新增 I 列「落地细则（可落地口径 + 待核对问题）」。
+- 32 条规则全部填写：【可落地】 写清变量、数据源、时间粒度、例外与当前系统支持；【待核对】 列出需物流排产专家确认的细则（编号问题）。
+- 重点待核对：HC-16 超级工单边界、SC-01 D+1 时钟、SC-08 顺位 index、SC-10 负荷口径、BS-04 Pull 混合、BS-05 合批视距与 HC-08 L/R 配对等。
+- 原 A-H 列内容逐格比对无差异；备份 rchive/rules/Light China APS Rules.pre_landing_details.xlsx。
+
+
+### 2026-10-31 SC-10 三班负荷平滑
+
+- `APSScheduler(enforce_labor_smoothing=True)`：新增 `_add_labor_smoothing_penalty`。
+- 按日期汇总早/中/晚班的 FG 机时（`x × unit_millis`），最小化每班相对当日均值的 L1 偏差；
+  二次方差在 CP-SAT 中非线性，L1 偏差是线性代理（三班相等时为 0）。
+- 权重 LABOR_SMOOTH_WEIGHT=2，归入 G3_CHANGEOVER，不压交付/产能。
+- 服务端 payload/site settings `labor_smoothing_enabled`，UI 站点设置新增「三班负荷平滑 (SC-10)」；
+  响应回传开关。
+- 规则目录 SC-10 状态 `needs_model → partial`；当前 partial 22 / needs_model 3。
+- 新增 `tests/test_labor_smoothing.py` 1 项：3 个 FG 任务在平滑开启后分布到 ≥2 个班次。
+- 实测 WL 5 天：平滑关闭/开启均 21 任务、FEASIBLE。
+
+
+### 2026-10-31 SC-08 顺位前置填补原型
+
+- `APSScheduler(enforce_sc08=True)`：新增 `_add_sc08_penalty`。
+- 同产线按自然交期排序；对每一对“早交期 i / 晚交期 j”，用 Bool `inv` 表示
+  `end_i > end_j`，罚 `SC08_INVERSION_WEIGHT=20,000`；是平方序位罚的线性配对代理。
+- 归入 G3_CHANGEOVER；默认关闭，不压交付/产能；服务端 `sc08_enabled` + UI 开关。
+- 规则目录 SC-08 `needs_model → partial`；当前 partial 23 / needs_model 2。
+- 新增 `tests/test_sc08.py` 1 项：早交期任务完成不晚于晚交期任务。
+- 实测 WL 5 天：关闭/开启均 21 任务、FEASIBLE。
+
+
+### 2026-11-01 BS-05 同模合批软约束
+
+- `APSScheduler(enforce_campaign_batching=True)`：新增 `_add_campaign_run_penalty`。
+- 以 `mold_id`（无模具时回退 `campaign_group`）分组，按产线统计每个分组的“开工段数”：
+  同一班次多个任务同时开工只算一段；每多一段罚 60,000。
+- 不改变订单 identity、不合并任务，是 BS-05 “SuperOrder 合批”的软代理；
+  对 HC-16-hard 的后续 campaign 窗口也是前置分组基础。
+- 服务端 `campaign_batching_enabled` + UI“同模合批软约束 (BS-05)”；默认关闭。
+- 规则目录 BS-05 `preprocess → partial`；当前 partial 24 / needs_model 2。
+- 新增 `tests/test_campaign_batching.py` 1 项；WL 5 天开启/关闭均 21 任务、FEASIBLE。
+
+
+### 2026-11-01 BS-06 交期裕度退避（回退式）
+
+- `APSScheduler(enforce_slack_fallback=True)`：在 BS-05 合批求解后统计 `Slack = Due − End`。
+- 若存在 Slack<0，复制调度器并关闭 `enforce_campaign_batching` 重解一次；
+  仅当延期订单数更少，或数量相同但最小 Slack 更大时采用回退方案。
+- `slack_fallback_info` 记录 enabled/triggered/late_before/late_after/min_slack/chosen；
+  API 返回 `slack_fallback`。
+- 服务端 `slack_fallback_enabled` + UI“交期裕度退避 (BS-06)”；默认关闭。
+- 这是交付保护型回退，不是 BS-06 的“按 MOQ 截断 SuperOrder”；后者仍待细则。
+- 新增 `tests/test_slack_fallback.py` 1 项；WL 5 天实测 21 任务、FEASIBLE、未触发。
+
+
+### 2026-11-01 BS-05-2 SuperOrder 分组对象
+
+- 新增 `src/batching.py::CampaignBatch` 与 `build_campaign_batches()`：
+  按 `(mold_id 或 campaign_group, part_no)` 分组，同一视距窗口（默认 30 天）内 ≥2 单形成一个 batch。
+- **不合并订单/task**：Batch 只是计划对象，保留 source order/task 清单，避免破坏 17 项校验与订单 identity。
+- `/api/solve` 新增 `campaign_batches`，返回 batch_id、模具/族、零件、task_ids、order_ids、总数量、最早/最晚交期。
+- 实测 WL 5 天：3 个 batch（WBC9318/WBC9324 等同模同零件订单被聚合）。
+- 新增 `tests/test_campaign_batches.py` 2 项：同模同零件聚合、视距窗口切分。
+- 下一步：BS-06 按 batch 做 MOQ 截断、HC-16-hard 用 batch 做连续窗口。
+
+
+### 2026-11-01 BS-06-2 batch 级截断建议
+
+- 新增 `batching.build_truncation_suggestions()`：
+  - 找延期订单的 overrun 小时，按 `CT/TRP` 折算需要释放的数量；
+  - 在同产线 CampaignBatch 中取最大批次，按完成时间倒序建议顺延尾单；
+  - 输出 keep/split 数量、keep/split task/order、min_moq、feasible/note；
+  - 不自动修改排产结果，避免静默丢单。
+- `/api/solve` 新增 `truncation_suggestions`；无延期时为空。
+- 新增 `tests/test_truncation_suggestions.py` 1 项：tail split 满足 overrun 且 keep≥MOQ。
+- 实测 WL 5 天：3 个 campaign batch、无延期、0 条建议。
+
+
+### 2026-11-01 SC-01 D+1 备货时钟（soft）
+
+- `APSScheduler(enforce_d1_clock=True, demand_by_date=...)`：新增 `_add_d1_clock_penalty`。
+- 服务端从 `snap.orders` 汇总 `due_date → part → qty`；按“当日最后一个班次”计算 FG 日末库存：
+  `opening + 累计产出 − 截至当日需求`；对次日需求缺口罚 100/件。
+- 当前只做层级 1（D+1 soft clock）；层级 2 的“当日早班紧急追产”硬兜底尚未做。
+- 服务端 `d1_clock_enabled` + UI 开关；默认关闭。
+- 新增 `tests/test_d1_clock.py` 1 项；WL 5 天实测 21 任务、FEASIBLE。
+- 规则目录 SC-01 `needs_model → partial`；当前 partial 25 / needs_model 1。
+
+
+### 2026-11-01 BS-04 逆向拉动偏好
+
+- `APSScheduler(enforce_pull=True)`：把 FG/SF 的完成偏好从“越早越好”翻转为
+  “越接近交期/窗口上界越好”（JIT pull），不改 due 硬约束。
+- 服务端 `pull_enabled` + UI“逆向拉动偏好 (BS-04)”；默认关闭。
+- 这是 Pull 的软偏好层，不是独立逆向求解器；BOM 逆向拉动仍由 C4/C6 约束承担。
+- 规则目录 BS-04 `needs_model → partial`；当前 **partial 26 / needs_model 0**，Phase B 32 条规则全部至少 partial。
+- 新增 `tests/test_pull.py` 1 项：pull 完成不早于 push。
+- WL 5 天实测：21 任务、FEASIBLE。
+
+
+### 2026-11-01 BS-06-3 自动截断/顺延
+
+- 新增 	runcation_auto_enabled：当 	runcation_suggestions 有可行建议时，按 split order 过滤 snapshot，
+  重新构建 requirement plan，并复制调度器求解剩余订单。
+- 响应新增 deferred_orders 与 uto_truncated；plan/result/solve_snap 切换到剩余订单集合，
+  因此 17 项校验只针对本期实际排产订单，不会把顺延订单误判为欠产。
+- 仅在所有涉及订单都 easible=true 时自动执行；否则保留原计划并返回建议。
+- WL 5 天无延期场景：auto=false、deferred=[]；代码路径通过。
+
+
+### 2026-11-01 硬 95% 不再静默软回退
+
+- 现象：V5 规则集 `WL_CAP_FG/WL_CAP_SF` 的 `capacity_utilization` 为 hard、`min_util=0.95`，
+  但求解器在硬口径无解时自动降级 soft，页面仍显示 FEASIBLE + 91.4%，掩盖了 17 个班次低于 95%。
+- 修复：`APSScheduler` 检测 hard 且 `min_util>=0.95` 的容量规则，默认只跑硬口径；
+  硬口径无解时返回 `HARD_95_INFEASIBLE`，给出瓶颈、线负荷和调整建议，不再自动生成低利用率计划。
+- 新增站点设置 `allow_soft_capacity_fallback`（默认关闭）：显式打开后才允许软回退；
+  API `kpi.strict_capacity_hard / allow_soft_capacity_fallback` 可追溯。
+- 新增 `tests/test_hard_capacity_strict.py` 1 项；全量 **147/147 PASS**。
+
+
+### 2026-11-01 C2-b-3c 候选线裁剪
+
+- 每个有备线的任务只保留“主选线 + 1 条备线”，避免认证线全集把 sequence 模型乘爆。
+- 候选面 ≤6 个任务、≤12 个候选槽时，`assign + sequence` 留在主模型；超过则回退 C2-b-3a。
+- 新增 `candidate_pruning` 指标：裁剪任务数、候选槽、同模型上限；API 返回。
+- SY38 实测：12 个有备线任务会回退，18 任务/86s FEASIBLE；WL 当前 Routing 无多线候选。
+- 新增 `tests/test_candidate_pruning.py` 3 项；全量 **150/150 PASS**。
+- 局限：>6 个候选任务仍未同模型 sequence，C2-b-3 未完全闭合。
+
+
+### 2026-11-01 BS-06 顺延订单选择器
+
+- `batching.select_deferred_orders()`：只接受 `feasible=true` 的截断建议，按 order_id 去重，
+  输出 order_id/batch/qty/target/reason；服务端自动截断复用该函数。
+- 新增 `tests/test_truncation_suggestions.py` 第 2 项：不可行建议不进入顺延清单，重复订单只保留一次。
+- 全量 **151/151 PASS**；自动截断的“有延期”整链路仍需真实/构造场景验收。
+
+
+### 2026-11-01 BS-06 自动裁剪重排数据面
+
+- `batching.without_orders()`：浅拷贝 snapshot，剔除顺延订单，原 snapshot 不变。
+- 服务端自动截断复用该函数，确保后续 `build_requirement_plan` 只包含本期订单，
+  17 项校验不会把顺延订单误判为欠产。
+- 新增 `tests/test_bs06_auto.py`：可行建议才顺延、快照不被修改、重算计划不含顺延订单。
+- 全量 **157/157 PASS**；真实“有延期→自动截断→重排”仍待一个完整场景验收。
+
+
+### 2026-11-01 BS-06 有延期场景数据链路测试
+
+- 构造 CampaignBatch + 延期目标订单，走通：
+  uild_truncation_suggestions → select_deferred_orders → without_orders → build_requirement_plan。
+- 断言顺延订单不在新 plan 中、原 snapshot 不变；覆盖“有延期”的自动截断数据链路。
+- 全量 **157/157 PASS**。
+
+
+### 2026-11-01 BS-06 真实延期→截断→重排闭环
+
+- 构造 10 个同模 FG 任务，交期仅 2h，真实求解产生延期；
+- uild_campaign_batches → build_truncation_suggestions → select_deferred_orders
+  得到顺延清单；
+- 从 plan 剔除顺延任务后重新求解，断言剩余任务不再包含顺延订单。
+- 新增 	ests/test_bs06_solver_loop.py；全量 **157/157 PASS**。
+
+
+### 2026-11-01 C2-b-3c 候选池尝试
+
+- 有备线任务 >6 时，不再直接回退：先取工作量最大的 6 个任务组成候选池，
+  其余任务固定主线，尝试主模型 sequence；
+- 候选池尝试限时 55% 预算；失败则恢复完整候选并回退 C2-b-3a；
+- candidate_pruning 增加 pool_limited/pool_attempted/pool_tasks/pool_dropped/pool_fallback。
+- SY38 12 个备线任务实测：候选池仍未解出，回退 C2-b-3a，18 任务 FEASIBLE，约 82s。
+- 全量 **157/157 PASS**。
+
+
+### 2026-11-01 C2-b-3c 同模组 sequence 子集
+
+- 候选池任务增加 sequence_task_ids 范围：只对池内 6 个任务建 sequence 变量，
+  其余任务仍参与容量/交期，但不进入 sequence 路径。
+- SY38 12 个备线任务实测：候选池 + 子集 sequence 仍未解出，自动回退 C2-b-3a；
+  最终 18 任务 FEASIBLE，约 82s。
+- 说明：该子集路径是近似（池外任务不计换型顺序），只在候选池成功时生效；
+  失败会回退完整 C2-b-3a 并清空 scope。
+
+
+### 2026-11-01 BS-06 顺延订单页面/导出
+
+- 页面顶部新增“本期自动顺延 N 个订单”面板，列出订单号、批次、数量、目标订单、原因。
+- Excel 导出新增“本期顺延订单”sheet（仅在有顺延时出现），与主计划区分。
+- 服务端 session 保存 deferred_orders，导出复用。
+- 全量 157/157 测试保持通过。
+
+
+### 2026-11-01 BS-06 顺延订单导出单元
+
+- exporter.append_deferred_orders() 独立负责“本期顺延订单”sheet；
+- 服务端导出调用该函数，避免重复样式代码；
+- 新增 	ests/test_deferred_export.py：表头、订单号、数量、原因写正确。
+- 全量 **157/157 PASS**。
+
+
+### 2026-11-01 BS-06 截断接受守卫
+
+- atching.truncation_improves()：只有“延期订单减少”或“延期数相同且最小 Slack 不退化”才接受自动截断结果。
+- 服务端自动截断计算 before/after 的 late/min-slack，退化则保留原计划。
+- 响应新增 	runcation_summary；页面横幅显示“延期 X → Y”。
+- 全量 **157/157 PASS**。
+
+
+### 2026-11-01 32 条规则专家答复复核（第一轮）
+
+- 复核 Light China APS Rules.xlsx J 列 32 条答复；答复总体与实现方向一致，但发现 4 个必须先解决的冲突/数据缺口：
+  1. **HC-04**：专家明确“不接受默认 60min，必须维护矩阵”；当前 _add_sequence_constraints 仍对缺失边回退 60min。
+  2. **HC-09**：专家明确静置从“整批完工”起算；当前 C4 仍按“首批转运批量”起算。两者冲突，需业务确认是否只对特定零件。
+  3. **HC-08**：专家明确 L/R 必须 1:1 同步；当前没有强制配对/同步产出。
+  4. **HC-14**：专家明确装配防断线优先于 SC-06/07 库存罚；当前 inventory hard 仍可能阻断。
+- 已同步落地：
+  - **HC-01**：无论 vailable_qty 多少，同一物理模具只能 1 台机；FG/SF 分开占用；内核与 legacy 路径均已改。
+  - **SC-01**：新增 enforce_d1_clock_hard，可将 D+1 缺口设为硬约束（默认关闭，便于先观察）。
+- 结论：暂不生成正式 V6；先解决 HC-04/09/08/14 四个阻塞项，再做候选版本。
+- 全量 **157/157 PASS**。
+
+
+### 2026-11-01 业务补充确认
+
+- SC-02：105% 上浮为通用规则，不限制单产品/无换型；现有通用 105% 保留。
+- HC-16：软/硬应在 rule-sets 页面配置；V6 候选设 hard；当前 HC-16-lite 仅测试，不作为正式规则。
+- 规则主数据：建议新增 v1.1 版本，保留 J 列答复作为审计轨迹，不回写覆盖原始 Excel。
+
+
+### 2026-11-01 HC-16 规则模板 v0（可配软/硬）
+
+- 新增内核模板 hc16：max_blocks + llow_delivery_override，nature 由 rule-sets 页面配置；
+- 编译器当前复用 contiguity 的“工单连续块数”近似，不是正式“同模窗口”硬模型；
+- 已在调度器 _build_model 接线，规则集带 hc16 时生效；
+- llow_delivery_override 已受理但 v0 仍按 nature 编译，交期 override 待正式模型；
+- 模板总数 19→20；全量 **157/157 PASS**。
+
+
+### 2026-11-01 规则与约束配置 Tab 更新
+
+- 顶部新增 4 张卡：32 条目录、20 个内核算子、当前规则集（ID/版本/规则数/hard-soft）、覆盖统计；
+- 新增“当前站点规则集明细”只读表：规则 ID、模板、作用域、软/硬、权重、参数、启用；
+- 动态读取 /api/rule-sets/templates 与 /api/rule-sets/active；
+- 当前活动规则集未包含 HC-16 时显示提示，引导在 /rule-sets 添加 hc16；
+- 更新“19 个固定算子”为动态模板数，避免文档与实现脱节。
+
+
+### 2026-11-01 修复主页白屏
+
+- 原因：规则 Tab 新增的 
+uleTemplates / ctiveRuleSetRules / deferredOrders 等 ref 未在 Vue setup 的 
+eturn 中暴露，模板读 .length 时抛异常。
+- 修复：补齐 return；headless Chrome 验证页面可渲染，规则 Tab、工作台、当前规则集明细均显示。
+
+
+### 2026-11-01 V6 候选实验
+
+- 基于 v4 生成 WL_PHASE1 v6（id8，draft）：soft 95 + HC-16 hard v0 + qc_release_hours=0；
+- 激活 v6 跑 WL 10 天：400，HC-16 hard v0（每工单 1 块）与当前任务结构冲突，候选不可行；
+- 生成 WL_PHASE1 v6S（id9，draft）：HC-16 改 soft；激活后 WL 10 天 FEASIBLE，19 任务，平均利用率 93.4%，仅 95% 检查未通过（软 95 预期）；
+- 测试后已恢复 v4 active（id6）；两个候选保留为 draft，供规则集页面查看。
+
+
+### 2026-11-01 v6/v6S 测试诊断
+
+- v6（HC-16 hard v0）WL 400：不是总工时超载（线负荷 76%/79%），而是 hc16 max_blocks=1 与任务结构冲突；错误弹窗已改为 HC16_INFEASIBLE，不再误报产能。
+- v6S WL 25.2%：v6S 的 capacity_utilization 是 soft，25.2% 是开班/收班低负荷，不是求解错误；要硬 95 需 hard 版本。
+- SY38 L755774 3 件：WL_MPQ_SF 仍为 unit=piece，SF 是可拆 piece lot，班次块不受 MPQ100 约束；这是 SC-04 的 SF MPQ 对齐缺口，不是 FG MPQ 规则。已尝试修 SF 分块 MPQ，但当前输出 88/323/123 仍未对齐，已回退，列为待修。
+- 全量 157 基线此前通过；本次改动后快速 60/60 通过。
+
+
+### 2026-11-01 SF MPQ 修复尝试（未完成）
+
+- 根因确认：WL_MPQ_SF 为 unit=piece；SF 任务为 piece-lot 可拆，3 是班次块，不是整单；SF 总量 534 也不是 MPQ100 整倍数。
+- 尝试 1：SF splittable 强制每班 >=100；部分 SF 任务总量 <100（如 3/22），模型直接不可行。
+- 尝试 2：数据加载把 SF 净需求向上取整到 MPQ（534→600）；10 天计划仍不可行（容量/交期），不能全局硬切。
+- 已回退两次试验，active 仍为 v4；SF MPQ 需要 tail-aware 策略（整单 MPQ + 唯一尾块）再做。
+
+
+### 2026-11-02 待确认清单收敛与技术缺口记录
+
+- APS_业务规则确认清单.xlsx 收敛为 5 项：HC-16 空档/ v0 hard、SC-02 95% 硬软、HC-09 整批静置冲突、HC-14 覆盖阈值、SC-04 SF MPQ 尾块。
+- 已确认问题从业务清单移除；历史答复保留在 Light China APS Rules.xlsx J 列。
+- 记录 WCA1894 低负荷开班（3×60、13.5%）和 L755774 SF 非 MPQ 班次块（3/88/123）为技术缺口，见 dashboard 5.1。

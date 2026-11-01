@@ -17,7 +17,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 48.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_01",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WAB6404": {
       "site": "WL",
@@ -36,7 +40,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 72.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_01",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WB35356": {
       "site": "WL",
@@ -55,7 +63,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_01",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WB80510": {
       "site": "WL",
@@ -74,7 +86,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 48.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_01",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WC07674": {
       "site": "WL",
@@ -93,7 +109,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 72.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD48696": {
       "site": "WL",
@@ -112,7 +132,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_02",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD59238": {
       "site": "WL",
@@ -131,7 +155,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 48.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_02",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "W144813S": {
       "site": "WL",
@@ -150,7 +178,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 72.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "W000076959VA": {
       "site": "WL",
@@ -169,7 +201,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "W243255S": {
       "site": "WL",
@@ -188,7 +224,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 48.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WA14208S": {
       "site": "WL",
@@ -207,7 +247,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 72.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD48696S": {
       "site": "WL",
@@ -226,7 +270,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WBC9317": {
       "site": "WL",
@@ -245,7 +293,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 48.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_LINK_02",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WBC9317C": {
       "site": "WL",
@@ -264,7 +316,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 72.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCF8126": {
       "site": "WL",
@@ -283,7 +339,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCB8574": {
       "site": "WL",
@@ -302,7 +362,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCA1894": {
       "site": "WL",
@@ -321,7 +385,11 @@
       "scrap_rate": 0.0,
       "headcount": 3.0,
       "moq": 60.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     }
   },
   "sf_params": {
@@ -342,7 +410,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_01",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "W000061541": {
       "site": "WL",
@@ -361,7 +433,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_01",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WA14222": {
       "site": "WL",
@@ -380,7 +456,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_02",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WA14229": {
       "site": "WL",
@@ -399,7 +479,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_02",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WAB6407": {
       "site": "WL",
@@ -418,7 +502,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_03",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WAB6412": {
       "site": "WL",
@@ -437,7 +525,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_03",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WC84833": {
       "site": "WL",
@@ -456,7 +548,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_04",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WC52036": {
       "site": "WL",
@@ -475,7 +571,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": "MOLD_WL_AXLE_04",
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WC07786": {
       "site": "WL",
@@ -494,7 +594,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WC08355": {
       "site": "WL",
@@ -513,7 +617,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD48699": {
       "site": "WL",
@@ -532,7 +640,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD48700": {
       "site": "WL",
@@ -551,7 +663,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD59243": {
       "site": "WL",
@@ -570,7 +686,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WD59260": {
       "site": "WL",
@@ -589,7 +709,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WBC9318": {
       "site": "WL",
@@ -608,7 +732,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WBC9324": {
       "site": "WL",
@@ -627,7 +755,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCF8333": {
       "site": "WL",
@@ -646,7 +778,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCF8335": {
       "site": "WL",
@@ -665,7 +801,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCA1903": {
       "site": "WL",
@@ -684,7 +824,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "WCA1927": {
       "site": "WL",
@@ -703,7 +847,11 @@
       "scrap_rate": 0.03,
       "headcount": 0.0,
       "moq": 100.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     }
   },
   "bom": {
@@ -1716,7 +1864,9 @@
       "capacity_rate": 0.0,
       "handling_strategy": "避让顺延 (Shift_Delay)",
       "responsible_team": "机修自动化一组",
-      "status": "已排定 (Planned)"
+      "status": "已排定 (Planned)",
+      "start_time": "",
+      "end_time": ""
     },
     {
       "site": "WL",
@@ -1732,7 +1882,9 @@
       "capacity_rate": 0.0,
       "handling_strategy": "跨班切分 (Batch_Split)",
       "responsible_team": "冲压维修二班",
-      "status": "已排定 (Planned)"
+      "status": "已排定 (Planned)",
+      "start_time": "",
+      "end_time": ""
     },
     {
       "site": "WL",
@@ -1748,7 +1900,9 @@
       "capacity_rate": 0.0,
       "handling_strategy": "暂停挂起 (Suspend)",
       "responsible_team": "设备厂家常驻维保组",
-      "status": "执行中 (In Progress)"
+      "status": "执行中 (In Progress)",
+      "start_time": "",
+      "end_time": ""
     }
   ],
   "material_arrivals": [
@@ -1761,6 +1915,7 @@
       "eta_date": "2026-10-13",
       "eta_shift": "早班",
       "quantity": 5000.0,
+      "eta_time": "",
       "qc_release_hours": 2.0,
       "associated_part": "WA14208",
       "status": "质检合格 (Released)"
@@ -1774,6 +1929,7 @@
       "eta_date": "2026-10-12",
       "eta_shift": "早班",
       "quantity": 8000.0,
+      "eta_time": "",
       "qc_release_hours": 1.0,
       "associated_part": "W000061536",
       "status": "已入库 (Stocked)"
@@ -1787,6 +1943,7 @@
       "eta_date": "2026-10-14",
       "eta_shift": "中班",
       "quantity": 6500.0,
+      "eta_time": "",
       "qc_release_hours": 2.0,
       "associated_part": "WAB6404",
       "status": "在途运输 (In Transit)"
@@ -1800,6 +1957,7 @@
       "eta_date": "2026-10-13",
       "eta_shift": "中班",
       "quantity": 9200.0,
+      "eta_time": "",
       "qc_release_hours": 1.5,
       "associated_part": "WB35356",
       "status": "质检合格 (Released)"
@@ -1813,6 +1971,7 @@
       "eta_date": "2026-10-14",
       "eta_shift": "早班",
       "quantity": 12000.0,
+      "eta_time": "",
       "qc_release_hours": 1.0,
       "associated_part": "WB80510",
       "status": "在途运输 (In Transit)"
@@ -1826,6 +1985,7 @@
       "eta_date": "2026-10-15",
       "eta_shift": "早班",
       "quantity": 4500.0,
+      "eta_time": "",
       "qc_release_hours": 2.5,
       "associated_part": "WD48696",
       "status": "在途运输 (In Transit)"
@@ -1839,6 +1999,7 @@
       "eta_date": "2026-10-14",
       "eta_shift": "晚班",
       "quantity": 7000.0,
+      "eta_time": "",
       "qc_release_hours": 1.0,
       "associated_part": "WBC9317",
       "status": "在途运输 (In Transit)"
@@ -1916,5 +2077,24 @@
         "W000014478SKR"
       ]
     }
-  ]
+  ],
+  "line_base": [
+    {
+      "line": "PGLINKAGE",
+      "trp": 0.71,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "source": "参数表派生"
+    },
+    {
+      "line": "轴套6",
+      "trp": 0.85,
+      "hours_per_shift": 8.0,
+      "shifts_per_day": 3,
+      "source": "参数表派生"
+    }
+  ],
+  "warnings": [],
+  "source_path": "D:\\Codes\\APS_MVP\\data",
+  "layout": "csv"
 }

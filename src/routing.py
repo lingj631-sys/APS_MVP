@@ -97,6 +97,30 @@ def primary_line(routing: Dict[Tuple[str, str, int], List[RoutingOption]], site:
     return options[0].candidate_line if options else ""
 
 
+def available_hours_by_line(
+    shifts: Iterable[Any],
+    *,
+    shift_hours: float,
+    lines: Iterable[str],
+    pm_schedules: Optional[Iterable[Any]] = None,
+) -> Dict[str, float]:
+    """C2-b-1: per-line hours from the real calendar (work shifts, minus PM).
+
+    The old upstream assignment assumed ``horizon_days × shifts/day × hours`` for
+    every line, which over-estimates a 5/2 calendar and ignores PM downtime.
+    """
+    work_shifts = [s for s in shifts if getattr(s, "is_work_shift", True)]
+    base_hours = len(work_shifts) * float(shift_hours)
+    out = {str(line): base_hours for line in lines}
+    for pm in (pm_schedules or []):
+        line = str(getattr(pm, "line", "") or "")
+        if line not in out:
+            continue
+        downtime = float(getattr(pm, "downtime_hours", 0.0) or 0.0)
+        out[line] = max(0.0, out[line] - downtime)
+    return out
+
+
 def assign_routing_lines(
     tasks: Iterable[Any],
     routing: Dict[Tuple[str, str, int], List[RoutingOption]],

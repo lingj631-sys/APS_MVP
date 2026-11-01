@@ -598,3 +598,31 @@ def _finish_sheet(ws, total_cols: int, last_row: int) -> None:
     for col in range(FIRST_SHIFT_COL, total_cols + 1):
         ws.column_dimensions[get_column_letter(col)].width = 7
     ws.freeze_panes = f"{get_column_letter(FIRST_SHIFT_COL)}3"
+
+
+def append_deferred_orders(path: str, deferred: List[dict]) -> None:
+    """Append the BS-06 deferred-order sheet to an existing workbook."""
+    if not deferred:
+        return
+    wb = openpyxl.load_workbook(path)
+    ws = wb.create_sheet("本期顺延订单")
+    ws.append(["本期顺延订单（未纳入当前排程）"])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=5)
+    ws["A1"].font = Font(bold=True, size=13)
+    ws.append(["订单号", "批次", "顺延数量", "目标订单", "原因"])
+    for cell in ws[2]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="FFF2CC")
+    for item in deferred:
+        ws.append([
+            item.get("order_id", ""),
+            item.get("batch_id", ""),
+            item.get("qty", ""),
+            item.get("target_order_id", ""),
+            item.get("reason", ""),
+        ])
+    widths = [24, 32, 14, 24, 48]
+    for idx, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = width
+    ws.freeze_panes = "A3"
+    wb.save(path)

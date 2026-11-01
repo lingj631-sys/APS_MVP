@@ -25,7 +25,7 @@ from src.balance_builder import build_validation_matrix
 from src.metric_labels import labels_for
 from src.rules import get_rules_for_site
 from src.scheduler import APSScheduler, ScheduleResult, ScheduledTask
-from src.shift_manager import CalendarMode, DEFAULT_CHANGEOVER_MINUTES
+from src.shift_manager import CalendarMode, DEFAULT_CHANGEOVER_MINUTES, build_topology
 from src.validator import (
     diagnose_empty_shifts,
     validate_schedule,
@@ -57,8 +57,19 @@ def process_manual_excel_audit(
     horizon_days = settings.get("horizon_days", 10)
     start_date_str = settings.get("start_date", "2026-10-12")
     cal_mode_str = settings.get("calendar_mode", "SEVEN_ZERO")
+    # Shift geometry follows 产线基础数据 when the snapshot carries it.
+    shift_hours = None
+    shifts_per_day = None
+    line_base = getattr(snap, "line_base", None) or []
+    if line_base:
+        counts = {}
+        for lb in line_base:
+            key = (round(float(lb.hours_per_shift), 2), int(lb.shifts_per_day))
+            counts[key] = counts.get(key, 0) + 1
+        (shift_hours, shifts_per_day) = max(counts, key=counts.get)
+    topology = build_topology(site_upper, shift_hours=shift_hours, shifts_per_day=shifts_per_day)
     y, m, d = [int(p) for p in start_date_str.split("-")]
-    start_dt = datetime(y, m, d)
+    start_dt = datetime(y, m, d, topology.shift_boundaries[0][0])
 
     try:
         cal_mode = CalendarMode(cal_mode_str)
@@ -72,6 +83,8 @@ def process_manual_excel_audit(
         planning_days=horizon_days,
         calendar_mode=cal_mode,
         site=site_upper,
+        shift_hours=topology.shift_hours,
+        shifts_per_day=topology.shifts_per_day,
     )
     shifts = scheduler.shifts
     index_of: Dict[Any, int] = {}

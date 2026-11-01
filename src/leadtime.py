@@ -70,16 +70,28 @@ def lead_shifts(
     lead_time_days: float,
     shift_hours: float,
     quantity: float = 0.0,
+    trp: float = 1.0,
 ) -> int:
-    """Convert product lead days plus operation non-processing minutes into shifts."""
+    """Convert product lead days plus operation rest/prep into shifts.
+
+    2026-10 语义：`setup_min` 承载『提前准备时间』（静置/等待），
+    `transfer_batch` 是允许向下游转运的最小批量。首次转运必须等待
+    整批完成并静置，因此前置时间 = 静置分钟 + 首批加工时间：
+        rest + ceil(min(qty, batch) × CT / TRP)
+    """
     hours = max(0.0, float(lead_time_days)) * 24.0
     if entry is not None:
         minutes = entry.setup_min + entry.queue_min + entry.inspection_min
+        batch_pieces = 0.0
         if entry.transfer_batch > 0 and quantity > 0:
             transfers = math.ceil(quantity / entry.transfer_batch)
             minutes += entry.move_min * transfers
+            batch_pieces = min(float(quantity), float(entry.transfer_batch))
         else:
             minutes += entry.move_min
+            batch_pieces = max(0.0, float(quantity))
+        if entry.run_ct_seconds > 0 and batch_pieces > 0:
+            minutes += batch_pieces * float(entry.run_ct_seconds) / max(1e-9, float(trp)) / 60.0
         hours += minutes / 60.0
     if hours <= 0 or shift_hours <= 0:
         return 0

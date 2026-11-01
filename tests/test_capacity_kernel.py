@@ -16,7 +16,7 @@ if BASE_DIR not in sys.path:
 from src.data_loader import build_requirement_plan, load_aps_database
 from src.inventory_policy import load_inventory_policy
 from src.campaign import load_campaign_families
-from src.leadtime import lead_shifts, load_operation_lead_times
+from src.leadtime import OperationLeadTime, lead_shifts, load_operation_lead_times
 from src.kernel.types import GroupMode, Nature, RuleGroup, RuleInstance, RuleSet, Scope
 from src.scheduler import APSScheduler
 from src.shift_manager import CalendarMode
@@ -117,6 +117,23 @@ class TestCapacityKernelWiring(unittest.TestCase):
         result = sched.solve(time_limit_seconds=10.0)
         self.assertIn(result.status_name, ("OPTIMAL", "FEASIBLE"))
 
+
+    def test_lead_shift_includes_rest_and_first_transfer_batch(self):
+        # 静置 6h + 首批 100 件加工（23s/件、TRP 0.85）≈ 45min → 405min → 1 个 8h 班
+        fast = OperationLeadTime("WL", "X", "SF", 10, "冲压", 360, 23, 0, 0, 100, 0)
+        self.assertEqual(
+            lead_shifts(fast, lead_time_days=0.0, shift_hours=8.0, quantity=1000, trp=0.85), 1
+        )
+        # 静置 12h + 首批 45min = 765min → 2 个班（只按首批，不按 1000 件全量）
+        slow = OperationLeadTime("WL", "X", "SF", 10, "冲压", 720, 23, 0, 0, 100, 0)
+        self.assertEqual(
+            lead_shifts(slow, lead_time_days=0.0, shift_hours=8.0, quantity=1000, trp=0.85), 2
+        )
+        # 45min 极限转运 + 首批 45min = 90min → 1 个班
+        quick = OperationLeadTime("WL", "X", "SF", 10, "冲压", 45, 23, 0, 0, 100, 0)
+        self.assertEqual(
+            lead_shifts(quick, lead_time_days=0.0, shift_hours=8.0, quantity=100, trp=0.85), 1
+        )
 
     def test_lead_time_soft_constraint_solves(self):
         snap, plan, start = _wl_plan(5)

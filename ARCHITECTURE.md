@@ -45,6 +45,9 @@
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                  领域实体与工业拓扑 (Domain & Data Layer)                │
 │  src/domain/ (Site/Line/ShiftSlot/Routing/Part 骨架；Phase 2 才接入主链) │
+│  src/master_schema.py (15 表主数据 Schema/别名/必填校验)                  │
+│  src/excel_loader.py (表头驱动加载：v2 15 表 + legacy 25 表)             │
+│  src/master_rows.py (工作簿主数据 → 求解器 dataclass)                    │
 │  src/data_loader.py (多表加载/BOM展开) | src/shift_manager.py (日历解耦)  │
 │  src/labor.py (劳动力定员三阶模板)     | src/metric_labels.py (工业量纲)  │
 └────────────────────────────────────────────────────────────────────────┘
@@ -123,7 +126,7 @@
 
 ## 3. 测试表面与回归矩阵 (The Interface is the Test Surface)
 
-根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 15 大自动化测试套件与系统接缝的映射关系如下：
+根据测试设计原则，**测试表面即为模块的公开接缝**。`tests/` 目录下的 33 个自动化测试套件与系统接缝的映射关系如下：
 
 | 测试套件文件 | 覆盖的模块接缝 | 核心验证不变量 |
 |---|---|---|
@@ -141,6 +144,10 @@
 | `tests/test_rule_catalog.py` | `src/rule_catalog.py` | 32 条目录唯一性、HC/SC/BS 分类、site override 不污染全局 |
 | `tests/test_inventory_policy.py` | `src/inventory_policy.py` B4-a | NORMAL/MONTH_END 策略、月末窗口、双工厂覆盖 |
 | `tests/test_capacity_kernel.py` | `src/scheduler.py` + active rule set | capacity kernel 目标接线（P0 回归）、C1-b-1 sequence/setup 求解 |
+| `tests/test_calendar_modes.py` | `src/shift_manager.py` | 四档日历、4/7~6/7 阈值、2×12h / 3×8h 班次几何、产线基础数据驱动 |
+| `tests/test_master_schema.py` | `src/master_schema.py` / `src/excel_loader.py` | 15 表 Schema、列序打乱、缺列拒绝、灰色列删除、v2/legacy 数值一致 |
+| `tests/test_master_export.py` | `src/master_export.py` | 站点模板导出、SY38 12h×2 几何、说明页覆盖全部表与字段 |
+| `tests/test_assign_in_model.py` | `src/scheduler.py` C2-b | `assign(task,line)` exactly-one、产线回写、重复求解不漂移、sequence 回写 |
 
 ---
 
@@ -152,8 +159,8 @@
    * *现状*：仍保留 27+9 条硬编码规则文字说明，主要作为前端静态兼容字典。
    * *方向*：完全由 `config/rule_sets/*.json` 与 `src/kernel/rule_mapping.py` 接管，退役静态硬编码。
 2. **`src/server.py` 路由瘦身**：
-   * *现状*：文件约 2,547 行；`src/services/manual_audit.py` 已抽取，但 `/api/audit_manual_schedule` 仍使用 `server.py` 内的旧编排，服务层尚未接线。
+   * *现状*：文件约 3,000 行；`src/services/manual_audit.py` 已抽取，但 `/api/audit_manual_schedule` 仍使用 `server.py` 内的旧编排，服务层尚未接线。
    * *方向*：接线 service 并删除重复路由，使 `server.py` 成为纯 HTTP Adapter。
 3. **数据模型实体化 (ACT-30 ~ ACT-32)**：
-   * *现状*：`src/domain/` 已落 Site/Workshop/Line/Routing/Part 值对象与 `test_domain.py`，但 scheduler/server 仍使用字符串绑定；`routing` 算子未实现。
+   * *现状*：`src/domain/` 已落 Site/Workshop/Line/Routing/Part 值对象与 `test_domain.py`，但 scheduler/server 仍使用字符串绑定；内核 `routing` 模板尚未编译，调度器侧已用 C2-b Assign 实现多线选择。
    * *方向*：把 domain 实体接入 data_loader/scheduler，并在内核中激活 `routing` 实现多产线选择。

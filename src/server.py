@@ -15,6 +15,7 @@ import sys
 import tempfile
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -25,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
@@ -34,21 +36,38 @@ from src.audit import AuditConfig, PlanRow, ShiftInfo, audit_schedule_part_level
 from src.balance_builder import build_validation_matrix
 from src.data_loader import (
     CustomerOrder,
+    LineBase,
     ProductionInputSnapshot,
     RequirementPlan,
     build_requirement_plan,
     load_aps_database,
     save_snapshot_json,
 )
-from src.exporter import export_production_plan, export_validation_matrix_excel
+from src.excel_loader import read_master_rows
+from src.master_export import export_site_workbook
+from src.master_rows import (
+    inventory_policy_from_rows,
+    operation_lead_times_from_rows,
+    routing_from_rows,
+    setup_matrix_from_rows,
+)
+from src.master_schema import REQUIRED_SHEET_KEYS, SHEET_BY_KEY, resolve_sheet, validate_workbook
+from src.exporter import export_production_plan, export_validation_matrix_excel, append_deferred_orders
 from src.kernel.rule_mapping import describe_legacy_rule
 from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
 from src.campaign import load_campaign_families
+from src.batching import (
+    build_campaign_batches,
+    truncation_improves,
+    build_truncation_suggestions,
+    select_deferred_orders,
+    without_orders,
+)
 from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
 from src.rule_catalog import coverage_summary, load_catalog
-from src.routing import assign_routing_lines, capability_violations, load_routing, solve_routing_assignment
+from src.routing import assign_routing_lines, available_hours_by_line, candidates_for, capability_violations, load_routing, solve_routing_assignment
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -60,6 +79,7 @@ from src.scheduler import APSScheduler, ScheduleResult, ScheduledTask
 from src.shift_manager import (
     CalendarMode,
     DEFAULT_CHANGEOVER_MINUTES,
+    build_topology,
     evaluate_calendar_recommendation,
     get_topology,
 )
@@ -74,6 +94,10 @@ DEFAULT_EXCEL = os.path.join(BASE_DIR, "dataSource.xlsx")
 if not os.path.exists(DEFAULT_EXCEL):
     DEFAULT_EXCEL = os.path.join(BASE_DIR, "APS Database- Simulation draft.xlsx")
 EXCEL_PATH = DEFAULT_EXCEL
+#: Planner-facing template served by /api/inputs/template and used to validate
+#: uploads.  It is the 2026-10 15-sheet framework; the default dataset above is
+#: still the multi-site legacy workbook, which the loader also understands.
+TEMPLATE_PATH = os.path.join(BASE_DIR, "APS_DataSource_Template.xlsx")
 # Each factory runs its own instance. FACTORY_SITE pins one instance to one site;
 # DEFAULT_SITE is the fallback for a shared development instance.
 FACTORY_SITE = os.getenv("FACTORY_SITE", "").strip().upper()
@@ -145,6 +169,18 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "inventory_policy_enabled": False,
         "inventory_hard_enabled": False,
         "routing_assign_enabled": False,
+        "routing_assign_in_model": False,
+        "jitter_enabled": False,
+        "hc16_lite_enabled": False,
+        "labor_smoothing_enabled": False,
+        "sc08_enabled": False,
+        "campaign_batching_enabled": False,
+        "slack_fallback_enabled": False,
+        "d1_clock_enabled": False,
+        "d1_clock_hard_enabled": False,
+        "pull_enabled": False,
+        "truncation_auto_enabled": False,
+        "allow_soft_capacity_fallback": False,
         "leadtime_enabled": False,
         "campaign_enabled": False,
         "due_slack_shifts": 0,
@@ -168,6 +204,18 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "inventory_policy_enabled": False,
         "inventory_hard_enabled": False,
         "routing_assign_enabled": False,
+        "routing_assign_in_model": False,
+        "jitter_enabled": False,
+        "hc16_lite_enabled": False,
+        "labor_smoothing_enabled": False,
+        "sc08_enabled": False,
+        "campaign_batching_enabled": False,
+        "slack_fallback_enabled": False,
+        "d1_clock_enabled": False,
+        "d1_clock_hard_enabled": False,
+        "pull_enabled": False,
+        "truncation_auto_enabled": False,
+        "allow_soft_capacity_fallback": False,
         "leadtime_enabled": False,
         "campaign_enabled": False,
         "due_slack_shifts": 0,
@@ -317,6 +365,27 @@ def get_fresh_snapshot(site: str = "WL") -> ProductionInputSnapshot:
     return load_aps_database(source, site_filter=site)
 
 
+def _shift_geometry(snap: Optional[ProductionInputSnapshot]) -> Dict[str, Any]:
+    """Shift geometry (hours × shifts/day) from 产线基础数据.
+
+    The workbook's line-base sheet is authoritative; when lines disagree we take
+    the dominant pair and report the spread so the UI can warn.
+    """
+    if snap is None or not getattr(snap, "line_base", None):
+        return {"hours": None, "shifts": None, "source": "", "mixed": {}}
+    counter = {}
+    for lb in snap.line_base:
+        key = (round(float(lb.hours_per_shift), 2), int(lb.shifts_per_day))
+        counter.setdefault(key, []).append(lb.line)
+    if not counter:
+        return {"hours": None, "shifts": None, "source": "", "mixed": {}}
+    (hours, shifts), lines = max(counter.items(), key=lambda item: len(item[1]))
+    mixed = {
+        f"{h:g}h×{s}班": ls for (h, s), ls in counter.items() if (h, s) != (hours, shifts)
+    }
+    return {"hours": hours, "shifts": shifts, "source": "产线基础数据", "mixed": mixed}
+
+
 def generate_calendar_view(
     start_date_str: str,
     horizon_days: int,
@@ -325,8 +394,10 @@ def generate_calendar_view(
     snap: Optional[ProductionInputSnapshot] = None,
     baseline_date_str: Optional[str] = None,
     site: str = "WL",
+    shift_hours: Optional[float] = None,
+    shifts_per_day: Optional[int] = None,
 ) -> Dict[str, Any]:
-    topology = get_topology(site)
+    topology = build_topology(site, shift_hours=shift_hours, shifts_per_day=shifts_per_day)
     try:
         y, m, d = [int(p) for p in start_date_str.split("-")]
         start_day = datetime(y, m, d)
@@ -346,6 +417,8 @@ def generate_calendar_view(
         mode_working_weekdays = {0, 1, 2, 3, 4}
     elif mode_str == "FOUR_THREE":
         mode_working_weekdays = {0, 1, 2, 3}
+    elif mode_str == "SIX_ONE":
+        mode_working_weekdays = {0, 1, 2, 3, 4, 5}
     else:
         mode_working_weekdays = {0, 1, 2, 3, 4, 5, 6}
 
@@ -424,6 +497,8 @@ def generate_calendar_view(
         horizon_days=horizon_days,
         current_calendar_mode=mode_str,
         site=site,
+        shift_hours=topology.shift_hours,
+        shifts_per_day=topology.shifts_per_day,
     )
 
     return {
@@ -435,6 +510,9 @@ def generate_calendar_view(
         "horizon_options": [5, 10, 15],
         "calendar_mode": mode_str,
         "day_shift_overrides": overrides,
+        "shift_hours": topology.shift_hours,
+        "shifts_per_day": topology.shifts_per_day,
+        "shift_names": list(topology.shift_names),
         "days": days_list,
         "total_days": horizon_days,
         "working_days": working_days_count,
@@ -540,6 +618,18 @@ class SiteSettingsPayload(BaseModel):
     inventory_policy_enabled: Optional[bool] = False
     inventory_hard_enabled: Optional[bool] = False
     routing_assign_enabled: Optional[bool] = False
+    routing_assign_in_model: Optional[bool] = False
+    jitter_enabled: Optional[bool] = False
+    hc16_lite_enabled: Optional[bool] = False
+    labor_smoothing_enabled: Optional[bool] = False
+    sc08_enabled: Optional[bool] = False
+    campaign_batching_enabled: Optional[bool] = False
+    slack_fallback_enabled: Optional[bool] = False
+    d1_clock_enabled: Optional[bool] = False
+    d1_clock_hard_enabled: Optional[bool] = False
+    pull_enabled: Optional[bool] = False
+    truncation_auto_enabled: Optional[bool] = False
+    allow_soft_capacity_fallback: Optional[bool] = False
     leadtime_enabled: Optional[bool] = False
     campaign_enabled: Optional[bool] = False
     due_slack_shifts: Optional[int] = 0
@@ -571,6 +661,18 @@ class SolvePayload(BaseModel):
     inventory_policy_enabled: Optional[bool] = None
     inventory_hard_enabled: Optional[bool] = None
     routing_assign_enabled: Optional[bool] = None
+    routing_assign_in_model: Optional[bool] = None
+    jitter_enabled: Optional[bool] = None
+    hc16_lite_enabled: Optional[bool] = None
+    labor_smoothing_enabled: Optional[bool] = None
+    sc08_enabled: Optional[bool] = None
+    campaign_batching_enabled: Optional[bool] = None
+    slack_fallback_enabled: Optional[bool] = None
+    d1_clock_enabled: Optional[bool] = None
+    d1_clock_hard_enabled: Optional[bool] = None
+    pull_enabled: Optional[bool] = None
+    truncation_auto_enabled: Optional[bool] = None
+    allow_soft_capacity_fallback: Optional[bool] = None
     leadtime_enabled: Optional[bool] = None
     campaign_enabled: Optional[bool] = None
     due_slack_shifts: Optional[int] = None
@@ -634,6 +736,30 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["inventory_hard_enabled"] = payload.inventory_hard_enabled
     if payload.routing_assign_enabled is not None:
         cfg["routing_assign_enabled"] = payload.routing_assign_enabled
+    if payload.routing_assign_in_model is not None:
+        cfg["routing_assign_in_model"] = payload.routing_assign_in_model
+    if payload.jitter_enabled is not None:
+        cfg["jitter_enabled"] = payload.jitter_enabled
+    if payload.hc16_lite_enabled is not None:
+        cfg["hc16_lite_enabled"] = payload.hc16_lite_enabled
+    if payload.labor_smoothing_enabled is not None:
+        cfg["labor_smoothing_enabled"] = payload.labor_smoothing_enabled
+    if payload.sc08_enabled is not None:
+        cfg["sc08_enabled"] = payload.sc08_enabled
+    if payload.campaign_batching_enabled is not None:
+        cfg["campaign_batching_enabled"] = payload.campaign_batching_enabled
+    if payload.slack_fallback_enabled is not None:
+        cfg["slack_fallback_enabled"] = payload.slack_fallback_enabled
+    if payload.d1_clock_enabled is not None:
+        cfg["d1_clock_enabled"] = payload.d1_clock_enabled
+    if payload.d1_clock_hard_enabled is not None:
+        cfg["d1_clock_hard_enabled"] = payload.d1_clock_hard_enabled
+    if payload.pull_enabled is not None:
+        cfg["pull_enabled"] = payload.pull_enabled
+    if payload.truncation_auto_enabled is not None:
+        cfg["truncation_auto_enabled"] = payload.truncation_auto_enabled
+    if payload.allow_soft_capacity_fallback is not None:
+        cfg["allow_soft_capacity_fallback"] = payload.allow_soft_capacity_fallback
     if payload.leadtime_enabled is not None:
         cfg["leadtime_enabled"] = payload.leadtime_enabled
     if payload.campaign_enabled is not None:
@@ -692,35 +818,76 @@ def switch_site(site: str = Body(..., embed=True)):
     }
 
 
-def _master_rows(sheet_name: str, site: str, limit: int = 500):
-    """Read one planner-facing master-data sheet from the current per-site source."""
-    source = uploaded_source_path(site) if os.path.isfile(uploaded_source_path(site)) else EXCEL_PATH
+def _current_source(site: str) -> str:
+    """Per-site uploaded workbook, else the checked-in default dataset."""
+    uploaded = uploaded_source_path(site)
+    return uploaded if os.path.isfile(uploaded) else EXCEL_PATH
+
+
+def _master_tables(site: str) -> Dict[str, List[dict]]:
+    """Read the current workbook's master sheets once, keyed by schema key."""
+    source = _current_source(site)
     if not os.path.isfile(source):
-        return []
-    wb = openpyxl.load_workbook(source, read_only=True, data_only=True)
+        return {}
     try:
-        if sheet_name not in wb.sheetnames:
-            return []
-        ws = wb[sheet_name]
-        headers = [str(c.value).strip() if c.value is not None else "" for c in ws[1]]
-        site_idx = next((i for i, h in enumerate(headers) if h.lower() == "site"), None)
-        rows = []
-        for values in ws.iter_rows(min_row=2, values_only=True):
-            if site_idx is not None and str(values[site_idx] or "").strip() != site:
-                continue
-            item = {}
-            for i, header in enumerate(headers):
-                if not header:
-                    continue
-                value = values[i] if i < len(values) else None
-                item[header] = value.isoformat(sep=" ") if hasattr(value, "isoformat") else value
-            if any(v not in (None, "") for v in item.values()):
-                rows.append(item)
-            if len(rows) >= limit:
-                break
-        return rows
-    finally:
-        wb.close()
+        return read_master_rows(source, site)
+    except Exception:
+        return {}
+
+
+def build_calendar_info(topology) -> Dict[str, Any]:
+    """Calendar/shift reference block for Tab 4, driven by 产线基础数据."""
+    descriptions = {
+        "早班": "当日客户交付截单基准线（早班下班截止发货入库）",
+        "中班": "标准连续装配与冲压班次，为后道及次日产出提供缓冲",
+        "晚班": "夜间连产班次，为次日早班交付储备成品",
+        "夜班": "深夜连产班次，覆盖连续生产极限产能",
+    }
+    shifts = []
+    for name, (hour, minute) in zip(topology.shift_names, topology.shift_boundaries):
+        end_hour = (hour + topology.shift_hours) % 24
+        suffix = " (+1)" if end_hour < hour or (end_hour == 0) else ""
+        shifts.append({
+            "name": name,
+            "time_range": f"{int(hour):02d}:{int(minute):02d} ~ {int(end_hour):02d}:{int(minute):02d}{suffix}",
+            "duration_hours": topology.shift_hours,
+            "is_critical": name == topology.shift_names[0],
+            "description": descriptions.get(name, "连续生产班次"),
+        })
+    per_day = topology.shifts_per_day
+    weekly = {
+        "FOUR_THREE": (4, 4 * per_day * topology.shift_hours, "周一至周四开工，周五至周日停机节电",
+                       "周总负荷 ≤ 4/7 极限产能", "极度空闲：集中开机、连续停机，降低待机电耗"),
+        "FIVE_TWO": (5, 5 * per_day * topology.shift_hours, "周一至周五开工，周六日双休保养",
+                     "4/7 < 周总负荷 ≤ 5/7 极限产能", "正常均衡：标准法定工作制，工时平准化"),
+        "SIX_ONE": (6, 6 * per_day * topology.shift_hours, "周一至周六开工，周日停机保养",
+                    "5/7 < 周总负荷 ≤ 6/7 极限产能", "产能紧张：取消周日排休，保留周日保养窗口"),
+        "SEVEN_ZERO": (7, 7 * per_day * topology.shift_hours, "周一至周日全开工，无排休",
+                       "周总负荷 > 6/7 极限产能", "做七无休：全量释放极限产能，保障交付"),
+    }
+    names = {
+        "FOUR_THREE": "做四休三", "FIVE_TWO": "做五休二",
+        "SIX_ONE": "做六休一", "SEVEN_ZERO": "做七无休",
+    }
+    modes = []
+    for code in ("FOUR_THREE", "FIVE_TWO", "SIX_ONE", "SEVEN_ZERO"):
+        days, hours, work_days, condition, desc = weekly[code]
+        modes.append({
+            "code": code,
+            "name": f"{names[code]} ({days}天×{per_day}班)",
+            "work_days": f"{work_days} ({days * per_day}班/周，{hours:g}小时)",
+            "condition": condition,
+            "desc": desc,
+        })
+    return {
+        "shift_hours": topology.shift_hours,
+        "shifts_per_day": topology.shifts_per_day,
+        "shift_seconds": topology.shift_seconds,
+        "min_utilization": topology.min_utilization,
+        "min_shift_seconds": topology.min_shift_seconds,
+        "shifts": shifts,
+        "modes": modes,
+    }
 
 
 @app.get("/api/inputs")
@@ -784,6 +951,10 @@ def get_inputs(site: Optional[str] = None):
             "scrap_rate": p.scrap_rate,
             "max_stock": p.max_stock,
             "headcount": p.headcount,
+            "mold_id": p.mold_id,
+            "special_shift": p.special_shift,
+            "simultaneous_production": p.simultaneous_production,
+            "product_family": p.product_family,
         }
         for p in snap.fg_params.values()
     ]
@@ -806,15 +977,30 @@ def get_inputs(site: Optional[str] = None):
             "scrap_rate": p.scrap_rate,
             "max_stock": p.max_stock,
             "headcount": p.headcount,
+            "mold_id": p.mold_id,
+            "special_shift": p.special_shift,
+            "product_family": p.product_family,
         }
         for p in snap.sf_params.values()
     ]
 
     # New master-data tables for UI tabs (current site, current uploaded source)
-    routing_rows = _master_rows("Routing-Machines", session_state["site"])
-    setup_matrix_rows = _master_rows("Setup-Matrix", session_state["site"])
-    inventory_policy_rows = _master_rows("Inventory-Policy", session_state["site"])
-    operation_leadtime_rows = _master_rows("Operation-LeadTime", session_state["site"])
+    masters = _master_tables(session_state["site"])
+    routing_rows = masters.get("routing", [])
+    setup_matrix_rows = masters.get("setup_matrix", [])
+    inventory_policy_rows = masters.get("inventory_policy", [])
+    operation_leadtime_rows = masters.get("operation_leadtime", [])
+    material_arrival_rows = masters.get("material_arrival", [])
+    production_line_rows = [
+        {
+            "line": lb.line,
+            "trp": lb.trp,
+            "hours_per_shift": lb.hours_per_shift,
+            "shifts_per_day": lb.shifts_per_day,
+            "source": lb.source,
+        }
+        for lb in snap.line_base
+    ]
 
     # Format BOM
     bom_list = []
@@ -826,110 +1012,12 @@ def get_inputs(site: Optional[str] = None):
                 "ratio": ratio,
             })
 
-    # Master Data: Shift & Calendar specs (Adapted to Site)
-    current_site = session_state["site"]
-    is_sy = (current_site == "SY38")
-    if is_sy:
-        calendar_info = {
-            "shift_hours": 12.0,
-            "shifts_per_day": 2,
-            "shift_seconds": 43200,
-            "min_utilization": 0.95,
-            "min_shift_seconds": 41040,
-            "shifts": [
-                {
-                    "name": "早班",
-                    "time_range": "08:00 ~ 20:00",
-                    "duration_hours": 12.0,
-                    "is_critical": True,
-                    "description": "沈阳白班（含日内紧急加急订单插入及完工截单出货）",
-                },
-                {
-                    "name": "晚班",
-                    "time_range": "20:00 ~ 08:00 (+1)",
-                    "duration_hours": 12.0,
-                    "is_critical": False,
-                    "description": "沈阳夜班（注塑与喷涂连产，为次日装配及发运储备安全缓冲库存）",
-                },
-            ],
-            "modes": [
-                {
-                    "code": "SEVEN_ZERO",
-                    "name": "连续生产 (7天×2班)",
-                    "work_days": "周一至周日全开工 (14班/周，168小时)",
-                    "condition": "周总负荷 > 5/7 极限产能",
-                    "desc": "高负荷时释放注塑与喷涂极限产能，保障宝马/奥迪主机厂准时交付",
-                },
-                {
-                    "code": "FIVE_TWO",
-                    "name": "正常均衡 (5天×2班)",
-                    "work_days": "周一至周五开工，周六日双休 (10班/周，120小时)",
-                    "condition": "4/7 < 周总负荷 ≤ 5/7 极限产能",
-                    "desc": "标准法定工作制，工时平准化排程，周末设备停机维护",
-                },
-                {
-                    "code": "FOUR_THREE",
-                    "name": "极度空闲 (4天×2班)",
-                    "work_days": "周一至周四开工，周五六日休假 (8班/周，96小时)",
-                    "condition": "周总负荷 ≤ 4/7 极限产能",
-                    "desc": "需求低谷时压缩开机天数，降本节能",
-                },
-            ],
-        }
-    else:
-        calendar_info = {
-            "shift_hours": 8.0,
-            "shifts_per_day": 3,
-            "shift_seconds": 28800,
-            "min_utilization": 0.95,
-            "min_shift_seconds": 27360,
-            "shifts": [
-                {
-                    "name": "早班",
-                    "time_range": "07:00 ~ 15:00",
-                    "duration_hours": 8.0,
-                    "is_critical": True,
-                    "description": "当日客户交付截单基准线（早班下班 15:00 截止发货入库）",
-                },
-                {
-                    "name": "中班",
-                    "time_range": "15:00 ~ 23:00",
-                    "duration_hours": 8.0,
-                    "is_critical": False,
-                    "description": "标准连续装配与冲压班次，为后道及次日产出提供缓冲",
-                },
-                {
-                    "name": "晚班",
-                    "time_range": "23:00 ~ 07:00 (+1)",
-                    "duration_hours": 8.0,
-                    "is_critical": False,
-                    "description": "夜间连产班次，为次日早班交付储备成品",
-                },
-            ],
-            "modes": [
-                {
-                    "code": "SEVEN_ZERO",
-                    "name": "连续生产 (7天×3班)",
-                    "work_days": "周一至周日全开工 (21班/周，168小时)",
-                    "condition": "周总负荷 > 5/7 极限产能",
-                    "desc": "订单高企时打破常规周末休息，全量释放产线极限理论产能保障准时交付",
-                },
-                {
-                    "code": "FIVE_TWO",
-                    "name": "正常均衡 (5天×3班)",
-                    "work_days": "周一至周五开工，周六日双休 (15班/周，120小时)",
-                    "condition": "4/7 < 周总负荷 ≤ 5/7 极限产能",
-                    "desc": "标准法定工作制，工时平准化排程，周末产线正常停工保养",
-                },
-                {
-                    "code": "FOUR_THREE",
-                    "name": "极度空闲 (4天×3班)",
-                    "work_days": "周一至周四开工，周五六日休假 (12班/周，96小时)",
-                    "condition": "周总负荷 ≤ 4/7 极限产能",
-                    "desc": "需求低谷时集中压缩开机天数，周四预估库存覆盖周末提货，降本节能",
-                },
-            ],
-        }
+    # Master Data: Shift & Calendar specs (driven by 产线基础数据)
+    _geom = _shift_geometry(snap)
+    calendar_info = build_calendar_info(
+        build_topology(session_state["site"], shift_hours=_geom["hours"],
+                       shifts_per_day=_geom["shifts"])
+    )
 
     # Master Data: Tooling Molds
     tooling_molds_list = [
@@ -966,6 +1054,8 @@ def get_inputs(site: Optional[str] = None):
             "handling_strategy": pm.handling_strategy,
             "responsible_team": pm.responsible_team,
             "status": pm.status,
+            "start_time": pm.start_time,
+            "end_time": pm.end_time,
         }
         for pm in snap.pm_schedules
     ]
@@ -980,6 +1070,7 @@ def get_inputs(site: Optional[str] = None):
             "description": ma.description,
             "eta_date": ma.eta_date,
             "eta_shift": ma.eta_shift,
+            "eta_time": ma.eta_time,
             "quantity": ma.quantity,
             "qc_release_hours": ma.qc_release_hours,
             "associated_part": ma.associated_part,
@@ -1006,6 +1097,8 @@ def get_inputs(site: Optional[str] = None):
 
     return {
         "site": session_state["site"],
+        "layout": snap.layout or ("v2" if snap.line_base else "legacy"),
+        "warnings": snap.warnings,
         "planning_dates": snap.planning_dates,
         "orders": orders_list,
         "initial_stock": stock_list,
@@ -1016,6 +1109,8 @@ def get_inputs(site: Optional[str] = None):
         "setup_matrix": setup_matrix_rows,
         "inventory_policy": inventory_policy_rows,
         "operation_leadtime": operation_leadtime_rows,
+        "material_arrival_rows": material_arrival_rows,
+        "line_base": production_line_rows,
         "calendar_info": calendar_info,
         "tooling_molds": tooling_molds_list,
         "pm_schedules": pm_schedules_list,
@@ -1132,56 +1227,86 @@ def update_inputs(payload: UpdateInputsPayload):
 
 
 @app.get("/api/inputs/template")
-def download_data_source_template():
-    if not os.path.isfile(EXCEL_PATH):
-        raise HTTPException(status_code=404, detail="dataSource.xlsx 模板不存在")
+def download_data_source_template(site: Optional[str] = None):
+    """Download the 15-sheet template pre-filled with the requested site's data.
+
+    The file is generated from the canonical template (headers/styles) plus the
+    site's current snapshot/master rows, so a SY38 planner gets SY38 rows instead
+    of WL's.  ``Cache-Control: no-store`` avoids serving a stale template after
+    an upload.
+    """
+    target = (site or session_state["site"]).upper()
+    source = _current_source(target)
+    if not os.path.isfile(source):
+        raise HTTPException(status_code=404, detail="APS 主数据模板不存在")
+
+    snap = session_state.get("snapshot") if session_state.get("site") == target else None
+    if snap is None:
+        try:
+            snap = load_aps_database(source, site_filter=target)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"无法读取 {target} 主数据: {exc}") from exc
+    masters = read_master_rows(source, target)
+
+    handle, out_path = tempfile.mkstemp(suffix=".xlsx")
+    os.close(handle)
+    try:
+        export_site_workbook(snap, masters, TEMPLATE_PATH, out_path, target)
+    except Exception as exc:
+        try:
+            os.remove(out_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail=f"生成模板失败: {exc}") from exc
+
+    filename = "APS_DataSource_Template.xlsx" if target == "WL" else f"APS_DataSource_Template_{target}.xlsx"
     return FileResponse(
-        EXCEL_PATH,
-        filename="APS_DataSource_Template.xlsx",
+        out_path,
+        filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Cache-Control": "no-store, max-age=0"},
+        background=BackgroundTask(os.remove, out_path),
     )
 
 
-def _validate_template_schema(uploaded_path: str) -> int:
-    """Reject uploads whose sheet set or row-1 schema differs from dataSource.xlsx."""
-    if not os.path.isfile(EXCEL_PATH):
-        raise ValueError("服务端缺少 dataSource.xlsx 标准模板")
-    canonical = openpyxl.load_workbook(EXCEL_PATH, read_only=True, data_only=True)
-    uploaded = openpyxl.load_workbook(uploaded_path, read_only=True, data_only=True)
+def _validate_template_schema(uploaded_path: str) -> Dict[str, Any]:
+    """Validate an upload against the canonical master-data schema.
+
+    Accepts the 2026-10 15-sheet framework and the legacy 25-sheet workbook.
+    Only sheet presence and required headers are enforced: column order is free
+    and the gray "delete" columns may be absent.
+    """
+    if not os.path.isfile(TEMPLATE_PATH) and not os.path.isfile(EXCEL_PATH):
+        raise ValueError("服务端缺少主数据模板")
+    wb = openpyxl.load_workbook(uploaded_path, read_only=True, data_only=True)
     try:
-        expected_sheets = list(canonical.sheetnames)
-        actual_sheets = list(uploaded.sheetnames)
-        missing = [name for name in expected_sheets if name not in actual_sheets]
-        extra = [name for name in actual_sheets if name not in expected_sheets]
-        if missing or extra:
-            detail = []
-            if missing:
-                detail.append("缺少 sheet: " + ", ".join(missing))
-            if extra:
-                detail.append("多出 sheet: " + ", ".join(extra))
-            raise ValueError("; ".join(detail))
-        for sheet in expected_sheets:
-            expected_ws = canonical[sheet]
-            actual_ws = uploaded[sheet]
-            expected = [str(expected_ws.cell(1, c).value or "").strip() for c in range(1, expected_ws.max_column + 1)]
-            actual = [str(actual_ws.cell(1, c).value or "").strip() for c in range(1, actual_ws.max_column + 1)]
-            if expected != actual:
-                for idx, (a, b) in enumerate(zip(expected, actual), start=1):
-                    if a != b:
-                        raise ValueError(f"sheet [{sheet}] 表头第 {idx} 列不一致: 模板={a!r}, 上传={b!r}")
-                raise ValueError(f"sheet [{sheet}] 表头列数不一致: 模板={len(expected)}, 上传={len(actual)}")
-        return len(expected_sheets)
+        report = validate_workbook(wb)
     finally:
-        canonical.close()
-        uploaded.close()
+        wb.close()
+    if report.missing_sheets:
+        raise ValueError("缺少必要工作表：" + "、".join(report.missing_sheets))
+    if report.missing_columns:
+        detail = "；".join(
+            f"[{sheet}] 缺少列: {'、'.join(cols)}"
+            for sheet, cols in report.missing_columns.items()
+        )
+        raise ValueError("表头校验未通过（列顺序可调整，但必需列不能缺）：" + detail)
+    return {
+        "layout": report.layout,
+        "sheets": len(report.sheets),
+        "optional_missing": report.optional_missing,
+        "deprecated_present": report.deprecated_present,
+    }
 
 
 @app.post("/api/inputs/upload")
 async def upload_data_source(file: UploadFile = File(...)):
-    """Upload a planner-facing dataSource.xlsx and make it the active source.
+    """Upload a planner master-data workbook and make it the active source.
 
-    The workbook is validated by the same loader used by /api/solve, then kept as
-    data/uploads/current.xlsx. The checked-in data is never overwritten.
+    Supports the 2026-10 15-sheet template (``APS_DataSource_Template.xlsx``)
+    and the legacy 25-sheet workbook.  The workbook is validated against the
+    canonical schema, parsed by the same loader used by /api/solve, then kept as
+    data/uploads/current_{site}.xlsx.  The checked-in data is never overwritten.
     """
     filename = (file.filename or "").strip()
     if not filename.lower().endswith(".xlsx"):
@@ -1197,35 +1322,25 @@ async def upload_data_source(file: UploadFile = File(...)):
     with open(temp_path, "wb") as fh:
         fh.write(content)
 
-    required_sheets = [
-        "Parameters-FG", "Parameters-SFN", "BOM List", "Initial Stock",
-        "Customer Demand", "Tooling-Mold", "Preventive-Maintenance",
-        "Material-Arrival-ETA", "Customer-Priority",
-    ]
-    optional_sheets = [
-        "Routing-Machines", "Setup-Matrix", "Operation-LeadTime",
-        "Inventory-Policy", "Customer-Orders", "Trial-Windows", "Baseline-Schedule",
-        "Calendar-Patterns", "Campaign-Families", "Setup-Technicians",
-        "Crew-Pool", "Labor-Availability", "Line-Staffing",
-    ]
+    site = session_state["site"]
     wb = None
     try:
-        schema_sheet_count = _validate_template_schema(temp_path)
+        schema = _validate_template_schema(temp_path)
         wb = openpyxl.load_workbook(temp_path, read_only=True, data_only=True)
-        sheetnames = set(wb.sheetnames)
-        missing = [name for name in required_sheets if name not in sheetnames]
+        missing = [
+            SHEET_BY_KEY[key].title
+            for key in REQUIRED_SHEET_KEYS
+            if resolve_sheet(wb, SHEET_BY_KEY[key]) is None
+        ]
         if missing:
-            raise ValueError("缺少必要 sheet: " + ", ".join(missing))
-        site = session_state["site"]
-        site_counts = {}
-        for pn, ws in (("fg", wb["Parameters-FG"]), ("sf", wb["Parameters-SFN"])):
-            count = 0
-            for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
-                if str(row[0] or "").strip() == site:
-                    count += 1
-            site_counts[pn] = count
+            raise ValueError("缺少必要工作表：" + "、".join(missing))
+        masters = read_master_rows(temp_path, site)
+        site_counts = {
+            "fg": len(masters.get("parameters_fg", [])),
+            "sf": len(masters.get("parameters_sfn", [])),
+        }
         if not site_counts["fg"] and not site_counts["sf"]:
-            raise ValueError(f"上传文件中没有 {site} 工厂的 Parameters-FG/SFN 数据")
+            raise ValueError(f"上传文件中没有 {site} 工厂的成品/半成品参数数据")
         try:
             loaded = load_aps_database(temp_path, site_filter=site)
         except Exception as exc:
@@ -1243,8 +1358,6 @@ async def upload_data_source(file: UploadFile = File(...)):
             except Exception:
                 pass
 
-    site = session_state["site"]
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.replace(temp_path, uploaded_source_path(site))
     session_state["snapshot"] = loaded
     session_state["plan"] = build_requirement_plan(loaded)
@@ -1256,14 +1369,20 @@ async def upload_data_source(file: UploadFile = File(...)):
         "status": "success",
         "filename": filename,
         "site": site,
+        "layout": schema["layout"],
         "site_counts": site_counts,
         "fg_params": len(loaded.fg_params),
         "sf_params": len(loaded.sf_params),
         "orders": len(loaded.orders),
-        "sheets": sorted(sheetnames),
-        "missing_optional_sheets": [name for name in optional_sheets if name not in sheetnames],
-        "schema_sheet_count": schema_sheet_count,
-        "message": f"已载入 {filename}，当前站点 {site} 数据已刷新",
+        "line_base": len(loaded.line_base),
+        "warnings": loaded.warnings,
+        "deprecated_present": schema.get("deprecated_present", {}),
+        "optional_missing": schema.get("optional_missing", []),
+        "schema_sheet_count": schema.get("sheets", 0),
+        "message": (
+            f"已载入 {filename}（{'新版 15 表框架' if schema['layout'] == 'v2' else '旧版 25 表格式'}），"
+            f"当前站点 {site} 数据已刷新"
+        ),
     }
 
 
@@ -1296,6 +1415,7 @@ def get_calendar():
         session_state["snapshot"] = snap
 
     cfg = session_state.get("calendar_config", {})
+    geom = _shift_geometry(snap)
     return generate_calendar_view(
         start_date_str=cfg.get("start_date", "2026-10-12"),
         horizon_days=cfg.get("horizon_days", 10),
@@ -1304,6 +1424,8 @@ def get_calendar():
         snap=snap,
         baseline_date_str=cfg.get("baseline_date"),
         site=session_state["site"],
+        shift_hours=geom["hours"],
+        shifts_per_day=geom["shifts"],
     )
 
 
@@ -1326,6 +1448,7 @@ def update_calendar(payload: CalendarUpdatePayload):
     if payload.day_shift_overrides is not None:
         cfg["day_shift_overrides"] = payload.day_shift_overrides
 
+    geom = _shift_geometry(snap)
     view = generate_calendar_view(
         start_date_str=cfg["start_date"],
         horizon_days=cfg["horizon_days"],
@@ -1334,6 +1457,8 @@ def update_calendar(payload: CalendarUpdatePayload):
         snap=snap,
         baseline_date_str=cfg.get("baseline_date"),
         site=session_state["site"],
+        shift_hours=geom["hours"],
+        shifts_per_day=geom["shifts"],
     )
     return {"status": "success", "message": "工厂日历配置已更新", "calendar": view}
 
@@ -1346,12 +1471,17 @@ def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SE
         session_state["snapshot"] = snap
 
     cfg = session_state.get("calendar_config", {})
+    geom = _shift_geometry(snap)
+    topology = build_topology(
+        session_state["site"], shift_hours=geom["hours"], shifts_per_day=geom["shifts"]
+    )
     start_date_str = cfg.get("start_date", "2026-10-12")
+    start_hour = topology.shift_boundaries[0][0]
     try:
         y, m, d = [int(p) for p in start_date_str.split("-")]
-        start_day = datetime(y, m, d, 7, 0, 0)
+        start_day = datetime(y, m, d, start_hour, 0, 0)
     except Exception:
-        start_day = datetime(2026, 10, 12, 7, 0, 0)
+        start_day = datetime(2026, 10, 12, start_hour, 0, 0)
 
     horizon_end = start_day + timedelta(days=horizon_days)
     scoped_snap = copy.deepcopy(snap)
@@ -1364,6 +1494,8 @@ def get_calendar_recommendation(horizon_days: int = 10, calendar_mode: str = "SE
         horizon_days=horizon_days,
         current_calendar_mode=calendar_mode,
         site=session_state["site"],
+        shift_hours=geom["hours"],
+        shifts_per_day=geom["shifts"],
     )
 
 
@@ -1673,11 +1805,13 @@ def run_solver(payload: SolvePayload):
     cfg["calendar_mode"] = cal_mode_str
     cfg["day_shift_overrides"] = day_shift_overrides
 
+    geom = _shift_geometry(snap)
+    topology = build_topology(payload.site, shift_hours=geom["hours"], shifts_per_day=geom["shifts"])
     try:
         y, m, d = [int(p) for p in start_date_str.split("-")]
-        start_dt = datetime(y, m, d, 7, 0, 0)
+        start_dt = datetime(y, m, d, topology.shift_boundaries[0][0], 0, 0)
     except Exception:
-        start_dt = datetime(2026, 10, 12, 7, 0, 0)
+        start_dt = datetime(2026, 10, 12, topology.shift_boundaries[0][0], 0, 0)
 
 
 
@@ -1790,24 +1924,95 @@ def run_solver(payload: SolvePayload):
     for error in labor_data.errors:
         print(f"  [labor] {error}")
 
+    # Master tables from the active workbook take precedence over the CSV
+    # baseline, so an uploaded Routing / Setup / Inventory / LeadTime sheet is
+    # what the optional solver features actually consume.
+    workbook_masters: Dict[str, List[dict]] = {}
+    snapshot_source = getattr(snap, "source_path", "") or ""
+    if snapshot_source.lower().endswith(".xlsx") and os.path.isfile(snapshot_source):
+        try:
+            workbook_masters = read_master_rows(snapshot_source, payload.site.upper())
+        except Exception as exc:
+            print(f"  [master] cannot read workbook master tables: {exc}")
+
     routing_enabled = (
         payload.routing_assign_enabled
         if payload.routing_assign_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("routing_assign_enabled", False)
     )
+    routing_in_model = (
+        payload.routing_assign_in_model
+        if payload.routing_assign_in_model is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("routing_assign_in_model", False)
+    )
     routing_decisions = []
-    if routing_enabled:
+    routing_capacity: Dict[str, float] = {}
+    line_options: Dict[str, List[str]] = {}
+    routing_table = None
+    if routing_enabled or routing_in_model:
         routing_path = os.path.join(DATA_DIR, "master", "Routing-Machines.csv")
-        routing_table = load_routing(routing_path)
-        topology = get_topology(payload.site.upper())
-        line_names = {getattr(t, "line", "") for t in plan.tasks}
+        routing_table = routing_from_rows(workbook_masters.get("routing"), payload.site.upper())
+        if routing_table is None:
+            routing_table = load_routing(routing_path)
+    if routing_in_model and routing_table:
+        known_lines = {lb.line for lb in getattr(snap, "line_base", [])}
+        for task in plan.tasks:
+            operation = 10 if task.stage == "SF" else 20
+            options = candidates_for(routing_table, payload.site.upper(), task.part_no, operation)
+            valid_lines = []
+            for option in options:
+                line = str(option.candidate_line or "")
+                if not line or (known_lines and line not in known_lines):
+                    continue
+                if abs(float(getattr(option, "trp", 1.0) or 1.0) - float(task.trp)) > 1e-9:
+                    continue
+                if line not in valid_lines:
+                    valid_lines.append(line)
+            if len(valid_lines) > 1:
+                line_options[task.task_id] = valid_lines
+        # The line-choice variables multiply the model by (candidates x shifts);
+        # cap the optional set so a data-heavy month still solves inside the UI
+        # budget.  The highest-work tasks are the ones that can move the needle.
+        if len(line_options) > 24:
+            ranked = sorted(
+                line_options,
+                key=lambda tid: next(
+                    (float(t.quantity) * float(t.ct_seconds) / max(1e-9, float(t.trp))
+                     for t in plan.tasks if t.task_id == tid),
+                    0.0,
+                ),
+                reverse=True,
+            )
+            line_options = {tid: line_options[tid] for tid in ranked[:24]}
+    if routing_enabled and not routing_in_model:
+        from src.shift_manager import generate_shift_calendar
+
+        topology = build_topology(payload.site, shift_hours=geom["hours"], shifts_per_day=geom["shifts"])
+        known_lines = {lb.line for lb in getattr(snap, "line_base", [])}
+        line_names = {getattr(t, "line", "") for t in plan.tasks if getattr(t, "line", "")}
         for (_site, _part, _op), options in routing_table.items():
             if _site == payload.site.upper():
-                line_names.update(o.candidate_line for o in options if o.candidate_line)
-        capacity_hours = {
-            line: float(horizon_days * topology.shifts_per_day * topology.shift_hours)
-            for line in line_names
-        }
+                for option in options:
+                    if option.candidate_line and (not known_lines or option.candidate_line in known_lines):
+                        line_names.add(option.candidate_line)
+        if known_lines:
+            line_names &= known_lines
+        routing_shifts = generate_shift_calendar(
+            start_dt,
+            horizon_days,
+            calendar_mode=cal_mode,
+            day_shift_overrides=day_shift_overrides,
+            site=payload.site,
+            shift_hours=topology.shift_hours,
+            shifts_per_day=topology.shifts_per_day,
+        )
+        capacity_hours = available_hours_by_line(
+            routing_shifts,
+            shift_hours=topology.shift_hours,
+            lines=line_names,
+            pm_schedules=snap.pm_schedules,
+        )
+        routing_capacity = dict(capacity_hours)
         routing_decisions = solve_routing_assignment(
             plan.tasks, routing_table, site=payload.site.upper(),
             capacity_hours_by_line=capacity_hours, time_limit_seconds=5.0,
@@ -1817,13 +2022,84 @@ def run_solver(payload: SolvePayload):
                 plan.tasks, routing_table, site=payload.site.upper(),
                 capacity_hours_by_line=capacity_hours, max_ratio=0.95,
             )
+    jitter_enabled = (
+        payload.jitter_enabled
+        if payload.jitter_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("jitter_enabled", False)
+    )
+    hc16_lite_enabled = (
+        payload.hc16_lite_enabled
+        if payload.hc16_lite_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("hc16_lite_enabled", False)
+    )
+    labor_smoothing_enabled = (
+        payload.labor_smoothing_enabled
+        if payload.labor_smoothing_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("labor_smoothing_enabled", False)
+    )
+    sc08_enabled = (
+        payload.sc08_enabled
+        if payload.sc08_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("sc08_enabled", False)
+    )
+    campaign_batching_enabled = (
+        payload.campaign_batching_enabled
+        if payload.campaign_batching_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("campaign_batching_enabled", False)
+    )
+    slack_fallback_enabled = (
+        payload.slack_fallback_enabled
+        if payload.slack_fallback_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("slack_fallback_enabled", False)
+    )
+    d1_clock_enabled = (
+        payload.d1_clock_enabled
+        if payload.d1_clock_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("d1_clock_enabled", False)
+    )
+    d1_clock_hard_enabled = (
+        payload.d1_clock_hard_enabled
+        if payload.d1_clock_hard_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("d1_clock_hard_enabled", False)
+    )
+    pull_enabled = (
+        payload.pull_enabled
+        if payload.pull_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("pull_enabled", False)
+    )
+    truncation_auto_enabled = (
+        payload.truncation_auto_enabled
+        if payload.truncation_auto_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("truncation_auto_enabled", False)
+    )
+    allow_soft_capacity_fallback = (
+        payload.allow_soft_capacity_fallback
+        if payload.allow_soft_capacity_fallback is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("allow_soft_capacity_fallback", False)
+    )
+    demand_by_date: Dict[str, Dict[str, float]] = {}
+    if d1_clock_enabled:
+        for order in getattr(snap, "orders", []):
+            demand_by_date.setdefault(order.due_date, {})
+            demand_by_date[order.due_date][order.part_no] = (
+                demand_by_date[order.due_date].get(order.part_no, 0.0)
+                + float(order.demand_quantity)
+            )
+    previous_result = session_state.get("result")
+    baseline_tasks = (
+        list(previous_result.tasks)
+        if jitter_enabled and previous_result is not None and getattr(previous_result, "tasks", None)
+        else None
+    )
     inventory_enabled = (
         payload.inventory_policy_enabled
         if payload.inventory_policy_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("inventory_policy_enabled", False)
     )
     inventory_policies = (
-        load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"), site=payload.site.upper())
+        (inventory_policy_from_rows(workbook_masters.get("inventory_policy"), payload.site.upper())
+         or load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"),
+                                  site=payload.site.upper()))
         if inventory_enabled else {}
     )
     leadtime_enabled = (
@@ -1832,9 +2108,25 @@ def run_solver(payload: SolvePayload):
         else site_settings_store.get(payload.site.upper(), {}).get("leadtime_enabled", False)
     )
     operation_lead_times = (
-        load_operation_lead_times(os.path.join(DATA_DIR, "master", "Operation-LeadTime.csv"), site=payload.site.upper())
+        (operation_lead_times_from_rows(workbook_masters.get("operation_leadtime"), payload.site.upper())
+         or load_operation_lead_times(os.path.join(DATA_DIR, "master", "Operation-LeadTime.csv"),
+                                      site=payload.site.upper()))
         if leadtime_enabled else {}
     )
+    # New template dropped the per-operation run CT; reuse Routing CT so the C4
+    # lead-time gap is not silently zero for every operation.
+    if operation_lead_times and workbook_masters.get("routing"):
+        routing_ct = {}
+        for row in workbook_masters["routing"]:
+            part = str(row.get("part_no") or "").strip()
+            ct = float(row.get("ct_seconds") or 0.0)
+            if part and ct > 0:
+                routing_ct[part] = min(routing_ct.get(part, ct), ct)
+        for key, item in list(operation_lead_times.items()):
+            if item.run_ct_seconds <= 0 and item.part_no in routing_ct:
+                operation_lead_times[key] = replace(
+                    item, run_ct_seconds=routing_ct[item.part_no]
+                )
     campaign_enabled = (
         payload.campaign_enabled
         if payload.campaign_enabled is not None
@@ -1842,7 +2134,16 @@ def run_solver(payload: SolvePayload):
     )
     campaign_families = (
         load_campaign_families(os.path.join(DATA_DIR, "master", "Campaign-Families.csv"), site=payload.site.upper())
-        if campaign_enabled else {}
+        if (campaign_enabled or campaign_batching_enabled) else {}
+    )
+    campaign_batches = (
+        build_campaign_batches(
+            plan.tasks,
+            campaign_families,
+            site=payload.site.upper(),
+            lookahead_days=30,
+        )
+        if campaign_batching_enabled else []
     )
     scheduler = APSScheduler(
         plan=plan,
@@ -1858,6 +2159,16 @@ def run_solver(payload: SolvePayload):
         price_changeovers=("R-FG-06" in enabled or "R-FG-13" in enabled or "R-WL-11" in enabled or "R-WL-14" in enabled or "R-SY-05" in enabled),
         enforce_sequential_pulling=enforce_sequential_pulling,
         enforce_freeze_window=enforce_freeze_window,
+        enforce_jitter=jitter_enabled,
+        enforce_labor_smoothing=labor_smoothing_enabled,
+        enforce_sc08=sc08_enabled,
+        enforce_campaign_batching=campaign_batching_enabled,
+        enforce_slack_fallback=slack_fallback_enabled,
+        enforce_d1_clock=d1_clock_enabled,
+        enforce_d1_clock_hard=d1_clock_hard_enabled,
+        enforce_pull=pull_enabled,
+        demand_by_date=demand_by_date,
+        baseline_tasks=baseline_tasks,
         enforce_tooling_exclusivity=enforce_tooling_exclusivity,
         enforce_material_arrival=enforce_material_arrival,
         enforce_pm_maintenance=enforce_pm_maintenance,
@@ -1882,6 +2193,7 @@ def run_solver(payload: SolvePayload):
             else site_settings_store.get(payload.site.upper(), {}).get("inventory_hard_enabled", False)
         ),
         operation_lead_times=operation_lead_times,
+        setup_matrix=setup_matrix_from_rows(workbook_masters.get("setup_matrix"), payload.site.upper()),
         campaign_families=campaign_families,
         enforce_campaign=campaign_enabled,
         enforce_lead_time=leadtime_enabled,
@@ -1890,6 +2202,12 @@ def run_solver(payload: SolvePayload):
             if payload.due_slack_shifts is not None
             else site_settings_store.get(payload.site.upper(), {}).get("due_slack_shifts", 0)
         ),
+        shift_hours=topology.shift_hours,
+        shifts_per_day=topology.shifts_per_day,
+        line_options=line_options or None,
+        max_blocks_per_task=1 if hc16_lite_enabled else 0,
+        max_blocks_per_task_sf=1 if hc16_lite_enabled else 0,
+        allow_soft_capacity_fallback=allow_soft_capacity_fallback,
     )
 
     # Solve with capacity overload diagnosis
@@ -1902,6 +2220,72 @@ def run_solver(payload: SolvePayload):
         result = scheduler.solve(time_limit_seconds=solve_budget)
     except RuntimeError as e:
         precheck = precheck_capacity(plan, scheduler.shifts)
+        line_loads_payload = [
+            {
+                "line": l,
+                "req_hours": round(s.required_hours, 1),
+                "avail_hours": round(s.available_hours, 1),
+                "utilization_rate": round(s.utilization_rate * 100, 1),
+                "is_overloaded": s.is_overloaded,
+            }
+            for l, s in precheck.line_loads.items()
+        ]
+        if getattr(scheduler, "strict_capacity_hard", False) and not scheduler.allow_soft_capacity_fallback:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": "HARD_95_INFEASIBLE",
+                    "title": "排产不可行：当前规则集把 95% 利用率设为硬约束",
+                    "mode": cal_mode.value,
+                    "horizon_days": horizon_days,
+                    "total_shifts": len(scheduler.shifts),
+                    "total_hours": len(scheduler.shifts) * topology.shift_hours,
+                    "message": (
+                        f"当前【{cal_mode.value}】工作制下，无法同时满足 95% 班次利用率硬约束和硬交期。"
+                        "系统没有自动降级为软约束；请调整工作制/计划期、前拉未来订单，"
+                        "或在站点设置中显式允许“硬 95% 失败时软回退”。"
+                    ),
+                    "bottlenecks": precheck.bottlenecks,
+                    "line_loads": line_loads_payload,
+                    "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
+                    "suggestions": [
+                        "前拉未来订单或增加需求，把空班填到 95%；",
+                        "允许部分班次 105% 上浮/加班；",
+                        "调整计划期或工作制（注意：更少班次可能超交期）；",
+                        "如果业务接受低于 95%，打开“允许硬 95% 失败时软回退”，并在结果中标注。",
+                    ],
+                },
+            )
+        hard_hc16 = any(
+            rule.enabled
+            and rule.template_id == "hc16"
+            and str(getattr(rule.nature, "value", rule.nature)) == "hard"
+            for rule in (kernel_rule_set.rules if kernel_rule_set is not None else [])
+        )
+        if hard_hc16:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": "HC16_INFEASIBLE",
+                    "title": "排产不可行：HC-16 同模连产硬约束",
+                    "mode": cal_mode.value,
+                    "horizon_days": horizon_days,
+                    "total_shifts": len(scheduler.shifts),
+                    "total_hours": len(scheduler.shifts) * topology.shift_hours,
+                    "message": (
+                        "当前规则集的 HC-16 为 hard（v0 工单连续近似），"
+                        "与现有任务/交期/产能结构冲突，求解器未找到可行解。"
+                        "这不是总工时不足；请将 HC-16 改为 soft，或把 max_blocks 放宽后重试。"
+                    ),
+                    "bottlenecks": precheck.bottlenecks,
+                    "line_loads": line_loads_payload,
+                    "suggestions": [
+                        "在 /rule-sets 将 WL_HC16 的 nature 改为 soft；",
+                        "或把 hc16.max_blocks 从 1 放宽到 2，再测试；",
+                        "正式测试前需完成 HC-16 同模窗口模型，而不是工单连续近似。",
+                    ],
+                },
+            )
         raise HTTPException(
             status_code=400,
             detail={
@@ -1910,9 +2294,10 @@ def run_solver(payload: SolvePayload):
                 "mode": cal_mode.value,
                 "horizon_days": horizon_days,
                 "total_shifts": len(scheduler.shifts),
-                "total_hours": len(scheduler.shifts) * 8.0,
+                "total_hours": len(scheduler.shifts) * topology.shift_hours,
                 "message": (
-                    f"在当前【{cal_mode.value}】工作制下（10天内共 {len(scheduler.shifts)} 个有效工作班次 / {len(scheduler.shifts)*8} 小时），"
+                    f"在当前【{cal_mode.value}】工作制下（{horizon_days}天内共 {len(scheduler.shifts)} 个有效工作班次 / "
+                    f"{len(scheduler.shifts) * topology.shift_hours:.0f} 小时），"
                     f"产线订单负荷超出了理论极限工时，无法在交期前排下所有工单。"
                 ),
                 "bottlenecks": precheck.bottlenecks,
@@ -1927,13 +2312,103 @@ def run_solver(payload: SolvePayload):
                     for l, s in precheck.line_loads.items()
                 ],
                 "suggestions": [
-                    "根据排产规则 R-CL-01..03：当前 10 天订单负荷较重（>5/7 极限产能），请切换为【7×3 连续生产】模式（全量 240 小时产能）；",
-                    "若车间必须执行【做五休二】，建议将计划期切换至【15天扩展计划】，以提供充裕的平准与备料周期；",
-                    "或进入工厂日历工作台，为周末手动点亮 2 个开工班次以弥补产能缺口。"
+                    f"根据排产规则 R-CL-01..04：当前 {horizon_days} 天订单负荷较重，建议切换为【做六休一】或【做七无休】"
+                    f"（7×{topology.shifts_per_day} 连续生产，全量 {horizon_days * topology.shifts_per_day * topology.shift_hours:.0f} 小时产能）；",
+                    f"若车间必须执行【做五休二】，建议将计划期切换至【15天扩展计划】，以提供充裕的平准与备料周期；",
+                    f"或进入工厂日历工作台，为周末手动点亮 1~2 个开工班次以弥补产能缺口。"
                 ]
             }
         )
+    truncation_suggestions = (
+        build_truncation_suggestions(result.tasks, campaign_batches)
+        if campaign_batches else []
+    )
+    late_before, min_before = scheduler._slack_stats(result)
+    truncation_summary = {
+        "enabled": truncation_auto_enabled,
+        "triggered": bool(truncation_auto_enabled and truncation_suggestions),
+        "late_before": len(late_before),
+        "late_after": len(late_before),
+        "min_slack_before": round(min_before, 2),
+        "min_slack_after": round(min_before, 2),
+        "deferred_orders": 0,
+        "accepted": False,
+    }
+    deferred_orders = []
+    if truncation_auto_enabled and truncation_suggestions:
+        defer_ids = []
+        for suggestion in truncation_suggestions:
+            if suggestion.get("feasible"):
+                defer_ids.extend(suggestion.get("split_order_ids") or [])
+        defer_ids = list(dict.fromkeys(defer_ids))
+        if defer_ids:
+            snap2 = without_orders(snap, defer_ids)
+            plan2 = build_requirement_plan(snap2)
+            if plan2.tasks:
+                sched2 = copy.copy(scheduler)
+                task_ids = {t.task_id for t in plan2.tasks}
+                options = {
+                    tid: lines for tid, lines in scheduler.line_options.items()
+                    if tid in task_ids
+                }
+                sched2.plan = plan2
+                sched2.tasks = plan2.tasks
+                sched2.task_by_id = {t.task_id: t for t in plan2.tasks}
+                sched2.lines = sorted({t.line for t in plan2.tasks} | {
+                    line for lines in options.values() for line in lines
+                })
+                sched2.line_options = options
+                sched2.assign_in_model = bool(options)
+                sched2._task_lines = {
+                    t.task_id: options.get(t.task_id, [t.line]) for t in plan2.tasks
+                }
+                sched2._original_lines = {t.task_id: t.line for t in plan2.tasks}
+                sched2.windows = sched2._build_windows()
+                sched2._splittable = {
+                    t.task_id for t in plan2.tasks
+                    if t.lot_size > 0 and t.lot_millis > sched2.shift_ms
+                }
+                sched2._line_x = {}
+                sched2._line_active = {}
+                sched2._assign = {}
+                sched2.assignment_decisions = []
+                sched2.slack_fallback_info = {}
+                sched2._sequence_vars = {}
+                sched2.enforce_slack_fallback = False
+                sched2._two_stage_sequence = False
+                try:
+                    result2 = sched2.solve(time_limit_seconds=solve_budget)
+                except Exception as exc:
+                    print(f"  [bs06] auto truncation solve skipped: {exc}")
+                    result2 = None
+                if result2 is not None:
+                    late_after, min_after = sched2._slack_stats(result2)
+                    truncation_summary["late_after"] = len(late_after)
+                    truncation_summary["min_slack_after"] = round(min_after, 2)
+                    if not truncation_improves(
+                        len(late_before), min_before, len(late_after), min_after
+                    ):
+                        print(
+                            f"  [bs06] truncation rejected: late {len(late_after)} vs {len(late_before)}, "
+                            f"min slack {min_after:.2f} vs {min_before:.2f}"
+                        )
+                        result2 = None
+                if result2 is not None:
+                    plan = plan2
+                    scheduler = sched2
+                    result = result2
+                    solve_snap = snap2
+                    campaign_batches = build_campaign_batches(
+                        plan.tasks, campaign_families, site=payload.site.upper(), lookahead_days=30
+                    )
+                    truncation_suggestions = build_truncation_suggestions(
+                        result.tasks, campaign_batches
+                    ) if campaign_batches else []
+                    deferred_orders = select_deferred_orders(truncation_suggestions)
+                    truncation_summary["deferred_orders"] = len(deferred_orders)
+                    truncation_summary["accepted"] = bool(deferred_orders)
     session_state["result"] = result
+    session_state["deferred_orders"] = deferred_orders
     session_state["last_solve_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Build Validation Matrix
@@ -2253,8 +2728,10 @@ def run_solver(payload: SolvePayload):
 
     # B4-b-a: inventory policy projection is an audit surface, not a hard model
     # constraint yet. Keep it optional and side-effect free.
-    inventory_policies = load_inventory_policy(
-        os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"), site=payload.site.upper()
+    inventory_policies = (
+        inventory_policy_from_rows(workbook_masters.get("inventory_policy"), payload.site.upper())
+        or load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"),
+                                 site=payload.site.upper())
     )
     inventory_projection = project_inventory(
         result.tasks, solve_snap, scheduler.shifts, inventory_policies, site=payload.site.upper()
@@ -2277,6 +2754,10 @@ def run_solver(payload: SolvePayload):
         ],
     }
 
+    truncation_suggestions = (
+        build_truncation_suggestions(result.tasks, campaign_batches)
+        if campaign_batches else []
+    )
     return {
         "status": "success",
         "solve_time": session_state["last_solve_time"],
@@ -2284,6 +2765,8 @@ def run_solver(payload: SolvePayload):
             "status_name": result.status_name,
             "capacity_note": getattr(result, "capacity_note", ""),
             "allow_105_fg": getattr(result, "allow_105_fg", allow_105_fg),
+            "strict_capacity_hard": bool(getattr(scheduler, "strict_capacity_hard", False)),
+            "allow_soft_capacity_fallback": bool(getattr(scheduler, "allow_soft_capacity_fallback", False)),
             "allow_105_sf": getattr(result, "allow_105_sf", allow_105_sf),
             "total_fg_tasks": len(fg_tasks),
             "total_sf_tasks": len(sf_tasks),
@@ -2331,9 +2814,29 @@ def run_solver(payload: SolvePayload):
         "tasks": task_schedule_list,
         "sequence_plan": result.sequence_plan or [],
         "routing_decisions": routing_decisions,
+        "routing_assign_in_model": routing_in_model,
+        "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
+        "jitter_enabled": jitter_enabled,
+        "hc16_lite_enabled": hc16_lite_enabled,
+        "labor_smoothing_enabled": labor_smoothing_enabled,
+        "sc08_enabled": sc08_enabled,
+        "campaign_batching_enabled": campaign_batching_enabled,
+        "campaign_batches": [batch.to_dict() for batch in campaign_batches],
+        "truncation_suggestions": truncation_suggestions,
+        "deferred_orders": deferred_orders,
+        "auto_truncated": bool(deferred_orders),
+        "truncation_summary": truncation_summary,
+        "slack_fallback_enabled": slack_fallback_enabled,
+        "d1_clock_enabled": d1_clock_enabled,
+        "d1_clock_hard_enabled": d1_clock_hard_enabled,
+        "pull_enabled": pull_enabled,
+        "slack_fallback": getattr(scheduler, "slack_fallback_info", {}),
+        "routing_assignment": getattr(scheduler, "assignment_decisions", []),
+        "routing_capacity_hours": routing_capacity,
         "routing_capability_violations": capability_violations(
             plan.tasks,
-            load_routing(os.path.join(DATA_DIR, "master", "Routing-Machines.csv")),
+            routing_from_rows(workbook_masters.get("routing"), payload.site.upper())
+            or load_routing(os.path.join(DATA_DIR, "master", "Routing-Machines.csv")),
             site=payload.site.upper(),
         ),
         "checks": checks_data,
@@ -2369,6 +2872,7 @@ def export_plan_excel():
     temp_dir = tempfile.mkdtemp()
     target_excel = os.path.join(temp_dir, f"APS_Production_Plan_{session_state['site']}.xlsx")
     export_validation_matrix_excel(matrix, target_excel, site=session_state["site"])
+    append_deferred_orders(target_excel, session_state.get("deferred_orders") or [])
 
     return FileResponse(
         target_excel,

@@ -17,7 +17,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 70.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "L755392S": {
       "site": "SY38",
@@ -36,7 +40,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 70.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LA96403S": {
       "site": "SY38",
@@ -55,7 +63,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 70.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LA96404S": {
       "site": "SY38",
@@ -74,7 +86,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 70.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LA83453S": {
       "site": "SY38",
@@ -93,7 +109,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "L755548S": {
       "site": "SY38",
@@ -112,7 +132,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LA96445S": {
       "site": "SY38",
@@ -131,7 +155,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LCC4666ZO04": {
       "site": "SY38",
@@ -150,7 +178,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LCC4690ZO04": {
       "site": "SY38",
@@ -169,7 +201,11 @@
       "scrap_rate": 0.0,
       "headcount": 12.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LCC4710ZN04": {
       "site": "SY38",
@@ -188,7 +224,11 @@
       "scrap_rate": 0.0,
       "headcount": 15.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LCC4725ZN04": {
       "site": "SY38",
@@ -207,7 +247,11 @@
       "scrap_rate": 0.0,
       "headcount": 15.0,
       "moq": 24.0,
-      "max_stock": 0.0
+      "max_stock": 0.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     }
   },
   "sf_params": {
@@ -228,7 +272,11 @@
       "scrap_rate": 0.0,
       "headcount": 1.0,
       "moq": 100.0,
-      "max_stock": 1680.0
+      "max_stock": 1680.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "L782264": {
       "site": "SY38",
@@ -247,7 +295,11 @@
       "scrap_rate": 0.0,
       "headcount": 1.0,
       "moq": 100.0,
-      "max_stock": 1680.0
+      "max_stock": 1680.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "L755774": {
       "site": "SY38",
@@ -266,7 +318,11 @@
       "scrap_rate": 0.0,
       "headcount": 1.0,
       "moq": 100.0,
-      "max_stock": 1680.0
+      "max_stock": 1680.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LAC3180": {
       "site": "SY38",
@@ -285,7 +341,11 @@
       "scrap_rate": 0.0,
       "headcount": 1.0,
       "moq": 100.0,
-      "max_stock": 400.0
+      "max_stock": 400.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     },
     "LAC3181": {
       "site": "SY38",
@@ -304,7 +364,11 @@
       "scrap_rate": 0.0,
       "headcount": 1.0,
       "moq": 100.0,
-      "max_stock": 400.0
+      "max_stock": 400.0,
+      "mold_id": null,
+      "special_shift": "",
+      "simultaneous_production": "",
+      "product_family": ""
     }
   },
   "bom": {
@@ -1322,7 +1386,9 @@
       "capacity_rate": 0.0,
       "handling_strategy": "避让顺延 (Shift_Delay)",
       "responsible_team": "注塑保全班",
-      "status": "已排定 (Planned)"
+      "status": "已排定 (Planned)",
+      "start_time": "",
+      "end_time": ""
     },
     {
       "site": "SY38",
@@ -1338,9 +1404,37 @@
       "capacity_rate": 0.0,
       "handling_strategy": "避让顺延 (Shift_Delay)",
       "responsible_team": "涂装环保工务段",
-      "status": "已排定 (Planned)"
+      "status": "已排定 (Planned)",
+      "start_time": "",
+      "end_time": ""
     }
   ],
   "material_arrivals": [],
-  "customer_tiers": []
+  "customer_tiers": [],
+  "line_base": [
+    {
+      "line": "PU07",
+      "trp": 0.85,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "source": "参数表派生"
+    },
+    {
+      "line": "PU22",
+      "trp": 0.7,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "source": "参数表派生"
+    },
+    {
+      "line": "1400T-6",
+      "trp": 0.85,
+      "hours_per_shift": 12.0,
+      "shifts_per_day": 2,
+      "source": "参数表派生"
+    }
+  ],
+  "warnings": [],
+  "source_path": "D:\\Codes\\APS_MVP\\data",
+  "layout": "csv"
 }

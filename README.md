@@ -4,6 +4,10 @@
 
 > **Slogan**：*精益平准 · 智排未来：面向两阶段协同的高级排产与动态平衡决策中枢*
 
+> **当前进度（2026-10-31）**：整体约 **84%**；Phase 0 100% / Phase 1 95% / Phase B ~75% / Phase C ~78%。
+> 全量 **157/157 PASS**，快速 **60/60 PASS**；C2-b 主模型内 Assign、C2-b-3c 候选线裁剪、SC-01/08/09/10、BS-04/05/06、硬 95% 严格化已落地。
+> 详见 [aps_progress_dashboard.md](Specification/aps_progress_dashboard.md)。
+
 ## 1. 项目背景与目标
 
 本项目针对流程/离散制造企业的排产痛点，旨在将物流排产专家的经验规则算法化、工程化：
@@ -26,7 +30,8 @@
 ```text
 APS_MVP/
 ├── ARCHITECTURE.md                      # 系统架构设计说明书 (Deep Modules 规范、接缝与测试表面)
-├── dataSource.xlsx                      # 标准主数据源与排产输入/输出工作簿
+├── dataSource.xlsx                      # 默认主数据源与排产输入/输出工作簿（旧 25 表格式，兼容读取）
+├── APS_DataSource_Template.xlsx         # 业务填写模板：2026-10 新版 15 表框架（上传/下载标准）
 ├── requirements.txt                     # Python 依赖项 (openpyxl, ortools, fastapi, uvicorn, ...)
 ├── run_web.py                           # Web 服务一键启动入口 (支持代码热重载)
 ├── run_tests.py                         # 统一自动化测试运行器 (支持 --fast 极速单测模式)
@@ -66,7 +71,7 @@ APS_MVP/
 │   ├── prechecker.py                    # 前置粗能力宏观可行性预检
 │   ├── balance_builder.py               # 生产动态平衡与 PSI 数据构建
 │   └── server.py                        # FastAPI 接入层（手工审计编排仍暂留此文件，待下沉 src/services/manual_audit.py）
-└── tests/                               # 15 大自动化测试套件 (增加 capacity kernel/库存策略测试)
+└── tests/                               # 35 个自动化测试套件 (含 capacity kernel/库存策略/主数据/Assign 测试)
     ├── fixtures/                        # 黄金基线快照 (wl_10d_baseline.json)
     └── test_*.py                        # 单元与集成测试用例
 ```
@@ -84,7 +89,7 @@ APS_MVP/
 - `labor/` 下三张人力 mock 表。
 
 说明与字段定义见 **[data/master/README.md](data/master/README.md)**。  
-当前只有 MOQ 进入 `ProductParam/ProductionTask`；其余表是待接线 mock，不会改变现有排产。
+当前已接线：Routing（CT/产线/人数）、Setup-Matrix（sequence/SDST）、Inventory-Policy（库存软硬约束）、Operation-LeadTime（C4）、Campaign-Families（软合批）、Customer-Priority（客户权重）、PM（维护封锁）、Tooling（模具独占）；Labor 仍为部分接线。
 
 ### 安装依赖
 ```bash
@@ -126,8 +131,8 @@ docker run --env-file .env -p 8000:8000 aps-mvp
 
 ### 自动化测试
 ```bash
-python run_tests.py --fast   # 快速单元/回归（59 项，约 61s）
-python run_tests.py          # 全量 16 个套件（105 项，含黄金基线与端到端，约 23 分钟）
+python run_tests.py --fast   # 快速单元/回归（60 项，约 62s）
+python run_tests.py          # 全量 35 个套件（157 项，含黄金基线与端到端，约 23.4 分钟）
 ```
 
 Web 界面主要特性：
@@ -146,6 +151,7 @@ Web 界面主要特性：
   - 支持独立勾选控制，动态联动 CP-SAT 求解引擎与后置独立审计；
 - **④ 输入与排产主数据工作台 (工业级浏览·变更·分析)**：
   - 在网页中直接维护订单需求数量、交期、期初库存；
+  - 按 2026-10 新版 15 表框架展示：客户需求、期初库存、关键物料、成品/半成品参数、BOM、工艺路线、换模矩阵、库存策略、工序提前期、工装模具、**产线基础数据**、设备 PM、客户评级；
   - 包含模具工装约束看板、设备 PM 维保看板、关键物料到货看板与客户战略评级看板；
 - **⑤ 规则合规审计矩阵与手工 Excel 上传闭环**：
   - `/api/solve` 额外返回 `inventory_projection`（B4-b-a）：按班次推演 FG/SF 库存并按 NORMAL/MONTH_END 策略标违规；
@@ -156,6 +162,42 @@ Web 界面主要特性：
   - 调节计划周期（5/10/15天）、工作制模式（连续生产/做五休二/做四休三）；
   - 所有策略依托工厂站点独立持久化存储；
 - **执行运算与导出**：一键触发求解（带动态计时与状态反馈），支持点击【导出结果 Excel】下载生成好的排产工作簿。
+
+### 2026-10 主数据框架（15 表，`APS_DataSource_Template.xlsx`）
+
+业务与物流排产专家重新拟定的主数据框架，已作为**上传/下载的唯一标准模板**接入后台：
+
+| # | 工作表 | 说明 |
+|---|--------|------|
+| 1 | 填写说明 Instructions | 表级说明与变更点，不参与排产 |
+| 2 | 客户需求订单清单 Customer Demand | 日期轴宽表，日期列自动识别 |
+| 3 | 期初可用库存 Initial Stock | 物料类型 / 料号 / 期初件数 |
+| 4 | 关键物料到货 Material-Arrival-ETA | 供应商 / ETA 日期+班次+时间 / 数量 |
+| 5 | 产线与成品参数 Parameters-FG | MPQ、MOQ、班次、模具编号、特殊班次、同时生产 |
+| 6 | 半成品制造参数 Parameters-SFN | MPQ、MOQ、报废率、最大库存、模具编号 |
+| 7 | 产品装配清单 BOM List | 成品→半成品单耗 |
+| 8 | 工艺路线与候选机台 Routing-Machines | **CT / 主候选线 / 人数 / 换型时间** |
+| 9 | 换模矩阵 Setup-Matrix | 以模具编号定义的 from→to 换模分钟 |
+| 10 | 库存策略 Inventory-Policy | NORMAL / MONTH_END 策略与安全库存 |
+| 11 | 工序提前期 Operation-LeadTime | 提前准备/静置时间 / 转运批量 / 容器 |
+| 12 | 工装模具约束 Tooling-Mold | 模具、适用产线/料号、套数 |
+| 13 | **产线基础数据（新增）** | 产线级 TRP / 单班工时 / 每天班次数 |
+| 14 | 设备预防维护 Preventive-Maintenance | 日期 + 停机工时 + 处置策略 |
+| 15 | 客户战略评级 Customer-Priority | 战略等级 / 保供系数 / OTD |
+
+后台适配要点：
+
+- **列顺序可自由调整**：加载器按表头名称定位列（`src/master_schema.py`），不再依赖固定列号；
+- **灰色删除列直接忽略**：FG/SFN 的 `产线`/`效率 TRP`、Routing 的 `备选候选线`/`机台`/`TRP`、物料到货的 `放行工时`/`关联排产零件`/`状态` 均不参与读取；
+- **字段按新框架重新取源**：`CT` 与 `产线` 取自 Routing、`人数` 取自 Routing、`目标库存` 取 Inventory-Policy 安全库存、`TRP/工时/班次` 取产线基础数据；
+- **班次几何由产线基础数据驱动**：`单班工时 × 每天班次数` 同时决定日历班次与求解器容量（WL 3×8h / 2×12h 均可配置）；
+- **工作日历四档**：按“周总需求 / 极限产能”比值推荐 做四休三（≤4/7）→ 做五休二（≤5/7）→ 做六休一（≤6/7）→ 做七无休（>6/7）；
+- **半成品前置期（C4）**：`工序提前期-提前准备时间`（45min~12h 静置）+ `min(工单量,转运批量)×CT/TRP` 折算班次，并以成品工单开始班次为比较基准；
+- **模具编号校验回退**：FG/SFN 的模具编号若不在 Tooling-Mold 主数据中，按“适用零件料号”反查回退并在数据提示中列出；
+- **旧版 25 表仍可上传**：按表头自动识别版式（`layout=v2/legacy`），保证历史工作簿可继续使用。
+
+> 逐项核对报告见 `Specification/master_template_verification.md`（结构、行数、引用完整性、算法字段就绪度、与旧版取值一致性）。
+> 模拟补数说明见 `Specification/masterdata_simulation_notes.md`（人数、提前期、产线基础数据、模具、产品族、ETA 时间、准备时间等）。
 
 ### 一键执行控制台排产 (CLI)
 ```bash

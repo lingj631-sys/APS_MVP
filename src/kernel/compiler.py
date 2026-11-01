@@ -308,14 +308,17 @@ def _compile_sequence(ctx: CompileContext, rule: RuleInstance, params: Dict[str,
 
 
 def _compile_tooling(ctx: CompileContext, rule: RuleInstance, params: Dict[str, Any], book: PenaltyBook, site: str):
-    available = int(params["available_qty"])
+    # HC-01 business answer: one physical mold can only run on one machine,
+    # even when the tooling master says available_qty > 1.  FG and SFIN use
+    # separate mold occupancy groups ("不共享占用").
+    available = 1
     groups = defaultdict(list)
     for task in ctx.tasks():
         if not rule.scope.matches(_target(site, task)):
             continue
         mold = ctx.mold_id(task)
         if mold:
-            groups[mold].append(task)
+            groups[(str(mold), str(getattr(task, "stage", "")))].append(task)
     for group in groups.values():
         if len({getattr(t, "line", "") for t in group}) <= 1:
             continue
@@ -607,6 +610,8 @@ def _compile_calendar(ctx: CompileContext, rule: RuleInstance, params: Dict[str,
     mode = str(params["mode"])
     if mode == "FIVE_TWO" or bool(params["weekend_off"]):
         off_from = 5
+    elif mode == "SIX_ONE":
+        off_from = 6
     elif mode == "FOUR_THREE":
         off_from = 4
     else:
@@ -741,6 +746,17 @@ def _compile_co_product(ctx: CompileContext, rule: RuleInstance, params: Dict[st
     return warnings, rule.nature is Nature.HARD
 
 
+def _compile_hc16(ctx: CompileContext, rule: RuleInstance, params: Dict[str, Any], book: PenaltyBook, site: str):
+    """HC-16 v0: configurable hard/soft task-contiguity approximation."""
+    warnings = []
+    if bool(params.get("allow_delivery_override", True)):
+        warnings.append(f"{rule.rule_id}: allow_delivery_override 已受理，当前 v0 仍按 nature 编译")
+    _, hard = _compile_contiguity(
+        ctx, rule, {"max_blocks": int(params["max_blocks"])}, book, site
+    )
+    return warnings, hard
+
+
 _DISPATCH = {
     "capacity_utilization": _compile_capacity,
     "min_batch": _compile_min_batch,
@@ -755,6 +771,7 @@ _DISPATCH = {
     "concurrency": _compile_concurrency,
     "labor_capacity": _compile_labor_capacity,
     "contiguity": _compile_contiguity,
+    "hc16": _compile_hc16,
     "calendar": _compile_calendar,
     "time_window": _compile_time_window,
     "inventory_bound": _compile_inventory_bound,

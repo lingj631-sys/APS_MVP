@@ -394,6 +394,8 @@ class APSScheduler:
         self.c4_whole_batch = bool(c4_whole_batch)
         self.sf_mpq_tail_enabled = bool(sf_mpq_tail_enabled)
         self.shift_open_penalty = max(0, int(shift_open_penalty or 0))
+        self.hc14_exempt_parts = set()
+        self.hc14_warnings = []
         self.enforce_pull = bool(enforce_pull)
         self.demand_by_date = dict(demand_by_date or {})
         self.slack_fallback_info: Dict[str, Any] = {}
@@ -1154,6 +1156,7 @@ class APSScheduler:
         return windows
 
     def _build_model(self, utilization_mode: str, hard_due: bool, gap_cap=None, use_kernel: bool = True):
+        self._compute_hc14_exemptions()
         model = cp_model.CpModel()
         x: Dict[Tuple[str, int], object] = {}
         active: Dict[Tuple[str, int], object] = {}
@@ -2136,6 +2139,50 @@ class APSScheduler:
             return None
         return 50 * sum(penalties) + (sf_penalty if sf_penalty is not None else 0)
 
+    def _compute_hc14_exemptions(self):
+        """HC-14: allow SF overstock when its L/R assembly coverage is <2h."""
+        if not self.plan.sf_tasks:
+            return
+        by_id = {t.task_id: t for t in self.plan.tasks}
+        parts = {}
+        for task in self.plan.sf_tasks:
+            if str(getattr(task, "simultaneous_production", "") or "").upper() not in (
+                "Y", "YES", "TRUE", "1"
+            ):
+                continue
+            key = (
+                str(getattr(task, "mold_id", "") or ""),
+                getattr(task, "parent_task_id", None),
+            )
+            parts.setdefault(key, []).append(task)
+        demand = getattr(self, "demand_by_date", {}) or {}
+        horizon_hours = max(1.0, float(self.num_shifts) * float(self.shift_hours))
+        for key, tasks in parts.items():
+            if len(tasks) < 2:
+                continue
+            parent = by_id.get(tasks[0].parent_task_id)
+            if parent is None:
+                continue
+            total = 0.0
+            for day in demand.values():
+                total += float(day.get(str(parent.part_no), 0.0) or 0.0)
+            if total <= 0:
+                total = float(getattr(parent, "quantity", 0.0) or 0.0)
+            if total <= 0:
+                continue
+            opening = float(
+                getattr(self.plan, "initial_stock", {}).get(str(parent.part_no), 0.0) or 0.0
+            )
+            coverage_hours = opening / (total / horizon_hours)
+            if coverage_hours >= 2.0:
+                continue
+            for task in tasks:
+                self.hc14_exempt_parts.add(str(task.part_no))
+            self.hc14_warnings.append(
+                f"HC-14: {parent.part_no} 库存覆盖 {coverage_hours:.2f}h < 2h，"
+                f"允许 {key[0]} 的 L/R 共模超库生产"
+            )
+
     def _add_sf_inventory_penalties(self, model, cumulative):
         """B4-b extension: soft time-phased SF inventory cap.
 
@@ -2159,6 +2206,8 @@ class APSScheduler:
         sf_parts = {str(t.part_no) for t in self.plan.sf_tasks} | set(consumers)
         penalties = []
         for part in sorted(sf_parts):
+            if part in self.hc14_exempt_parts:
+                continue
             supply_tasks = [t for t in self.plan.sf_tasks if str(t.part_no) == part]
             if not supply_tasks:
                 continue

@@ -549,6 +549,10 @@
         <div v-if="kpi && kpi.strict_capacity_hard && kpi.allow_soft_capacity_fallback && (kpi.avg_line_utilization || 0) < 95" class="bg-amber-50 border-b border-amber-300 text-amber-950 px-4 py-2 text-xs font-medium">
           <b>硬 95% 已降级为软约束</b>：当前平均利用率 {{ kpi.avg_line_utilization }}%，存在低于 95% 的班次。此结果不是硬约束达标；如需硬约束，请关闭“允许硬 95% 失败时软回退”并前拉订单/调整日历。
         </div>
+        <div v-if="hc14Exempted.length" class="bg-amber-50 border-b border-amber-300 text-amber-950 px-4 py-2 text-xs">
+          <span class="font-bold">HC-14 超库豁免：</span>
+          {{ hc14Exempted.join('、') }} 的 L/R 共模库存覆盖 &lt; 2h，允许继续生产到满足总装；当前不设超库上限。
+        </div>
         <div v-if="autoTruncated && deferredOrders.length" class="bg-orange-50 border-b border-orange-300 text-orange-950 px-4 py-2 text-xs">
           <div class="font-bold mb-1">本期自动顺延 {{ deferredOrders.length }} 个订单（未纳入当前排程）<span v-if="truncationSummary.late_before !== undefined" class="ml-2 font-normal">延期 {{ truncationSummary.late_before }} → {{ truncationSummary.late_after }}</span></div>
           <div class="max-h-28 overflow-y-auto">
@@ -4310,6 +4314,7 @@
         const sequencePlan = ref([]);
         const deferredOrders = ref([]);
         const autoTruncated = ref(false);
+const hc14Exempted = ref([]);
         const truncationSummary = ref({});
         const sequenceSetupTotal = computed(() => (sequencePlan.value || []).reduce((sum, r) => sum + Number(r.setup_min || 0), 0));
         const psiProductionFilter = ref("ALL");
@@ -5192,6 +5197,7 @@
             sequencePlan.value = data.sequence_plan || [];
             deferredOrders.value = data.deferred_orders || [];
             autoTruncated.value = !!data.auto_truncated;
+    hc14Exempted.value = data.hc14_exempted || [];
             truncationSummary.value = data.truncation_summary || {};
             checks.value = data.checks;
             complianceMatrix.value = data.compliance_matrix;
@@ -5687,6 +5693,7 @@
           ruleSetLoading,
           deferredOrders,
           autoTruncated,
+        hc14Exempted,
           truncationSummary,
           ruleCatalogSearch,
           ruleCatalogClass,

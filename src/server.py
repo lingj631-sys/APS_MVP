@@ -2298,6 +2298,8 @@ def run_solver(payload: SolvePayload):
                     "bottlenecks": precheck.bottlenecks,
                     "line_loads": line_loads_payload,
                     "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
+        "hc14_exempted": sorted(getattr(scheduler, "hc14_exempt_parts", set())),
+        "hc14_warnings": list(getattr(scheduler, "hc14_warnings", [])),
                     "suggestions": [
                         "前拉未来订单或增加需求，把空班填到 95%；",
                         "允许部分班次 105% 上浮/加班；",
@@ -2866,6 +2868,8 @@ def run_solver(payload: SolvePayload):
         "routing_decisions": routing_decisions,
         "routing_assign_in_model": routing_in_model,
         "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
+        "hc14_exempted": sorted(getattr(scheduler, "hc14_exempt_parts", set())),
+        "hc14_warnings": list(getattr(scheduler, "hc14_warnings", [])),
         "jitter_enabled": jitter_enabled,
         "hc16_lite_enabled": hc16_lite_enabled,
         "labor_smoothing_enabled": labor_smoothing_enabled,

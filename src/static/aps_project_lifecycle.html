@@ -90,11 +90,26 @@
       transition: width 0.1s ease-out;
     }
 
-    /* 主容器 */
+    /* 主容器：按用户需求设置为 80% 宽度自适应 */
     .page-container {
-      max-width: 1080px;
+      width: 80%;
+      max-width: 1560px;
+      min-width: 320px;
       margin: 0 auto;
-      padding: 44px 24px 80px;
+      padding: 48px 0 96px;
+    }
+
+    @media (max-width: 1200px) {
+      .page-container {
+        width: 88%;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .page-container {
+        width: 94%;
+        padding: 32px 0 60px;
+      }
     }
 
     /* ==========================================================================
@@ -113,7 +128,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 3px 12px;
+      padding: 3px 14px;
       border: 1px solid var(--color-clay);
       border-radius: var(--radius-full);
       color: var(--color-clay);
@@ -140,15 +155,15 @@
     }
 
     .header-intro-box {
-      max-width: 820px;
+      max-width: 1080px;
       margin: 0 auto;
       font-size: 14.5px;
       color: var(--ink-body);
-      line-height: 1.8;
-      background: rgba(255, 255, 255, 0.6);
+      line-height: 1.85;
+      background: rgba(255, 255, 255, 0.7);
       border: 1px solid var(--wabi-border);
       border-radius: var(--radius-md);
-      padding: 14px 20px;
+      padding: 18px 24px;
       text-align: justify;
       text-align-last: center;
     }
@@ -163,7 +178,7 @@
 
     .tag-pill {
       font-size: 12.5px;
-      padding: 4px 12px;
+      padding: 4px 14px;
       background: var(--wabi-card-bg);
       border: 1px solid var(--wabi-border);
       border-radius: var(--radius-full);
@@ -176,12 +191,12 @@
     .summary-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
+      gap: 18px;
       margin-bottom: 36px;
       animation: fadeInUp 0.8s ease-out 0.15s both;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 900px) {
       .summary-grid {
         grid-template-columns: repeat(2, 1fr);
       }
@@ -191,7 +206,7 @@
       background: var(--wabi-card-bg);
       border: 1px solid var(--wabi-border);
       border-radius: var(--radius-md);
-      padding: 16px 18px;
+      padding: 18px 20px;
       box-shadow: var(--shadow-soft);
       transition: transform 0.25s ease, box-shadow 0.25s ease;
       border-left: 3px solid var(--ink-muted);
@@ -225,6 +240,7 @@
       font-size: 12px;
       color: var(--ink-muted);
       margin-top: 4px;
+      line-height: 1.5;
     }
 
     /* ==========================================================================
@@ -236,7 +252,7 @@
       align-items: center;
       flex-wrap: wrap;
       gap: 12px;
-      padding: 12px 18px;
+      padding: 12px 20px;
       background: rgba(240, 236, 225, 0.85);
       backdrop-filter: blur(8px);
       border: 1px solid var(--wabi-border);
@@ -262,7 +278,7 @@
       font-family: var(--font-sans);
       font-size: 12.5px;
       font-weight: 500;
-      padding: 6px 14px;
+      padding: 6px 16px;
       border-radius: var(--radius-sm);
       cursor: pointer;
       transition: all 0.2s ease;
@@ -286,11 +302,11 @@
     }
 
     .btn-action-text {
-      background: transparent;
-      border: 1px solid transparent;
+      background: var(--wabi-card-bg);
+      border: 1px solid var(--wabi-border);
       color: var(--ink-muted);
       font-size: 12.5px;
-      padding: 5px 10px;
+      padding: 6px 14px;
       border-radius: var(--radius-sm);
       cursor: pointer;
       transition: all 0.2s;
@@ -298,27 +314,7 @@
 
     .btn-action-text:hover {
       color: var(--ink-title);
-      background: rgba(0,0,0,0.04);
-    }
-
-    .btn-action-pill {
-      background: var(--color-clay-bg);
-      border: 1px solid rgba(168, 90, 63, 0.3);
-      color: var(--color-clay);
-      font-size: 12.5px;
-      font-weight: 600;
-      padding: 5px 12px;
-      border-radius: var(--radius-full);
-      cursor: pointer;
-      transition: all 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .btn-action-pill:hover {
-      background: var(--color-clay);
-      color: #FFF;
+      border-color: var(--wabi-border-hover);
     }
 
     /* ==========================================================================
@@ -336,7 +332,7 @@
       position: absolute;
       top: 24px;
       bottom: 40px;
-      left: 45px;
+      left: 48px;
       width: 2px;
       background: linear-gradient(to bottom, 
         rgba(168, 90, 63, 0.6) 0%, 
@@ -351,7 +347,7 @@
     .stage-item {
       position: relative;
       margin-bottom: 44px;
-      padding-left: 68px;
+      padding-left: 74px;
       opacity: 0;
       transform: translateY(20px);
       transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -371,8 +367,8 @@
       position: absolute;
       left: 17px;
       top: 18px;
-      width: 58px;
-      height: 58px;
+      width: 62px;
+      height: 62px;
       border-radius: 50%;
       background: var(--wabi-bg);
       border: 2px solid var(--wabi-border-hover);
@@ -394,14 +390,14 @@
 
     .badge-number {
       font-family: var(--font-serif);
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 700;
       color: var(--ink-title);
       line-height: 1;
     }
 
     .badge-text {
-      font-size: 9.5px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.04em;
@@ -414,7 +410,7 @@
       background: var(--wabi-card-bg);
       border: 1px solid var(--wabi-border);
       border-radius: var(--radius-lg);
-      padding: 24px 28px;
+      padding: 28px 32px;
       box-shadow: var(--shadow-soft);
       transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
     }
@@ -431,15 +427,15 @@
       justify-content: space-between;
       align-items: flex-start;
       flex-wrap: wrap;
-      gap: 10px;
-      padding-bottom: 16px;
+      gap: 12px;
+      padding-bottom: 18px;
       border-bottom: 1px solid var(--wabi-border);
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
 
     .stage-title-wrap {
       flex: 1;
-      min-width: 240px;
+      min-width: 260px;
     }
 
     .stage-meta {
@@ -465,15 +461,15 @@
 
     .stage-main-title {
       font-family: var(--font-serif);
-      font-size: 20px;
+      font-size: 21px;
       font-weight: 700;
       color: var(--ink-title);
     }
 
     .stage-status-pill {
       font-size: 12px;
-      font-weight: 500;
-      padding: 4px 12px;
+      font-weight: 600;
+      padding: 4px 14px;
       border-radius: var(--radius-full);
       display: inline-flex;
       align-items: center;
@@ -502,11 +498,11 @@
     .stage-purpose {
       background: var(--wabi-surface);
       border-radius: var(--radius-sm);
-      padding: 10px 14px;
-      font-size: 13.5px;
+      padding: 12px 18px;
+      font-size: 14px;
       color: var(--ink-body);
-      margin-bottom: 18px;
-      line-height: 1.6;
+      margin-bottom: 20px;
+      line-height: 1.7;
     }
 
     .stage-purpose strong {
@@ -519,8 +515,8 @@
       background: #FAF8F5;
       border: 1px solid var(--wabi-border-hover);
       border-radius: var(--radius-md);
-      padding: 14px 18px;
-      margin-bottom: 18px;
+      padding: 15px 20px;
+      margin-bottom: 20px;
       transition: background-color 0.2s ease;
     }
 
@@ -538,7 +534,7 @@
     }
 
     .milestone-name {
-      font-size: 14px;
+      font-size: 14.5px;
       font-weight: 700;
       color: var(--color-clay);
       display: flex;
@@ -547,43 +543,43 @@
     }
 
     .milestone-role {
-      font-size: 11.5px;
+      font-size: 12px;
       color: var(--ink-light);
     }
 
     .milestone-text {
-      font-size: 13px;
+      font-size: 13.5px;
       color: var(--ink-body);
-      line-height: 1.55;
+      line-height: 1.6;
     }
 
-    /* 阶段任务详情：简练的三栏 */
+    /* 阶段任务详情：宽屏自适应三栏 */
     .details-grid {
       display: grid;
-      grid-template-columns: 1.2fr 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 14px;
+      grid-template-columns: 1.25fr 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 16px;
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 960px) {
       .details-grid {
         grid-template-columns: 1fr;
-        gap: 12px;
+        gap: 14px;
       }
     }
 
     .detail-col {
-      background: rgba(247, 245, 240, 0.5);
+      background: rgba(247, 245, 240, 0.55);
       border: 1px solid var(--wabi-border);
       border-radius: var(--radius-sm);
-      padding: 12px 14px;
+      padding: 14px 16px;
     }
 
     .col-header {
-      font-size: 12px;
+      font-size: 12.5px;
       font-weight: 700;
       color: var(--ink-title);
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -593,15 +589,15 @@
       list-style: none;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
     .col-list li {
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: 13.5px;
+      line-height: 1.6;
       color: var(--ink-body);
       position: relative;
-      padding-left: 14px;
+      padding-left: 15px;
     }
 
     .col-list li::before {
@@ -623,15 +619,17 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding-top: 12px;
+      padding-top: 14px;
       border-top: 1px dashed var(--wabi-border);
-      font-size: 12px;
+      font-size: 12.5px;
       color: var(--ink-muted);
+      line-height: 1.5;
     }
 
     .handover-arrow {
       color: var(--color-clay);
       font-weight: 700;
+      flex-shrink: 0;
     }
 
     /* ==========================================================================
@@ -642,34 +640,34 @@
       background: var(--wabi-card-bg);
       border: 1px solid var(--wabi-border-hover);
       border-radius: var(--radius-lg);
-      padding: 30px;
+      padding: 32px;
       box-shadow: var(--shadow-soft);
       animation: fadeInUp 0.8s ease-out;
     }
 
     .change-table-title {
       font-family: var(--font-serif);
-      font-size: 20px;
+      font-size: 21px;
       font-weight: 700;
       color: var(--ink-title);
       margin-bottom: 8px;
     }
 
     .change-table-subtitle {
-      font-size: 13.5px;
+      font-size: 14px;
       color: var(--ink-muted);
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
 
     .contrast-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 13px;
+      font-size: 13.5px;
     }
 
     .contrast-table th {
       text-align: left;
-      padding: 10px 14px;
+      padding: 12px 16px;
       background: var(--wabi-surface);
       color: var(--ink-title);
       font-weight: 600;
@@ -677,30 +675,30 @@
     }
 
     .contrast-table td {
-      padding: 12px 14px;
+      padding: 14px 16px;
       border-bottom: 1px solid var(--wabi-border);
       vertical-align: top;
-      line-height: 1.55;
+      line-height: 1.6;
     }
 
     .badge-past {
       display: inline-block;
-      padding: 2px 6px;
+      padding: 2px 8px;
       border-radius: 4px;
       background: rgba(100, 90, 80, 0.1);
       color: var(--ink-muted);
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 600;
       margin-bottom: 4px;
     }
 
     .badge-new {
       display: inline-block;
-      padding: 2px 6px;
+      padding: 2px 8px;
       border-radius: 4px;
       background: var(--color-moss-bg);
       color: var(--color-moss);
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 600;
       margin-bottom: 4px;
     }
@@ -711,7 +709,7 @@
       margin-top: 50px;
       padding-top: 24px;
       border-top: 1px solid var(--wabi-border);
-      font-size: 12px;
+      font-size: 12.5px;
       color: var(--ink-light);
     }
 
@@ -725,36 +723,31 @@
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
     }
-
-    @keyframes scaleIn {
-      from { opacity: 0; transform: scale(0.96); }
-      to { opacity: 1; transform: scale(1); }
-    }
   </style>
 </head>
 <body>
-  <!-- 滚动进度条 -->
+  <!-- 顶部细线条滚动进度指示 -->
   <div class="scroll-progress-bar" id="scrollBar"></div>
 
   <div class="page-container">
 
     <!-- 顶部标题区 -->
     <header class="header-section">
-      <div class="zen-badge">业务汇报版</div>
+      <div class="zen-badge">业务实施与汇报全景</div>
       <h1 class="project-title">APS 生产排产系统 · 项目实施流程介绍</h1>
-      <p class="project-subtitle">从项目立项、规则梳理、系统制作到正式上线与日常维护的完整阶段</p>
+      <p class="project-subtitle">从“一颗种子”的探索，到融入车间日常运转的完整实施阶段</p>
       
       <div class="header-intro-box">
-        本页面用于向业务与车间部门直观介绍 APS 生产排产系统的完整落地过程。
-        项目涵盖<strong>温岭工厂</strong>（雨刮冲压与装配，8小时3班）与<strong>沈阳工厂</strong>（注塑与喷涂，12小时2班）。
-        核心目标是：<strong>保证客户订单按时交货、保持产线稳定生产、减少模具更换停机时间</strong>，帮助计划员从繁琐的手工制表中解脱出来。
+        本方案记录了 APS 生产排产系统从立项到日常运行的完整推进过程，覆盖<strong>温岭工厂</strong>（雨刮冲压与装配，8小时3班）与<strong>沈阳工厂</strong>（注塑与喷涂，12小时2班）。
+        项目的核心共识是：<strong>“系统的目标不是追求理论上的绝对完美排产，而是稳定高效地优于手工排产”</strong>；从最小可行性产品（MVP）做起，像<strong>一颗种子</strong>在工厂土壤中扎根，通过与 <strong>Regional Operation 团队</strong>的反复回顾讨论，形成 32 条全要素规则，最终帮助计划员从繁重的手工计算中解脱出来，成为掌控产能与交付的策略分析师。
       </div>
 
       <div class="header-tags">
         <span class="tag-pill">覆盖双工厂（温岭工厂 / 沈阳工厂）</span>
-        <span class="tag-pill">全流程 7 个阶段</span>
-        <span class="tag-pill">8 个确认节点</span>
-        <span class="tag-pill">业务汇报全景视图</span>
+        <span class="tag-pill">Regional Operation 协同</span>
+        <span class="tag-pill">全流程 7 个推进阶段</span>
+        <span class="tag-pill">9 个关键确认节点</span>
+        <span class="tag-pill">宽度 80% 自适应</span>
       </div>
     </header>
 
@@ -768,20 +761,20 @@
 
       <div class="summary-card card-sand">
         <div class="summary-label">关键确认节点</div>
-        <div class="summary-value">8 个节点</div>
+        <div class="summary-value">9 个节点</div>
         <div class="summary-desc">每阶段均有明确的结果清单与业务部门签字确认</div>
       </div>
 
       <div class="summary-card card-moss">
-        <div class="summary-label">交货保证目标</div>
-        <div class="summary-value">100%</div>
-        <div class="summary-desc">订单按期交付，产线单班利用率保持在 95% 以上</div>
+        <div class="summary-label">交付与负荷底线</div>
+        <div class="summary-value">优于手工排产</div>
+        <div class="summary-desc">订单按期交付，单班开班利用率稳定保持在 95% 以上</div>
       </div>
 
       <div class="summary-card card-stone">
-        <div class="summary-label">排产效率提升</div>
+        <div class="summary-label">计划员效率提升</div>
         <div class="summary-value">从半天到3分钟</div>
-        <div class="summary-desc">系统自动计算，大幅减少手工拉公式与核算耗时</div>
+        <div class="summary-desc">系统秒级自动计算，释放精力聚焦数据与业务决策</div>
       </div>
     </section>
 
@@ -815,7 +808,7 @@
           <div class="stage-header">
             <div class="stage-title-wrap">
               <div class="stage-meta">
-                <span class="stage-tag">启动准备</span>
+                <span class="stage-tag">启动立项</span>
                 <span class="stage-time">第 1 ~ 2 周</span>
               </div>
               <h2 class="stage-main-title">阶段一：项目立项与范围确认</h2>
@@ -824,19 +817,19 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标：</strong>
-            明确排产车间范围，确定排产目标，建立包含生产计划员、车间主管和开发人员的联合工作组。
+            <strong>阶段战略共识：</strong>
+            明确主要项目范围，探讨 APS 系统架构与落地可行性。项目组统一核心思想：<strong>“系统的目标不是追求理论上的绝对完美排产，而是稳定高效地优于手工排产”</strong>；确立<strong>“从最小的 MVP 做起，种下一颗种子”</strong>的敏捷路线，用最低试错成本验证车间落地的可能性。
           </div>
 
           <!-- 里程碑 M0 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M0：项目范围与工作职责确认</div>
-              <div class="milestone-role">确认人：生产部负责人、物流主管、项目负责人</div>
+              <div class="milestone-name">🚩 确认节点 M0：项目范围、架构路线与工作职责确认</div>
+              <div class="milestone-role">确认人：生产部负责人、物流主管、Regional 项目负责人</div>
             </div>
             <div class="milestone-text">
               <strong>确认成果：</strong>
-              明确温岭工厂（雨刮装配与冲压，8小时3班制）与沈阳工厂（注塑与喷涂，12小时2班制）的产线范围；确认首批试点的产品系列（挂杆与连杆零件）。
+              明确温岭工厂（雨刮装配与冲压，8小时3班制）与沈阳工厂（注塑与喷涂，12小时2班制）的产线试点边界；聚焦首批重点产品系列（挂杆与连杆零件），确立“优于手工排产”的评价基准。
             </div>
           </div>
 
@@ -844,33 +837,33 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>确定工厂与产线</strong>：梳理装配线、冲压机、注塑机等设备的基础生产模式。</li>
-                <li><strong>明确业务目标</strong>：交货期保证第一，单班利用率不低于95%，尽量减少停机换模。</li>
-                <li><strong>建立沟通机制</strong>：建立定期例会，确保计划员直接参与方案讨论。</li>
+                <li><strong>划定首期试点边界</strong>：锁定温岭与沈阳的典型产线，不一开始贪大求全铺开所有复杂料号。</li>
+                <li><strong>探讨系统架构可行性</strong>：论证算法模型与工厂物理产线结合的可行性，确定两阶段流水搭接方向。</li>
+                <li><strong>建立“种子”意识与团队</strong>：组建包含车间计划员、现场主管与开发人员的敏捷工作组。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
-                <li>《项目立项与范围说明书》</li>
-                <li>《车间产线与试点产品清单》</li>
-                <li>《项目成员职责分工表》</li>
+                <li>《项目立项与可行性说明书》</li>
+                <li>《车间产线与首批试点零件清单》</li>
+                <li>《MVP 项目分工与推进机制》</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>第一期集中精力排好重点产品，不一开始铺开所有复杂料号。</li>
-                <li>必须有实际做计划的业务人员全程参与，避免开发脱离现场。</li>
+                <li>打消“系统必须排得十全十美”的不切实际预期，聚焦是否在交付、负荷与效率上实质性超越人工。</li>
+                <li>车间计划员全过程深度参与，确保系统从一开始就贴合现场。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">下一步 ➔</span>
-            <span>范围确定后，进入【阶段二：业务调研与规则梳理】，开始记录计划员的日常排产习惯。</span>
+            <span>范围与架构共识确立后，进入【阶段二：业务调研与规则梳理】，开始对两家工厂的排产逻辑进行全面拆解。</span>
           </div>
         </div>
       </article>
@@ -895,19 +888,19 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标：</strong>
-            把计划员脑子里的日常经验与车间要求，整理成系统看得懂的 32 条明确规则，并统一基础数据格式。
+            <strong>阶段战略共识：</strong>
+            调研工厂既定规则与物理约束，将零散经验进行标准化。工厂物流专家的经验经过 <strong>Regional Operation 团队</strong>的多轮反复回顾、碰撞与权衡讨论，统一输入标准与输出展示规范，最终定下 <strong>32 条全要素排产规则与约束条件</strong>。
           </div>
 
           <!-- 里程碑 M1 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M1：排产规则清单与数据模板确认</div>
-              <div class="milestone-role">确认人：资深计划员、车间工段长、系统设计人员</div>
+              <div class="milestone-name">🚩 确认节点 M1：32 条排产规则清单与数据标准确认</div>
+              <div class="milestone-role">确认人：资深计划员、车间工段长、Regional Operation 运营团队</div>
             </div>
             <div class="milestone-text">
               <strong>确认成果：</strong>
-              完成 32 条排产规则清单（包含必须遵守的硬要求与尽量满足的软目标）；确认 15 张基础数据 Excel 填写模板。
+              完成 32 条全要素排产规则字典（明确硬性物理约束与软性优化目标）；规范统一的输入数据标准与输出计划展示效果；完成 15 张标准基础数据表格式确认。
             </div>
           </div>
 
@@ -915,35 +908,33 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>面对面访谈计划员</strong>：了解日常如何看交期、怎么算半成品、何时必须换模。</li>
-                <li><strong>整理32条业务规则</strong>：
-                  如交期先后原则、模具同一时间只能用在一台机、设备保养期避让停工等。</li>
-                <li><strong>区分不同车间要求</strong>：
-                  温岭工厂双边利用率95%~105%；沈阳工厂左右件1:1成套生产。</li>
+                <li><strong>一线经验深入调研</strong>：逐项梳理计划员看交期、算半成品库存、安排模具更换的底层逻辑。</li>
+                <li><strong>Regional Operation 团队反复回顾</strong>：平衡工厂局部习惯与区域运营标准，经历多轮拉锯讨论，剔除矛盾逻辑。</li>
+                <li><strong>输入输出规范化</strong>：统一基础数据输入标准，规范输出计划的展示格式，确保跨工厂通用一致。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
-                <li>《32条排产业务规则白话手册》</li>
+                <li>《32条排产业务规则白话手册》（含正反示例）</li>
                 <li>《15张标准基础数据填写表格》</li>
-                <li>《访谈记录与排产习惯确认单》</li>
+                <li>《输出排产计划统一展示规范》</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>把“大概、差不多”的要求明确化（例如：换模时间到底算不算在生产时间里）。</li>
-                <li>所有规则必须经计划员逐条看懂确认，禁止使用难懂代码。</li>
+                <li>把“大概、凭经验”的要求强制量化为清晰逻辑（如双边利用率95%~105%、左右件1:1成套等）。</li>
+                <li>所有规则必须由工厂计划员与 Regional Operation 共同审阅看懂，杜绝产生歧义。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">下一步 ➔</span>
-            <span>规则与模板确认后，进入【阶段三：系统制作与功能开发】，让程序开始试算。</span>
+            <span>32 条规则与数据格式签字冻结后，进入【阶段三：系统制作与功能开发】，开始编写自动计算程序。</span>
           </div>
         </div>
       </article>
@@ -968,30 +959,41 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标：</strong>
-            按照确认的规则制作自动排产计算程序，并开发直观清晰的网页操作界面（当前正处于算法完善与界面调优阶段）。
+            <strong>阶段战略共识：</strong>
+            让“种子”发芽，将 32 条业务规则转化为自动计算程序。搭建可公式化、可灵活配置的核心计算框架，通过持续多轮试算让方案不断收敛并贴近现场实际；制作符合车间排产员习惯的看板工作台；坚持<strong>“不做黑盒子，做透视镜”</strong>，增加 17 项规则检查与穿透依据，建立业务人员对系统计算逻辑的信任（当前处于核心功能完善与界面联调阶段）。
           </div>
 
-          <!-- 里程碑 M2 & M3 -->
+          <!-- 里程碑 M2-1, M2-2 & M3 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M2：自动排产程序计算测试通过</div>
-              <div class="milestone-role">确认人：系统开发人员、测试人员</div>
+              <div class="milestone-name">🚩 确认节点 M2-1：排产核心算法框架搭建与规则可配置化验证</div>
+              <div class="milestone-role">确认人：系统架构团队、物流业务专家</div>
             </div>
             <div class="milestone-text">
-              <strong>目标成果：</strong>
-              输入测试数据后，系统可在 15 秒内自动生成 10 天的生产排程，且所有订单均满足交期要求（核心模型已跑通，正持续优化细节）。
+              <strong>业务目标成果：</strong>
+              考虑到 32 条业务规则相互关联且非常复杂，且未来工厂必然会引入新产品、换模具或调整工艺，系统没有将规则硬编码写死，而是专门搭建了<strong>可灵活配置的核心算法框架</strong>。将业务规则转化为标准化公式与可调参数，便于通过持续多轮的反复测试与调优，使排产结果逐步向车间实际生产习惯“收敛靠近”，直到各项指标稳定达到业务和现场完全可接受的满意范围。
             </div>
           </div>
 
           <div class="milestone-strip" style="margin-top: -6px;">
             <div class="milestone-top">
-              <div class="milestone-name" style="color: var(--color-clay);">🚩 确认节点 M3：操作界面与自动检查功能交付</div>
+              <div class="milestone-name">🚩 确认节点 M2-2：自动排产程序核心全流程计算跑通</div>
+              <div class="milestone-role">确认人：系统开发团队、算法测试组</div>
+            </div>
+            <div class="milestone-text">
+              <strong>目标成果：</strong>
+              输入测试数据后，系统可在 15 秒内自动生成 10 天的生产排程，净需求核算、开班负荷双边闭环（≥95%）与 30 天需求前瞻合批计算稳定无误（核心模型已跑通，正持续优化细节）。
+            </div>
+          </div>
+
+          <div class="milestone-strip" style="margin-top: -6px;">
+            <div class="milestone-top">
+              <div class="milestone-name" style="color: var(--color-clay);">🚩 确认节点 M3：分料号甘特图与规则检查看板交付</div>
               <div class="milestone-role">确认人：计划员代表、界面体验人员</div>
             </div>
             <div class="milestone-text">
               <strong>目标成果：</strong>
-              完成每日生产计划总表（PSI）、甘特图（直观展示每条线何时排什么型号）及 17 项自动规则检查看板（基础框架已就绪，正在进行联调优化）。
+              完成单页生产平衡表（PSI，支持双向表头冻结）与分料号独立泳道甘特图（解决手工工单堆叠痛点）；交付 17 项自动检查看板，清晰下钻算式与判断依据（基础框架已就绪，正在进行联调优化）。
             </div>
           </div>
 
@@ -999,33 +1001,34 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>自动计算程序开发</strong>：程序自动计算净需求（需要生产多少 = 客户要多少 - 现有库存）。</li>
-                <li><strong>30天远期合批平准</strong>：月初订单少时，自动拉动月中同型号一起生产，减少停机换模。</li>
-                <li><strong>界面防重叠甘特图</strong>：每个产品独立一行展示，一眼看清上下工序衔接，绝不堆叠重合。</li>
+                <li><strong>核心算法框架搭建与规则配置化</strong>：把 32 条规则公式化、参数化，避免代码写死；通过反复试算收敛排产方案，方便应对未来新产品与工艺变更。</li>
+                <li><strong>32条规则算法全流程打通</strong>：程序自动计算净需求，实现两阶段流水搭接与 30 天远期平准合批。</li>
+                <li><strong>甘特图重构彻底防重叠</strong>：分料号展开独立子泳道，彻底解决传统手工表格多工单挤在一行看不清工序先后的痛点。</li>
+                <li><strong>打造透明下钻的“透视镜”</strong>：17 项规则检查均可点开看公式、具体数字与验算底表，让计划员明白排产背后的逻辑。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
-                <li>系统操作网页（包含生产计划表与甘特图）</li>
-                <li>17 项自动检查功能（自动查漏料、查交期、查超载）</li>
-                <li>单页排产结果 Excel 导出功能</li>
+                <li>系统排产操作台网页（生产计划总表 + 零重叠甘特图）</li>
+                <li>17 项规则自动检查看板（支持穿透下钻算式）</li>
+                <li>一键导出符合打印与车间下发标准的 Excel 表</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>操作界面必须简洁，表格支持左右上下固定表头，符合业务看表习惯。</li>
-                <li>即使排产有不合格项，也要清晰显示原因，让计划员知道哪里出了问题。</li>
+                <li>系统计算逻辑坚决杜绝“黑盒”，任何调整和放空都必须能够解释原因。</li>
+                <li>界面完全遵循工业表格习惯，操作简洁直观，不增加计划员的额外认知负担。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">当前进展 ➔</span>
-            <span>功能与界面正与阶段四数据整理同步推进，完善后将进入【阶段五：新旧方式对比试跑】。</span>
+            <span>功能与操作台正与阶段四数据整理同步推进中，完善后将进入【阶段五：新旧方式对比试跑】。</span>
           </div>
         </div>
       </article>
@@ -1050,19 +1053,19 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标：</strong>
-            整理工厂真实的生产基础数据，排查数据中的缺漏错误，与阶段三协同开展真实数据测试（当前正在进行数据清洗与测试）。
+            <strong>阶段战略共识：</strong>
+            “巧妇难为无米之炊，给种子浇水施肥”。清理过去散落在各处分散表格中的历史数据，统一规范为 15 张标准基础数据表；建立前置录入防呆机制，结合真实订单开展多轮海量测试，保障系统稳定运行（当前处于数据清洗与极端工况排查阶段）。
           </div>
 
           <!-- 里程碑 M4 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M4：真实数据录入与排查完成</div>
+              <div class="milestone-name">🚩 确认节点 M4：工厂正式数据导入与测试排查完成</div>
               <div class="milestone-role">确认人：物料主数据员、计划主管、测试人员</div>
             </div>
             <div class="milestone-text">
               <strong>目标成果：</strong>
-              完成 15 张正式数据表（订单、库存、物料BOM、模具、设备日历）导入；系统自动排查并修复所有错误行（目前基础模板已建立，正持续导入测试）。
+              完成温岭工厂与沈阳工厂 15 张正式数据表（订单、在库、物料BOM、模具、设备日历）清洗与录入；系统前置防呆自动拦截并修复基础数据错误（目前正结合真实数据多轮排查）。
             </div>
           </div>
 
@@ -1070,33 +1073,33 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>整理正式数据表</strong>：清理原有散乱旧表，汇总进统一的标准数据文件 <code>dataSource.xlsx</code>。</li>
-                <li><strong>建立录入防呆检查</strong>：系统自动发现打错的零件编号、负数库存、过期的无效订单。</li>
-                <li><strong>排产压力测试</strong>：连续导入 30 天海量订单测试，确保计算速度快、系统不卡顿。</li>
+                <li><strong>整理15张标准基础数据表</strong>：清理原有散乱旧表，汇总进统一标准文件 <code>dataSource.xlsx</code>。</li>
+                <li><strong>建立前置录入防呆机制</strong>：计算前自动拦截负库存、料号拼写错误、无效交期与缺失节拍的订单，确保“干干净净进系统”。</li>
+                <li><strong>极端工况压力测试</strong>：导入海量真实订单与长周期需求测试，验证计算在十几秒内完成，系统稳定不卡死。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
-                <li>《工厂标准生产基础数据库》</li>
-                <li>《基础数据常见错误排查与填写指南》</li>
-                <li>系统自动测试报告（160项测试全部通过）</li>
+                <li>《工厂标准基础数据库》（温岭与沈阳独立隔离）</li>
+                <li>《基础数据常见错误自查与填写手册》</li>
+                <li>自动化测试回归报告（160项测试用例闭环）</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>“垃圾数据进，垃圾结果出”。基础数据（尤其是库存与BOM）必须盘点清楚。</li>
-                <li>表格必须严格按照模板格式填写，不得随意增删列。</li>
+                <li>“垃圾数据进，垃圾结果出”。借助系统实施契机，倒逼工厂彻底盘清实际库存与BOM对应关系。</li>
+                <li>严格按照模板维护数据，不允许随意更改列名或合并单元格。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">当前进展 ➔</span>
-            <span>数据清洗与测试正在进行中，完成后将正式开启【阶段五：新旧方式对比试跑】。</span>
+            <span>真实数据清洗与测试正在全力推进中，完成后将正式开启【阶段五：新旧方式对比试跑】。</span>
           </div>
         </div>
       </article>
@@ -1121,19 +1124,19 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标（待启动）：</strong>
-            待阶段三功能制作与阶段四数据整理就绪后启动。届时计划员手工排产与系统自动排产同时进行，每天对比结果，发现差异并持续调优参数，建立信任。
+            <strong>阶段战略共识（待启动）：</strong>
+            “新旧同台竞技，小步慢跑，用事实说话”。待阶段三功能制作与阶段四数据整理就绪后启动。计划员每天照常做手工排产，系统同步自动生成方案，背靠背比对对账，通过客观归因逐步建立人机互信，调优规则参数。
           </div>
 
           <!-- 里程碑 M5 -->
           <div class="milestone-strip">
             <div class="milestone-top">
               <div class="milestone-name">🚩 确认节点 M5：双轨对比合格与业务签字认可</div>
-              <div class="milestone-role">确认人：计划员全员、车间工段长、制造经理</div>
+              <div class="milestone-role">确认人：工厂计划团队、车间工段长、Regional Operation 运营负责人</div>
             </div>
             <div class="milestone-text">
               <strong>准签目标：</strong>
-              连续两周对比，系统排产结果在交货期满足率、换模次数和负荷平稳度上均达到或优于手工计划，车间认可可行性。
+              连续数周对比，系统排产结果在交货期满足率、单班利用率（稳定≥95%）、换模停机次数与方案排布耗时上全面达到或优于手工计划，车间现场与 Regional 团队签字准签。
             </div>
           </div>
 
@@ -1141,33 +1144,33 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>手工与系统背靠背对比</strong>：计划员照常做手工表，同时系统每天自动出一份计划。</li>
-                <li><strong>手工计划反向检查</strong>：计划员把手工表导入系统，系统自动检查手工表是否有漏料或延期。</li>
-                <li><strong>空班原因透明化</strong>：遇到设备不排产的班次，系统直接标注原因（如“需求已完成提前停机”）。</li>
+                <li><strong>每日方案背靠背比对</strong>：计划员照常做手工表，同时系统每天自动出一份计划，逐日对账复盘。</li>
+                <li><strong>手工计划反向合规检查</strong>：计划员将手工表导入系统，让 17 项检查器反向复核手工计划是否存在漏排或延期风险。</li>
+                <li><strong>差异透明化与客观归因</strong>：当出现排产差异（如系统空出某班），系统自动给出标签（如“订单已按单完工，提前封盘避免超产积压”），区分算法需微调还是人工凭感觉盲目加班。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
-                <li>《每日手工与系统排产比对记录表》</li>
-                <li>《车间现场可行性反馈与优化清单》</li>
-                <li>《双轨对比总结汇报》</li>
+                <li>《每日手工与系统方案对比复盘记录》</li>
+                <li>《车间现场可行性反馈与规则微调清单》</li>
+                <li>《双轨对比运行总结与准签报告》</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>计划员看到某班次没排产时，先看系统给出的提示标签，不要急于手工加单。</li>
-                <li>如果系统排出来的方案不符合车间习惯，及时说明理由并调整规则参数。</li>
+                <li>遇到分歧坚持用事实和数据说话，避免主观猜疑，心服口服才正式切线。</li>
+                <li>充分吸纳车间合理反馈，快速调整参数，让系统真正适应车间生产节奏。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">下一步 ➔</span>
-            <span>双方方案高度一致并签字后，进入【阶段六：正式上线与生产切换】，停用旧表格。</span>
+            <span>双轨对比充分验证并完成多方签字后，进入【阶段六：正式上线与生产切换】，停用旧手工表。</span>
           </div>
         </div>
       </article>
@@ -1192,19 +1195,19 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标：</strong>
-            车间停止使用旧的手工 Excel 表格，全面以系统生成的排产计划单作为现场生产执行的唯一依据。
+            <strong>阶段战略共识（待切换）：</strong>
+            “扶上马送一程，正式交出生产指挥棒”。车间全面停用手工旧表，以系统导出的生产计划为现场唯一生产指令源；建立 48 小时计划锁定围栏，维护排产严肃性；团队现场伴跑护航。
           </div>
 
           <!-- 里程碑 M6 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M6：正式单轨上线发布</div>
-              <div class="milestone-role">确认人：工厂厂长、生产副总、供应链负责人</div>
+              <div class="milestone-name">🚩 确认节点 M6：正式单轨切线生产发布</div>
+              <div class="milestone-role">确认人：工厂厂长、生产副总、供应链与运营总监</div>
             </div>
             <div class="milestone-text">
-              <strong>确认成果：</strong>
-              车间看板、班组派工单与仓库备料单全面按系统计划执行，首周生产平稳，无异常停产停工。
+              <strong>准签目标：</strong>
+              车间看板、班组派工与仓库领料全面基于系统导出的计划执行；首周生产平稳顺畅，无重大异常停产停工，生产指挥权正式交接。
             </div>
           </div>
 
@@ -1212,9 +1215,9 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>执行切换清单</strong>：盘点准确在库库存，固定未来 48 小时的生产任务作为锁定期。</li>
-                <li><strong>正规计划单下发</strong>：每天从系统一键导出标准的单页排产 Excel 表，下发车间各机台班组。</li>
-                <li><strong>现场跟进支持</strong>：技术团队到车间调度室驻场，现场解答操作疑问，指导应急处理。</li>
+                <li><strong>执行切换割接清单</strong>：盘点准确在库实物，锁定未来 48 小时任务作为固定生产围栏（冻结期）。</li>
+                <li><strong>正式计划单标准下发</strong>：每天从系统一键导出标准的单页排产 Excel 表，直接打印或下发车间各机台班组。</li>
+                <li><strong>现场驻场伴跑护航</strong>：技术与运营团队入驻车间现场，面对面解答疑问，指导现场派工与异常处理。</li>
               </ul>
             </div>
 
@@ -1222,23 +1225,23 @@
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
                 <li>每日正式下发的《车间生产计划单》</li>
-                <li>《上线切换操作步骤指南》</li>
-                <li>《紧急情况线下排产应急预案》</li>
+                <li>《切线操作步骤与现场执行指南》</li>
+                <li>《突发异常线下应急预案》</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>车间严禁私下微信调换机台生产，如遇突发断料或坏机，必须在系统中重新计算。</li>
-                <li>锁定时间窗口内的订单不随意挪动，保障车间现场物料准备有序。</li>
+                <li>刚性制度维护计划严肃性，杜绝车间私下“微信打招呼插单调机”的传统习惯。</li>
+                <li>锁定窗口内的订单不随意挪动，保障车间备料与工装节奏平稳有序。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">下一步 ➔</span>
-            <span>平稳切线后，进入【阶段七：上线后日常运行与维护】，建立长期稳定运作规范。</span>
+            <span>平稳切线后，进入【阶段七：上线后日常运行与维护】，建立长治久安的机制与文化。</span>
           </div>
         </div>
       </article>
@@ -1263,19 +1266,19 @@
           </div>
 
           <div class="stage-purpose">
-            <strong>阶段目标：</strong>
-            系统融入车间日常运转，计划员工作重心由手工算数转向质量把关与异常决策，并建立参数维护规范。
+            <strong>阶段战略共识（长期演进）：</strong>
+            “种子长成大树，从制度和文化上固化成果”。计划员工作重心由机械填表转向数据把关与策略决策；建立规则日常参数自维护机制；以温岭和沈阳为标杆向集团内其他工厂推广复制。
           </div>
 
           <!-- 里程碑 M7 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M7：日常运行与维护机制建立</div>
-              <div class="milestone-role">确认人：计划主管、车间主管、IT支持主管</div>
+              <div class="milestone-name">🚩 确认节点 M7：日常运行规范建立与推广准备</div>
+              <div class="milestone-role">确认人：计划主管、车间主管、Regional Operation 运营管理层</div>
             </div>
             <div class="milestone-text">
-              <strong>确认成果：</strong>
-              计划员能够熟练独立维护基础数据、修改排产规则；系统稳定运行三个月以上，并推广至其他新产线。
+              <strong>准签目标：</strong>
+              计划员熟练独立维护基础数据与规则参数；系统在温岭与沈阳稳定运行三个月以上；形成可向其他基地快速复制推广的标准化套件。
             </div>
           </div>
 
@@ -1283,9 +1286,9 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>计划员职责转变</strong>：不再花费半天做表格，转向检查数据准不准、审核系统建议与应对插单。</li>
-                <li><strong>规则日常维护</strong>：工厂新增设备、模具调整或换班制时，在界面上直接修改参数生效。</li>
-                <li><strong>长期效益统计</strong>：每月统计一次按时交货率、设备换模总工时与在制品库存结存情况。</li>
+                <li><strong>计划员岗位转型升维</strong>：不再每天花费 3~4 小时拉公式算库存，转向数据把关、异常应对与业务策略分析。</li>
+                <li><strong>规则日常自服务维护</strong>：工厂新增设备、模具调整或班制改动时，在操作界面上直接修改参数生效，无需改写底层代码。</li>
+                <li><strong>总结标准化推广套件</strong>：提炼标准化 15 表主数据、32 条规则模板与实施经验，向集团其他生产基地复制。</li>
               </ul>
             </div>
 
@@ -1294,22 +1297,22 @@
               <ul class="col-list">
                 <li>《APS 系统日常操作与维护手册》</li>
                 <li>《规则修改与审核流程规范》</li>
-                <li>月度生产排产效益统计分析表</li>
+                <li>长期生产排产效益分析报告（交期达成、换模时间、库存降低）</li>
               </ul>
             </div>
 
             <div class="detail-col">
-              <div class="col-header">💡 注意事项</div>
+              <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>规则修改必须由专人审核，防止个人随意改动参数影响整条产线平衡。</li>
-                <li>坚持每天核对一次期初库存，确保排产的起点准确。</li>
+                <li>坚持每日核对期初实物在库，确保排产输入的源头绝对准确。</li>
+                <li>把优秀经验沉淀为系统数字资产，彻底消除“因个别员工离职休假导致车间排产瘫痪”的风险。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">目标达成 ➔</span>
-            <span>系统持续为工厂平稳生产提供支持，实现按时交货、稳定开班与减少换模停机。</span>
+            <span>系统持续为工厂平稳生产提供支持，实现按时交货、稳定开班与减少换模停机的长期效益。</span>
           </div>
         </div>
       </article>
@@ -1321,36 +1324,36 @@
          ========================================================================== -->
     <section class="change-table-card" id="changeSection">
       <h2 class="change-table-title">业务工作模式转变对照</h2>
-      <p class="change-table-subtitle">系统上线后，计划员日常工作的重心与效率对比说明：</p>
+      <p class="change-table-subtitle">系统从“一颗种子”落地运行后，计划员日常工作的重心与效率对比说明：</p>
 
       <table class="contrast-table">
         <thead>
           <tr>
             <th style="width: 20%;">工作内容</th>
-            <th style="width: 40%;">过去（传统手工方式）</th>
-            <th style="width: 40%;">现在（使用 APS 系统）</th>
+            <th style="width: 40%;">过去（传统手工制表模式）</th>
+            <th style="width: 40%;">现在（使用 APS 智能系统）</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>每天做计划耗时</strong></td>
-            <td><span class="badge-past">每天花费 3 ~ 4 小时</span><br>拉公式、查库存、算加减法，经常加班赶表格。</td>
-            <td><span class="badge-new">每次计算只需 15 秒</span><br>一键自动算出计划，几分钟内完成检查与导出。</td>
+            <td><span class="badge-past">每天花费 3 ~ 4 小时</span><br>拉公式、查库存、算加减法，经常加班赶表格，身心俱疲。</td>
+            <td><span class="badge-new">每次计算只需 15 秒</span><br>一键自动算出计划，几分钟内完成检查与导出下发。</td>
           </tr>
           <tr>
             <td><strong>遇到临时插单或缺料</strong></td>
-            <td><span class="badge-past">牵一发而动全身</span><br>改一个订单需要重新手工算全天计划，容易漏排或算错。</td>
-            <td><span class="badge-new">一键重新计算</span><br>更新实际情况后重新点击计算，系统自动调整后续安排。</td>
+            <td><span class="badge-past">牵一发而动全身</span><br>改一个订单需要全表手工重新核算，容易漏排、算错或引发后道断线。</td>
+            <td><span class="badge-new">一键重新计算</span><br>更新实际情况后重新点击计算，系统在 15 秒内自动平衡后续安排。</td>
           </tr>
           <tr>
             <td><strong>计划员的核心精力</strong></td>
-            <td><span class="badge-past">忙于机械核算与救火</span><br>大量时间耗费在机械填表、打电话问车间进度上。</td>
-            <td><span class="badge-new">专注于数据把关与策略决策</span><br>重点把控数据准确性，平衡交期与换模损失。</td>
+            <td><span class="badge-past">忙于机械核算与救火</span><br>大量时间耗费在机械填表、查数据、打电话问车间进度上。</td>
+            <td><span class="badge-new">专注于数据把关与策略决策</span><br>重点把控基础数据质量，平衡客户交期与换模损失，评估优化策略。</td>
           </tr>
           <tr>
             <td><strong>经验积累与人员交接</strong></td>
-            <td><span class="badge-past">经验都在个人脑子里</span><br>计划员休假或换人，其他人拿表格很难独立排产。</td>
-            <td><span class="badge-new">规则沉淀在系统中</span><br>工厂规则固定在系统里，新人接手即可按照规范运行。</td>
+            <td><span class="badge-past">经验都在个人脑子里</span><br>排产规则不透明，计划员一旦休假或离职，车间面临停摆风险。</td>
+            <td><span class="badge-new">规则固化在系统资产中</span><br>32 条规则固化在系统里，新员工按照标准化规范即可独立上手操作。</td>
           </tr>
         </tbody>
       </table>

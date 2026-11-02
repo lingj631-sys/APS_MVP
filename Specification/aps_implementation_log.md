@@ -1281,3 +1281,10 @@ outing_from_rows 仅用于候选线，不受影响。
 - 15 天 7×3：PGLINKAGE 316h/360h（87.8%），轴套6 326.9h/360h（90.8%），总负荷并非超载；但 V1/V4/V5/V7/V8 均 400，V6 为 HC16 hard。
 - 发现 sf_mpq_tail_enabled 默认 true 会让 10 天 WL 直接不可行；已改为默认 false，10 天 V4 恢复 FEASIBLE（19 任务，OTD 85.7%）。
 - 15 天即使 V1 也失败，说明还有非版本因素（硬交期/MOQ/SF 物料/95% 逐班）需单独诊断。
+
+
+### 2026-11-02 修复 V1 10 天被 SF tail 设置误杀
+
+- 根因：前端仍发送 sf_mpq_tail_enabled=true，即使 V1 的 SF 规则是 unit=piece，服务端也启用了 SF tail，导致 WL 10 天 400。
+- 修复：服务端增加门控，只有规则集存在 **SF 作用域且 unit=MPQ 的 min_batch** 时才启用 SF tail；V1~V7 自动忽略该开关，V8 才生效。
+- 复测 V1 10 天：payload 传 true/false 都返回 **200 FEASIBLE，19 任务**。

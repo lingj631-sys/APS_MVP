@@ -2087,6 +2087,17 @@ def run_solver(payload: SolvePayload):
         if payload.sf_mpq_tail_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("sf_mpq_tail_enabled", False)
     )
+    # The SF tail constraint only makes sense when an SF-scoped min_batch rule
+    # explicitly asks for MPQ alignment.  This prevents an old browser payload
+    # or a V1~V7 rule set (SF unit=piece) from enabling it accidentally.
+    if sf_mpq_tail_enabled and kernel_rule_set is not None:
+        sf_mpq_tail_enabled = any(
+            rule.enabled
+            and rule.template_id == "min_batch"
+            and str(getattr(rule.scope, "stage", "")) == "SF"
+            and str(rule.params.get("unit", "")) == "MPQ"
+            for rule in kernel_rule_set.rules
+        )
     pull_enabled = (
         payload.pull_enabled
         if payload.pull_enabled is not None

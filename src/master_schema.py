@@ -194,6 +194,7 @@ PARAMETERS_SFN = SheetSpec(
         Column("product_family", "产品族名", ("Product Family",), note="新增列"),
         Column("mold_id", "模具编号 (Mold ID)", ("Mold ID",), note="新增列"),
         Column("special_shift", "特殊班次", ("Special Shift",), note="新增列"),
+        Column("simultaneous_production", "同时生产", ("Simultaneous Production",), note="新增列"),
         # legacy-only columns
         Column("ct_seconds", "单件节拍 CT (秒)", ("Cycle time(S)", "Cycle time"), kind="number", deprecated=True,
                note="旧版列；新版迁至 Routing-Machines"),
@@ -248,10 +249,13 @@ ROUTING = SheetSpec(
         Column("output_per_shift", "单班定额产能 (件)", (), kind="number", note="新增列(自动计算)"),
         Column("headcount", "人数", (), kind="number", note="新增列"),
         Column("product_family", "产品族名", (), note="新增列"),
-        # gray columns
-        Column("candidate_line", "备选候选线", ("Candidate Line",), deprecated=True),
-        Column("machine_id", "机台", ("Machine ID",), deprecated=True),
-        Column("trp", "效率 TRP", ("TRP",), kind="number", deprecated=True),
+        # legacy-only columns (removed from the template in 2026-11)
+        Column("candidate_line", "备选候选线", ("Candidate Line",), deprecated=True,
+               note="旧版列；2026-11 已从模板删除"),
+        Column("machine_id", "机台", ("Machine ID",), deprecated=True,
+               note="旧版列；2026-11 已从模板删除"),
+        Column("trp", "效率 TRP", ("TRP",), kind="number", deprecated=True,
+               note="旧版列；2026-11 已从模板删除；TRP 由『产线基础数据』给出"),
     ),
 )
 

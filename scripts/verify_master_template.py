@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -51,20 +52,30 @@ def to_float(value) -> Optional[float]:
         return None
 
 
-def classify(cell) -> str:
-    """Classify a header cell by the template's change marks."""
-    fill = cell.fill
-    rgb = ""
-    if fill is not None and fill.fill_type == "solid":
-        rgb = str(getattr(fill.start_color, "rgb", "") or "")
-    font_rgb = str(getattr(cell.font.color, "rgb", "") or "")
-    if rgb.upper().endswith("D9D9D9"):
-        return "deleted"
-    if rgb.upper().endswith("0B5394") or rgb.upper().endswith("0000FF"):
-        return "added"
-    if font_rgb.upper().endswith("FF0000") or font_rgb.upper().endswith("0000FF"):
-        return "renamed"
-    return "normal"
+def _column_key(spec: SheetSpec, header) -> Optional[str]:
+    n = norm(header)
+    for col in spec.columns:
+        for candidate in col.candidates():
+            if norm(candidate) == n:
+                return col.key
+    return None
+
+
+def _legacy_positions(old_wb, spec: SheetSpec) -> Dict[str, int]:
+    if old_wb is None:
+        return {}
+    ws = resolve_sheet(old_wb, spec)
+    if ws is None:
+        return {}
+    return column_positions(ws, spec)
+
+
+def change_mark(spec: SheetSpec, header, old_pos: Dict[str, int]) -> str:
+    """Classify a header by comparing it with the legacy workbook's columns."""
+    if re.match(r"^\d{1,2}/\d{1,2}$", str(header).strip()):
+        return "保留"  # demand date axis is dynamic
+    key = _column_key(spec, header)
+    return "保留" if key is not None and key in old_pos else "新增"
 
 
 class Report:
@@ -150,9 +161,8 @@ def main() -> int:
     report.p(f"- 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
     report.p()
     report.p("> 口径说明：业务已确认灰色列（说明页标注“删除列”）由人工删除。本次文件已删除 FG/SFN、"
-             "物料到货、工装模具、PM 的灰色列，仅 Routing-Machines 仍保留 `备选候选线/机台/效率TRP`；"
-             "报告将其标注为“删除”但**不计入问题**，后台同样不读取，并已通过"
-             "“删除灰色列后仍可加载”的回归测试。")
+             "物料到货、工装模具、PM 的全部灰色列，以及 Routing-Machines 的 `备选候选线/机台/效率TRP`；"
+             "后台不读取这些旧版列，并已通过“删除灰色列后仍可加载”的回归测试。")
     report.p()
 
     # ------------------------------------------------------------------
@@ -188,8 +198,7 @@ def main() -> int:
     # 2. Column inventory + change marks
     # ------------------------------------------------------------------
     report.p("## 2. 列清单与增删标记")
-    report.p("> 图例：`删除` = 灰底，业务已手工删除、**不参与核对**（后台同样忽略）；"
-             "`新增` = 蓝底/蓝字；`改名` = 红字无底色；`保留` = 正常表头。")
+    report.p("> 标记按“与旧版工作簿同表比对”生成：`新增` = 旧版无对应逻辑列；`保留` = 旧版已有该列。")
     report.p()
     for spec in INPUT_SHEETS:
         ws = resolve_sheet(wb, spec)
@@ -201,6 +210,7 @@ def main() -> int:
         report.p("|----|------|------|---------|")
         positions = column_positions(ws, spec)
         rows = sheet_rows(ws, spec)
+        old_pos = _legacy_positions(old_wb, spec)
         site_col = positions.get("site")
         data_rows = [
             r for r in range(2, ws.max_row + 1)
@@ -213,17 +223,10 @@ def main() -> int:
             if header is None or str(header).strip() == "":
                 report.p(f"| {cell.column_letter} | *(空表头)* | ghost | - |")
                 continue
-            mark = classify(cell)
-            label = {"deleted": "删除", "added": "新增", "renamed": "改名", "normal": "保留"}[mark]
+            mark = change_mark(spec, header, old_pos)
             filled = sum(1 for r in data_rows if ws.cell(r, c).value not in (None, ""))
-            report.p(f"| {cell.column_letter} | {header} | {label} | {filled}/{len(data_rows)} |")
+            report.p(f"| {cell.column_letter} | {header} | {mark} | {filled}/{len(data_rows)} |")
         report.p()
-        if mark_deleted := [
-            (c, str(ws.cell(1, c).value)) for c in range(1, ws.max_column + 1)
-            if ws.cell(1, c).value and classify(ws.cell(1, c)) == "deleted"
-        ]:
-            report.check("结构", f"{spec.title} 灰色列（待删）", "info",
-                         "、".join(h for _c, h in mark_deleted))
 
     # ghost columns / instruction-vs-sheet mismatches
     for spec in INPUT_SHEETS:
@@ -394,6 +397,7 @@ def main() -> int:
         if ws is None:
             continue
         positions = column_positions(ws, spec)
+        old_pos = _legacy_positions(old_wb, spec)
         site_col = positions.get("site")
         data_rows = [
             r for r in range(2, ws.max_row + 1)
@@ -402,7 +406,7 @@ def main() -> int:
         ]
         for c in range(1, ws.max_column + 1):
             cell = ws.cell(1, c)
-            if cell.value is None or classify(cell) != "added":
+            if cell.value is None or change_mark(spec, cell.value, old_pos) != "新增":
                 continue
             filled = sum(1 for r in data_rows if ws.cell(r, c).value not in (None, ""))
             if filled == 0:
@@ -521,7 +525,7 @@ def main() -> int:
         ("operation_leadtime", "半成品→成品前置期", "工序提前期『提前准备时间』45~480min + 转运批量", "✅ C4 已按静置+首批推导"),
         ("mold_id", "同模连续生产 / 换模矩阵边", "FG 17/17 已回填，SF 8/20 有模具主数据", "🟡 部分覆盖"),
         ("special_shift", "特殊班次规则（HC09）", "FG/SFN『特殊班次』新增（整列为空）", "⚠️ 待补数据"),
-        ("simultaneous_production", "左右件同时生产（HC-08）", "FG『同时生产』新增（仅 4 行 Y）", "⚠️ 待补数据"),
+        ("simultaneous_production", "左右件同时生产（HC-08）", "FG/SFN『同时生产』（FG 仅 4 行 Y，SFN 待补）", "⚠️ 待补数据"),
         ("product_family", "族级换模/组合", "FG/SFN/Routing『产品族名』已回填 37/37", "⚠️ 数据已备，Campaign 仍读独立 CSV"),
         ("eta_time", "物料到货精确入库时间", "Material-Arrival-ETA『预计入库时间』（已模拟）", "✅ 已恢复（模型仍按班次）"),
         ("calendar_mode", "工作日历 4 档推荐", "产线基础数据 × 4/7、5/7、6/7、7/7 负荷比", "✅ 已实现（做四休三→做七无休）"),

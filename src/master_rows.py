@@ -38,7 +38,11 @@ def _int(value, default: int = 0) -> int:
         return default
 
 
-def routing_from_rows(rows: Optional[List[dict]], site: str) -> Optional[Dict[Tuple[str, str, int], List[RoutingOption]]]:
+def routing_from_rows(
+    rows: Optional[List[dict]],
+    site: str,
+    line_trp: Optional[Dict[str, float]] = None,
+) -> Optional[Dict[Tuple[str, str, int], List[RoutingOption]]]:
     if not rows:
         return None
     out: Dict[Tuple[str, str, int], List[RoutingOption]] = {}
@@ -51,8 +55,12 @@ def routing_from_rows(rows: Optional[List[dict]], site: str) -> Optional[Dict[Tu
             continue
         op = _int(row.get("op_seq"), 0)
         primary = _text(row.get("primary_line"))
-        # 备选候选线/机台 are gray columns: a part on several lines is expressed
-        # as several rows with different 主候选线.
+        # A part on several lines is expressed as several rows with different
+        # 主候选线; 备选候选线/机台 are legacy columns and are no longer read.
+        candidate = _text(row.get("candidate_line")) or primary
+        # TRP is a line-level attribute (产线基础数据); the legacy per-row
+        # Routing TRP column was removed from the template.
+        trp = _num(row.get("trp"), 0.0) or float((line_trp or {}).get(candidate, 0.0)) or 1.0
         option = RoutingOption(
             site=row_site,
             part_no=part,
@@ -60,11 +68,11 @@ def routing_from_rows(rows: Optional[List[dict]], site: str) -> Optional[Dict[Tu
             operation_seq=op,
             operation_name=_text(row.get("op_name")),
             primary_line=primary,
-            candidate_line=_text(row.get("candidate_line")) or primary,
+            candidate_line=candidate,
             machine_id=_text(row.get("machine_id")),
             certified=bool(row.get("certified")),
             ct_seconds=_num(row.get("ct_seconds")),
-            trp=_num(row.get("trp"), 1.0) or 1.0,
+            trp=trp,
             setup_min=_num(row.get("setup_min")),
             priority=_int(row.get("priority"), 1),
             effective_from=_text(row.get("effective_from")),

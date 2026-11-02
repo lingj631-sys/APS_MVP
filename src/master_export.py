@@ -14,6 +14,7 @@ from copy import copy
 from typing import Any, Dict, List, Optional
 
 import openpyxl
+from openpyxl.utils import get_column_letter
 
 from src.instructions import write_instructions
 from src.master_schema import SHEET_BY_KEY, column_positions, resolve_sheet
@@ -85,6 +86,7 @@ def _write_sheet(ws, spec, rows: List[dict]) -> None:
     }
     _clear_rows(ws)
     for offset, row in enumerate(rows, start=2):
+        ws.row_dimensions[offset].height = 22
         for col in active:
             cell = ws.cell(offset, positions[col.key])
             style, number_format = styles[col.key]
@@ -92,6 +94,8 @@ def _write_sheet(ws, spec, rows: List[dict]) -> None:
             cell.number_format = number_format
             value = row.get(col.key)
             cell.value = value if value not in ("",) else None
+    last_col = max(positions.values()) if positions else ws.max_column
+    ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{max(len(rows) + 1, 2)}"
 
 
 def _write_demand(ws, spec, snapshot, site: str) -> None:
@@ -104,6 +108,15 @@ def _write_demand(ws, spec, snapshot, site: str) -> None:
         c: (copy(ws.cell(2, c)._style), ws.cell(2, c).number_format)
         for c in range(4, ws.max_column + 1)
     }
+    # Date headers keep the template's header style (not a data-row style).
+    date_header_style = {
+        c: (copy(ws.cell(1, c)._style), ws.cell(1, c).number_format)
+        for c in range(4, ws.max_column + 1)
+    }
+    default_header = (copy(ws.cell(1, 4)._style), ws.cell(1, 4).number_format)
+    default_data = date_styles.get(4) or (
+        copy(ws.cell(2, site_col)._style), ws.cell(2, site_col).number_format
+    )
     base_style = (copy(ws.cell(2, site_col)._style), ws.cell(2, site_col).number_format)
     _clear_rows(ws)
 
@@ -115,13 +128,17 @@ def _write_demand(ws, spec, snapshot, site: str) -> None:
 
     for idx, date in enumerate(dates, start=4):
         header_cell = ws.cell(1, idx)
-        if idx in date_styles:
-            header_cell._style = copy(date_styles[idx][0])
-        ws.cell(1, idx).value = date
+        style, number_format = date_header_style.get(idx, default_header)
+        header_cell._style = copy(style)
+        header_cell.number_format = number_format
+        header_cell.value = date
+        if idx not in date_header_style:
+            ws.column_dimensions[get_column_letter(idx)].width = 10
     for idx in range(4 + len(dates), ws.max_column + 1):
         ws.cell(1, idx).value = None
 
     for row_idx, part in enumerate(sorted(by_part), start=2):
+        ws.row_dimensions[row_idx].height = 22
         data = by_part[part]
         for c in (site_col, part_col, desc_col):
             cell = ws.cell(row_idx, c)
@@ -132,10 +149,12 @@ def _write_demand(ws, spec, snapshot, site: str) -> None:
         ws.cell(row_idx, desc_col).value = data["desc"]
         for idx, date in enumerate(dates, start=4):
             cell = ws.cell(row_idx, idx)
-            if idx in date_styles:
-                cell._style = copy(date_styles[idx][0])
-                cell.number_format = date_styles[idx][1]
+            style, number_format = date_styles.get(idx, default_data)
+            cell._style = copy(style)
+            cell.number_format = number_format
             cell.value = data["qty"].get(date) or None
+    last_col = 3 + len(dates)
+    ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{max(len(by_part) + 1, 2)}"
 
 
 def export_site_workbook(

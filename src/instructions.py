@@ -86,7 +86,7 @@ TABLE_GUIDE: List[dict] = [
         "purpose": "工艺路线、主候选线、CT、认证机台、换型时间、人数。算法依赖此表取 CT、产线和人数。",
         "grain": "一个料号×阶段×工序一行；同一料号多条产线写多行",
         "required": "必填（算法强依赖）",
-        "note": "主候选线必须存在于“产线基础数据”；备选候选线/机台/TRP 为灰色废弃列。",
+        "note": "主候选线必须存在于“产线基础数据”；同一料号多产线请写多行，不要再填备选候选线/机台/TRP。",
     },
     {
         "key": "setup_matrix",
@@ -179,6 +179,7 @@ FIELD_META: Dict[Tuple[str, str], Tuple[str, str, str, str, str]] = {
     ("parameters_sfn", "product_family"): ("产品族名", "文本", "否", "同族共享换模/合批", "G38"),
     ("parameters_sfn", "mold_id"): ("模具编号", "文本", "否", "必须存在于 Tooling-Mold", "MOLD_WL_AXLE_01"),
     ("parameters_sfn", "special_shift"): ("特殊班次", "文本", "否", "如 HC09；留空=常规", "HC09"),
+    ("parameters_sfn", "simultaneous_production"): ("同时生产", "Y/N", "否", "Y=左右件/共模同步产出；留空=N", "Y"),
     ("bom", "site"): ("站点代码", "文本", "是", "WL / SY38", "WL"),
     ("bom", "fg_part_no"): ("母件：成品料号", "文本", "是", "必须存在于 Parameters-FG", "WAB6404"),
     ("bom", "fg_description"): ("母件品名", "文本", "否", "≤100 字", "E371 A1 传动杆总成"),
@@ -358,7 +359,7 @@ def write_instructions(ws, counts: Optional[Dict[str, int]] = None) -> None:
     row = _title(ws, row, "二、全局填写规则（多站点一致性）", fill=NAVY, height=20)
     rules = [
         "• 站点：必须填 WL 或 SY38（大写）；同一文件建议只放一个站点。上传时只会加载“当前选中站点”的行。",
-        "• 表头：不要改第 1 行文字；列顺序可以调整；不要新增同义列。灰色列已被业务删除，系统不读取，可留可删。",
+        "• 表头：不要改第 1 行文字；列顺序可以调整；不要新增同义列。旧版灰色列已全部从模板删除，不要再补回。",
         "• 料号/产线/模具：跨表必须完全一致（区分大小写与后缀）；料号不要带空格。",
         "• 单位：数量=件；时间=分钟/小时（表头已注明）；CT=秒；TRP/报废率=小数（0.03 表示 3%）。",
         "• 日期：统一 YYYY-MM-DD；客户需求表的日期列用 MM/DD，且必须连续。",
@@ -463,6 +464,8 @@ def write_instructions(ws, counts: Optional[Dict[str, int]] = None) -> None:
     # 7. changelog
     row = _title(ws, row, "七、版本与变更记录", fill=NAVY, height=20)
     logs = [
+        ("2026-11-02", "Routing-Machines 删除备选候选线/机台/效率 TRP 三列；TRP 统一取“产线基础数据”。"),
+        ("2026-11-02", "Parameters-SFN 新增 K 列“同时生产”，与 Parameters-FG 对齐。"),
         ("2026-10-31", "统一 15 表标准；FG/SFN 移除产线/TRP；新增产线基础数据；生产提前期改为工序提前期的“提前准备/静置时间”。"),
         ("2026-10-31", "工装模具/PM/物料到货字段精简；新增预计入库时间；工作日历支持做四休三/做五休二/做六休一/做七无休。"),
         ("2026-10-31", "本说明页重构：新增表用途、字段含义/单位/限制、跨表一致性规则与上传校验说明。"),

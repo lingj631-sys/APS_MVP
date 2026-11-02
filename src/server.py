@@ -1951,7 +1951,10 @@ def run_solver(payload: SolvePayload):
     routing_table = None
     if routing_enabled or routing_in_model:
         routing_path = os.path.join(DATA_DIR, "master", "Routing-Machines.csv")
-        routing_table = routing_from_rows(workbook_masters.get("routing"), payload.site.upper())
+        line_trp = {lb.line: lb.trp for lb in getattr(snap, "line_base", [])}
+        routing_table = routing_from_rows(
+            workbook_masters.get("routing"), payload.site.upper(), line_trp=line_trp
+        )
         if routing_table is None:
             routing_table = load_routing(routing_path)
     if routing_in_model and routing_table:
@@ -2835,7 +2838,12 @@ def run_solver(payload: SolvePayload):
         "routing_capacity_hours": routing_capacity,
         "routing_capability_violations": capability_violations(
             plan.tasks,
-            routing_from_rows(workbook_masters.get("routing"), payload.site.upper())
+            routing_table
+            or routing_from_rows(
+                workbook_masters.get("routing"),
+                payload.site.upper(),
+                line_trp={lb.line: lb.trp for lb in getattr(snap, "line_base", [])},
+            )
             or load_routing(os.path.join(DATA_DIR, "master", "Routing-Machines.csv")),
             site=payload.site.upper(),
         ),

@@ -1273,3 +1273,11 @@ outing_from_rows 仅用于候选线，不受影响。
 - 当尾块模式开启时，SF 不再套用 ACT-06 单段/最少班次限制，也不再套用 legacy min_lots=MPQ。
 - SY38 实测：L755774 534 → 100/100/34/300（唯一尾块 34）；288 → 200/88（唯一尾块 88），不再出现多个非 MPQ 块。
 - 新增 	ests/test_sf_mpq_tail.py；全量 **159/159 PASS**。
+
+
+### 2026-11-02 V1-V8 与 15 天无解诊断
+
+- V1~V8 规则差异已核对：V1 单 MPQ/soft max1.0；V2 105；V3 FG/SF 拆分；V4 细参数+qc2h；V5 容量 hard95；V6 HC16 hard；V7 HC16 soft；V8 SF unit=MPQ。
+- 15 天 7×3：PGLINKAGE 316h/360h（87.8%），轴套6 326.9h/360h（90.8%），总负荷并非超载；但 V1/V4/V5/V7/V8 均 400，V6 为 HC16 hard。
+- 发现 sf_mpq_tail_enabled 默认 true 会让 10 天 WL 直接不可行；已改为默认 false，10 天 V4 恢复 FEASIBLE（19 任务，OTD 85.7%）。
+- 15 天即使 V1 也失败，说明还有非版本因素（硬交期/MOQ/SF 物料/95% 逐班）需单独诊断。

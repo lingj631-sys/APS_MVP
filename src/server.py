@@ -75,7 +75,7 @@ from src.rule_sets import cli as rule_cli
 from src.rule_sets import diagnose as rule_diagnose
 from src.rule_sets import sensitivity as rule_sensitivity
 from src.rules import REGISTRY, RuleCategory, RuleStatus, get_rules_for_site
-from src.scheduler import APSScheduler, ScheduleResult, ScheduledTask
+from src.scheduler import APSScheduler, MissingSetupEdgeError, ScheduleResult, ScheduledTask
 from src.shift_manager import (
     CalendarMode,
     DEFAULT_CHANGEOVER_MINUTES,
@@ -181,6 +181,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "c4_whole_batch_enabled": True,
         "sf_mpq_tail_enabled": False,
         "shift_consolidation_enabled": False,
+        "setup_matrix_strict_enabled": True,
         "pull_enabled": False,
         "truncation_auto_enabled": False,
         "allow_soft_capacity_fallback": False,
@@ -219,6 +220,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "c4_whole_batch_enabled": True,
         "sf_mpq_tail_enabled": False,
         "shift_consolidation_enabled": False,
+        "setup_matrix_strict_enabled": True,
         "pull_enabled": False,
         "truncation_auto_enabled": False,
         "allow_soft_capacity_fallback": False,
@@ -636,6 +638,7 @@ class SiteSettingsPayload(BaseModel):
     c4_whole_batch_enabled: Optional[bool] = True
     sf_mpq_tail_enabled: Optional[bool] = False
     shift_consolidation_enabled: Optional[bool] = False
+    setup_matrix_strict_enabled: Optional[bool] = True
     pull_enabled: Optional[bool] = False
     truncation_auto_enabled: Optional[bool] = False
     allow_soft_capacity_fallback: Optional[bool] = False
@@ -682,6 +685,7 @@ class SolvePayload(BaseModel):
     c4_whole_batch_enabled: Optional[bool] = None
     sf_mpq_tail_enabled: Optional[bool] = None
     shift_consolidation_enabled: Optional[bool] = None
+    setup_matrix_strict_enabled: Optional[bool] = None
     pull_enabled: Optional[bool] = None
     truncation_auto_enabled: Optional[bool] = None
     allow_soft_capacity_fallback: Optional[bool] = None
@@ -772,6 +776,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["sf_mpq_tail_enabled"] = payload.sf_mpq_tail_enabled
     if payload.shift_consolidation_enabled is not None:
         cfg["shift_consolidation_enabled"] = payload.shift_consolidation_enabled
+    if payload.setup_matrix_strict_enabled is not None:
+        cfg["setup_matrix_strict_enabled"] = payload.setup_matrix_strict_enabled
     if payload.pull_enabled is not None:
         cfg["pull_enabled"] = payload.pull_enabled
     if payload.truncation_auto_enabled is not None:
@@ -2098,6 +2104,11 @@ def run_solver(payload: SolvePayload):
         if payload.shift_consolidation_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("shift_consolidation_enabled", False)
     )
+    setup_matrix_strict_enabled = (
+        payload.setup_matrix_strict_enabled
+        if payload.setup_matrix_strict_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("setup_matrix_strict_enabled", True)
+    )
     # The SF tail constraint only makes sense when an SF-scoped min_batch rule
     # explicitly asks for MPQ alignment.  This prevents an old browser payload
     # or a V1~V7 rule set (SF unit=piece) from enabling it accidentally.
@@ -2216,6 +2227,7 @@ def run_solver(payload: SolvePayload):
         c4_whole_batch=c4_whole_batch_enabled,
         sf_mpq_tail_enabled=sf_mpq_tail_enabled,
         shift_open_penalty=2_000_000 if shift_consolidation_enabled else 0,
+        setup_matrix_strict=setup_matrix_strict_enabled,
         enforce_pull=pull_enabled,
         demand_by_date=demand_by_date,
         baseline_tasks=baseline_tasks,
@@ -2268,6 +2280,20 @@ def run_solver(payload: SolvePayload):
         solve_budget = max(solve_budget, 90.0)
     try:
         result = scheduler.solve(time_limit_seconds=solve_budget)
+    except MissingSetupEdgeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_type": "SETUP_MATRIX_MISSING",
+                "title": "排产不可行：换模矩阵缺少必要边",
+                "message": str(exc),
+                "suggestions": [
+                    "在 Setup-Matrix 补齐相关模具对的换模工时；",
+                    "同模具对写 0 分钟；",
+                    "若只是做兼容测试，可在站点设置关闭“换模矩阵缺边严格门控”。",
+                ],
+            },
+        )
     except RuntimeError as e:
         precheck = precheck_capacity(plan, scheduler.shifts)
         line_loads_payload = [
@@ -2298,8 +2324,6 @@ def run_solver(payload: SolvePayload):
                     "bottlenecks": precheck.bottlenecks,
                     "line_loads": line_loads_payload,
                     "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
-        "hc14_exempted": sorted(getattr(scheduler, "hc14_exempt_parts", set())),
-        "hc14_warnings": list(getattr(scheduler, "hc14_warnings", [])),
                     "suggestions": [
                         "前拉未来订单或增加需求，把空班填到 95%；",
                         "允许部分班次 105% 上浮/加班；",
@@ -2886,6 +2910,7 @@ def run_solver(payload: SolvePayload):
         "c4_whole_batch_enabled": c4_whole_batch_enabled,
         "sf_mpq_tail_enabled": sf_mpq_tail_enabled,
         "shift_consolidation_enabled": shift_consolidation_enabled,
+        "setup_matrix_strict_enabled": setup_matrix_strict_enabled,
         "pull_enabled": pull_enabled,
         "slack_fallback": getattr(scheduler, "slack_fallback_info", {}),
         "routing_assignment": getattr(scheduler, "assignment_decisions", []),

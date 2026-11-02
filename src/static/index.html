@@ -498,7 +498,7 @@
 
             <button @click="currentTab = 'rules'" :class="currentTab === 'rules' ? 'active' : ''" class="seg-tab-btn">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              <span>③ 规则与约束配置</span>
+              <span>③ 生产规则与约束</span>
               <span class="font-mono text-[10px] bg-slate-200 text-slate-700 px-1 rounded-[2px]">{{ ruleCatalog.length }}/32</span>
             </button>
 
@@ -509,12 +509,12 @@
 
             <button @click="currentTab = 'compliance'" :class="currentTab === 'compliance' ? 'active' : ''" class="seg-tab-btn">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-              <span>⑤ 规则合规审计矩阵</span>
+              <span>⑤ 排产合规检查</span>
             </button>
 
             <button @click="currentTab = 'settings'" :class="currentTab === 'settings' ? 'active' : ''" class="seg-tab-btn">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-              <span>⑥ 生产策略与设置</span>
+              <span>⑥ 工厂策略与参数</span>
               <span v-if="siteSettings.lookahead_enabled" class="font-mono text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded-[2px]">30天前瞻</span>
             </button>
           </div>
@@ -1559,9 +1559,9 @@
             <div class="text-[10px] text-slate-500">HC / SC / BS 分类</div>
           </div>
           <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
-            <div class="text-[10px] text-slate-400 font-medium">内核算子模板</div>
+            <div class="text-[10px] text-slate-400 font-medium">可配置规则类型</div>
             <div class="text-lg font-bold font-mono text-indigo-600">{{ ruleTemplates.length }}</div>
-            <div class="text-[10px] text-slate-500">可配置作用域 / 软硬 / 权重</div>
+            <div class="text-[10px] text-slate-500">适用范围、强制程度、优先级</div>
           </div>
           <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
             <div class="text-[10px] text-slate-400 font-medium">当前规则集</div>
@@ -1569,9 +1569,9 @@
             <div class="text-[10px] text-slate-500">{{ activeRuleSetRules.length }} 条规则 · hard {{ activeRuleSetHardCount }} / soft {{ activeRuleSetSoftCount }}</div>
           </div>
           <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs">
-            <div class="text-[10px] text-slate-400 font-medium">规则覆盖</div>
+            <div class="text-[10px] text-slate-400 font-medium">规则落地情况</div>
             <div class="text-sm font-bold text-slate-800">可配置 {{ ruleCoverage.by_status?.configurable || 0 }} · 部分 {{ ruleCoverage.by_status?.partial || 0 }}</div>
-            <div class="text-[10px] text-slate-500">待建模 {{ ruleCoverage.by_status?.needs_model || 0 }}</div>
+            <div class="text-[10px] text-slate-500">仍需补充 {{ ruleCoverage.by_status?.needs_model || 0 }}</div>
           </div>
         </div>
         <div v-if="activeRuleSet && !activeRuleSetRules.some(r => r.template === 'hc16')" class="bg-amber-50 border border-amber-300 text-amber-950 rounded-xl px-3 py-2 text-[11px]">
@@ -1579,12 +1579,12 @@
         </div>
         <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div class="text-xs font-bold text-indigo-900 uppercase tracking-wider">规则集版本（内核）</div>
+            <div class="text-xs font-bold text-indigo-900 uppercase tracking-wider">当前生效规则版本</div>
             <p class="text-xs text-indigo-700/80 mt-1">
-              {{ ruleTemplates.length }} 个固定算子 · 作用域 / 软硬 / 权重 / 分组 · Excel 导入 · 版本对比与回滚。下方是旧版规则开关；两者同时存在时，内核规则集优先。班次上限以规则集 <span class="font-mono">capacity_utilization.max_util</span> 为准（1.00 / 1.05），下方 95%~105% 单选不会覆盖规则集。
+              {{ ruleTemplates.length }} 类可配置规则，支持适用范围、强制程度、优先级和版本回滚。排产以当前生效版本为准；班次产能上限也由当前版本决定，页面下方的旧版产能单选不会再覆盖它。
             </p>
             <p class="text-[11px] text-indigo-700/70 mt-1">
-              本页只保留 32 条新规则目录（HC/SC/BS）。17/17 是校验检查项；当前规则集 {{ activeRuleSetRules.length }} 条（{{ activeRuleSet?.payload?.rules?.length || 0 }} 个算子，capacity/min_batch 各拆 FG/SF；active 以 /rule-sets 为准）。旧版 27 条业务规则不再在界面展示。
+              本页按业务规则目录展示 32 条规则（HC/SC/BS）。当前生效版本共 {{ activeRuleSetRules.length }} 条，其中强制 {{ activeRuleSetHardCount }} 条、弹性 {{ activeRuleSetSoftCount }} 条。排产合规检查共 17 项。
             </p>
           </div>
           <a href="/rule-sets" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded transition">
@@ -1593,19 +1593,19 @@
         </div>
         <details class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <summary class="cursor-pointer text-xs font-bold text-slate-900 uppercase tracking-wider">
-            当前站点规则集明细（{{ activeRuleSetName }}）
-            <span class="ml-2 text-[10px] font-normal text-slate-500">hard {{ activeRuleSetHardCount }} · soft {{ activeRuleSetSoftCount }}</span>
+            当前站点规则明细（{{ activeRuleSetName }}）
+            <span class="ml-2 text-[10px] font-normal text-slate-500">强制 {{ activeRuleSetHardCount }} · 弹性 {{ activeRuleSetSoftCount }}</span>
           </summary>
           <div class="mt-3 border border-slate-200 rounded-xl overflow-auto max-h-[360px]">
             <table class="min-w-full text-[11px] text-left">
               <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0">
                 <tr>
-                  <th class="py-2 px-2">规则 ID</th>
-                  <th class="py-2 px-2">模板</th>
+                  <th class="py-2 px-2">规则编号</th>
+                  <th class="py-2 px-2">规则类型</th>
                   <th class="py-2 px-2">作用域</th>
-                  <th class="py-2 px-2">软/硬</th>
-                  <th class="py-2 px-2">权重</th>
-                  <th class="py-2 px-2">参数</th>
+                  <th class="py-2 px-2">强制程度</th>
+                  <th class="py-2 px-2">优先级</th>
+                  <th class="py-2 px-2">参数（技术）</th>
                   <th class="py-2 px-2">启用</th>
                 </tr>
               </thead>
@@ -1615,7 +1615,7 @@
                   <td class="py-1.5 px-2 font-mono">{{ r.template }}</td>
                   <td class="py-1.5 px-2 text-slate-600">{{ r.scope?.stage || '*' }} / {{ r.scope?.line || '*' }}</td>
                   <td class="py-1.5 px-2">
-                    <span :class="r.nature === 'hard' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-1.5 py-0.5 rounded border text-[10px] font-bold">{{ r.nature }}</span>
+                    <span :class="r.nature === 'hard' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'" class="px-1.5 py-0.5 rounded border text-[10px] font-bold">{{ r.nature === 'hard' ? '强制' : '弹性' }}</span>
                   </td>
                   <td class="py-1.5 px-2 font-mono">{{ r.weight }}</td>
                   <td class="py-1.5 px-2 text-slate-500 max-w-[360px] truncate" :title="JSON.stringify(r.params)">{{ JSON.stringify(r.params) }}</td>
@@ -1627,18 +1627,18 @@
               </tbody>
             </table>
           </div>
-          <p class="text-[10px] text-slate-500 mt-2">软/硬、权重、参数以 /rule-sets 活动版本为准；本页只读，修改请打开规则集编辑器。</p>
+          <p class="text-[10px] text-slate-500 mt-2">强制程度、优先级和参数以当前生效版本为准；本页只读，修改请打开规则集编辑器。</p>
         </details>
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
               <div class="flex items-center space-x-2">
-                <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">32 条规则目录 (HC / SC / BS)</h2>
+                <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider">32 条业务规则目录</h2>
                 <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded border border-indigo-200">{{ ruleCatalog.length }} 条</span>
                 <span class="text-[10px] text-slate-500" v-if="ruleCoverage.by_status">可配置 {{ ruleCoverage.by_status.configurable || 0 }} · 部分 {{ ruleCoverage.by_status.partial || 0 }} · 待建模 {{ ruleCoverage.by_status.needs_model || 0 }}</span>
                 <span class="text-[10px] text-slate-500">全局目录 · 站点可在 /rule-sets 覆盖</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">这是新 32 条规则的唯一目录；旧版 27 条已从界面移除。</p>
+              <p class="text-[11px] text-slate-500 mt-1">按 HC（健康度）、SC（排产约束）、BS（业务策略）三类展示。</p>
             </div>
             <div class="flex items-center space-x-2">
               <a href="/rule-sets" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded transition">打开规则集编辑器 →</a>
@@ -2968,7 +2968,7 @@
                   </span>
                 </div>
                 <p class="text-xs text-slate-500 mt-0.5">
-                  将导出的排产 Excel 文件在本地手工修改后重新上传，系统按当前同一套 27/9 项全要素约束规则执行严格独立二次校验，即时呈现合规矩阵与违规警报。
+                  将导出的排产 Excel 在本地手工调整后重新上传，系统按当前生效规则和 17 项检查重新校验，并标出不合规项。
                 </p>
               </div>
             </div>
@@ -3007,17 +3007,17 @@
           <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
             <div class="text-[10px] text-slate-500 font-medium">跨班模具继承率</div>
             <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">
-              {{ getCheckMetric('R-WL-11', 'inheritance_rate_pct') || 83.3 }}%
+              {{ getCheckMetric('R-WL-11', 'inheritance_rate_pct') ?? '—' }}<span v-if="getCheckMetric('R-WL-11', 'inheritance_rate_pct') != null">%</span>
             </div>
             <div class="text-[10px] text-emerald-600 font-medium mt-0.5">
-              规避停机调机 {{ getCheckMetric('R-WL-11', 'saved_setup_hours') || 2.5 }}h
+              规避停机调机 {{ getCheckMetric('R-WL-11', 'saved_setup_hours') ?? '—' }}<span v-if="getCheckMetric('R-WL-11', 'saved_setup_hours') != null">h</span>
             </div>
           </div>
 
           <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
             <div class="text-[10px] text-slate-500 font-medium">单班最大并行型号</div>
             <div class="text-lg font-bold text-slate-900 font-mono mt-0.5">
-              {{ getCheckMetric('R-FG-13', 'max_parallel_models') || 2 }} 种
+              {{ getCheckMetric('R-FG-13', 'max_parallel_models') ?? '—' }} 种
             </div>
             <div class="text-[10px] text-slate-500 font-medium mt-0.5">
               合规上限 ≤ 3 种
@@ -3025,19 +3025,19 @@
           </div>
 
           <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-            <div class="text-[10px] text-slate-500 font-medium">FG MPQ 整倍合规率</div>
+            <div class="text-[10px] text-slate-500 font-medium">成品按箱合规率</div>
             <div class="text-lg font-bold text-emerald-600 font-mono mt-0.5">
-              {{ getCheckMetric('R-WL-09', 'compliance_rate_pct') || 100 }}%
+              {{ getCheckMetric('R-WL-09', 'compliance_rate_pct') ?? '—' }}<span v-if="getCheckMetric('R-WL-09', 'compliance_rate_pct') != null">%</span>
             </div>
             <div class="text-[10px] text-slate-500 font-medium mt-0.5">
-              成品单班按箱合规
+              成品单班数量符合包装倍数
             </div>
           </div>
 
           <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
             <div class="text-[10px] text-slate-500 font-medium">半成品起投达标率</div>
             <div class="text-lg font-bold text-emerald-600 font-mono mt-0.5">
-              {{ getCheckMetric('R-WL-15', 'compliance_rate_pct') || 100 }}%
+              {{ getCheckMetric('R-WL-15', 'compliance_rate_pct') ?? '—' }}<span v-if="getCheckMetric('R-WL-15', 'compliance_rate_pct') != null">%</span>
             </div>
             <div class="text-[10px] text-slate-500 font-medium mt-0.5">
               单班投产 ≥ MPQ
@@ -3047,7 +3047,7 @@
           <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
             <div class="text-[10px] text-slate-500 font-medium">流水防断线最低余量</div>
             <div class="text-lg font-bold text-indigo-700 font-mono mt-0.5">
-              +{{ getCheckMetric('R-WL-23', 'min_safety_buffer_pieces') || 240 }} 件
+              {{ getCheckMetric('R-WL-23', 'min_safety_buffer_pieces') ?? '—' }} 件
             </div>
             <div class="text-[10px] text-emerald-600 font-medium mt-0.5">
               全周期 0 缺料停线
@@ -3060,7 +3060,7 @@
               {{ kpi ? kpi.on_time_delivery_rate : 100 }}%
             </div>
             <div class="text-[10px] text-slate-500 font-medium mt-0.5">
-              平均提前 +{{ getCheckMetric('R-WL-20', 'avg_slack_hours') || 85.8 }}h
+              平均提前 {{ getCheckMetric('R-WL-20', 'avg_slack_hours') ?? '—' }}h
             </div>
           </div>
         </div>
@@ -3172,7 +3172,7 @@
                     <td class="py-2 px-3 text-[11px]">
                       <span class="px-1.5 py-0.2 rounded border text-[10px] font-semibold" :class="getCategoryBadgeClass(r.category)">{{ r.category }}</span>
                     </td>
-                    <td class="py-2 px-3 text-[11px] text-slate-600">{{ r.nature }}</td>
+                    <td class="py-2 px-3 text-[11px] text-slate-600">{{ r.nature === 'hard' ? '强制' : '弹性' }}</td>
                     <td class="py-2 px-3 text-center">
                       <span :class="getStatusBadgeClass(r.status)" class="px-2 py-0.5 rounded text-[10px] font-bold inline-block">
                         {{ r.status }}
@@ -3287,7 +3287,7 @@
         <div class="bg-[#111827] text-white rounded-[4px] p-5 border border-slate-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div class="space-y-1.5">
             <div class="flex items-center space-x-2.5">
-              <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-xs font-bold tracking-wider uppercase font-mono">SITE: {{ siteDisplayCode }} ({{ siteFactoryName }})</span>
+              <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-xs font-bold tracking-wider uppercase font-mono">工厂：{{ siteDisplayCode }}（{{ siteFactoryName }}）</span>
               <h2 class="text-lg font-bold text-white tracking-tight">工厂生产策略与系统排产设置</h2>
             </div>
             <p class="text-xs text-indigo-200/80 max-w-2xl leading-relaxed">
@@ -3316,8 +3316,8 @@
                 <div class="flex items-center space-x-2.5">
                   <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">🎯</div>
                   <div>
-                    <h3 class="text-sm font-bold text-slate-900">30天需求前瞻与平准合批策略 (Demand Lookahead)</h3>
-                    <p class="text-xs text-slate-500">平准波峰波谷、拉动同型号顺位合批、消除产线碎片小单</p>
+                    <h3 class="text-sm font-bold text-slate-900">30 天需求前瞻与合批策略</h3>
+                    <p class="text-xs text-slate-500">削峰填谷、同型号合并生产、减少碎片小单</p>
                   </div>
                 </div>
                 <span :class="siteSettings.lookahead_enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'" class="text-xs font-bold px-2.5 py-1 rounded-full border">
@@ -3331,7 +3331,7 @@
                   <input type="radio" :value="true" v-model="siteSettings.lookahead_enabled" class="mt-1 text-emerald-600 focus:ring-emerald-500">
                   <div class="ml-3 space-y-1">
                     <div class="text-xs font-bold text-slate-900 flex items-center space-x-2">
-                      <span>开启 30天需求前瞻合批 (Lookahead Campaign Mode)</span>
+                      <span>开启 30 天需求前瞻合批</span>
                       <span class="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded font-bold">推荐启用</span>
                     </div>
                     <p class="text-xs text-slate-600 leading-relaxed">
@@ -3343,7 +3343,7 @@
                 <label :class="!siteSettings.lookahead_enabled ? 'border-indigo-500 bg-indigo-50/40 ring-1 ring-indigo-400' : 'border-slate-200 hover:border-slate-300 bg-white'" class="flex items-start p-3.5 rounded-xl border transition cursor-pointer">
                   <input type="radio" :value="false" v-model="siteSettings.lookahead_enabled" class="mt-1 text-indigo-600 focus:ring-indigo-500">
                   <div class="ml-3 space-y-1">
-                    <div class="text-xs font-bold text-slate-900">关闭前瞻 (标准周期排产 - Strict Horizon)</div>
+                    <div class="text-xs font-bold text-slate-900">关闭前瞻（严格按当前计划周期）</div>
                     <p class="text-xs text-slate-600 leading-relaxed">
                       严格仅排当前计划周期（如 10 天）内交期的客户订单，不跨周期前拉任何远期需求。适合需求极端不稳定或仓库库存严格受控的场景。
                     </p>
@@ -3359,7 +3359,7 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
-                    <label class="block text-slate-600 mb-1 font-medium">前瞻透视窗口 (Lookahead Days):</label>
+                    <label class="block text-slate-600 mb-1 font-medium">前瞻天数：</label>
                     <select v-model.number="siteSettings.lookahead_days" class="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
                       <option :value="15">15 天 (短周期前瞻)</option>
                       <option :value="30">30 天 (标准月度全景 - 推荐)</option>
@@ -3367,7 +3367,7 @@
                     </select>
                   </div>
                   <div>
-                    <label class="block text-slate-600 mb-1 font-medium">最大前拉库存天数 (Max Pull-forward):</label>
+                    <label class="block text-slate-600 mb-1 font-medium">最多提前生产天数：</label>
                     <select v-model.number="siteSettings.max_pull_forward_days" class="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
                       <option :value="5">最多提前 5 天</option>
                       <option :value="7">最多提前 7 天</option>
@@ -3377,7 +3377,7 @@
                   </div>
                 </div>
                 <div class="text-[11px] text-slate-500 pt-2 border-t border-slate-200 flex items-center justify-between">
-                  <span>合批原则: 仅对当前执行窗口已排型号顺位前拉 (R-WL-03 / R-WL-12)</span>
+                  <span>合批原则：只对当前已排型号做有限提前，不跨型号拉单</span>
                   <span class="text-emerald-700 font-semibold">规避远期孤立散单 ✓</span>
                 </div>
               </div>
@@ -3456,7 +3456,7 @@
                 <div class="flex items-center justify-between">
                   <div class="font-bold flex items-center space-x-1.5" :class="calendarConfig.ai_recommendation.is_current_mode_matched ? 'text-emerald-900' : 'text-amber-900'">
                     <span class="text-sm">💡</span>
-                    <span>AI 智能排班评估:</span>
+                    <span>工作制建议：</span>
                     <span class="font-bold" :class="calendarConfig.ai_recommendation.bottleneck_ratio > 0.714 ? 'text-amber-700' : 'text-emerald-700'">
                       {{ calendarConfig.ai_recommendation.recommended_short_name }}
                     </span>
@@ -3635,6 +3635,13 @@
                   <div class="text-[11px] text-slate-500 mt-0.5">给每个已开班次加固定成本，抑制 13.5% 这类早班；默认关闭。</div>
                 </div>
                 <input v-model="siteSettings.shift_consolidation_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
+              </label>
+              <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <div>
+                  <div class="text-xs font-semibold text-slate-800">换模矩阵缺边严格门控</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">开启后，Setup-Matrix 缺模具对会直接阻止排产并提示补齐，不再静默按 60 分钟。</div>
+                </div>
+                <input v-model="siteSettings.setup_matrix_strict_enabled" type="checkbox" class="mt-0.5 w-4 h-4 accent-indigo-600">
               </label>
               <label class="flex items-start justify-between gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                 <div>
@@ -5151,6 +5158,7 @@ const hc14Exempted = ref([]);
                 c4_whole_batch_enabled: !!siteSettings.value.c4_whole_batch_enabled,
                 sf_mpq_tail_enabled: !!siteSettings.value.sf_mpq_tail_enabled,
                 shift_consolidation_enabled: !!siteSettings.value.shift_consolidation_enabled,
+                setup_matrix_strict_enabled: !!siteSettings.value.setup_matrix_strict_enabled,
                 pull_enabled: !!siteSettings.value.pull_enabled,
                 leadtime_enabled: !!siteSettings.value.leadtime_enabled,
                 campaign_enabled: !!siteSettings.value.campaign_enabled,

@@ -126,6 +126,10 @@ class ScheduleResult:
     sequence_plan: Optional[List[Dict[str, Any]]] = None
 
 
+class MissingSetupEdgeError(Exception):
+    """HC-04: a required changeover edge is absent from Setup-Matrix."""
+
+
 class _SchedulerCompileContext:
     """Adapter from APSScheduler's local model variables to the kernel protocol."""
 
@@ -334,6 +338,7 @@ class APSScheduler:
         enforce_pm_maintenance: bool = True,
         pm_shifts: Optional[Dict[str, List[int]]] = None,
         pm_capacity: Optional[Dict[Tuple[str, int], float]] = None,
+        setup_matrix_strict: bool = False,
         enforce_customer_priority: bool = True,
         enforce_weekend_penalty: bool = True,
         allow_105_utilization_fg: bool = False,
@@ -424,6 +429,7 @@ class APSScheduler:
         self.setup_reserve = dict(setup_reserve or {})
         self.sequence_feedback = bool(sequence_feedback)
         self.setup_matrix = dict(setup_matrix or {})
+        self.setup_matrix_strict = bool(setup_matrix_strict)
         self.setup_matrix_path = setup_matrix_path
         self.sequence_requested = bool(sequence_setup)
         self._setup_ms_requested = max(0, int(round(changeover_minutes * 60 * TIME_SCALE)))
@@ -1159,6 +1165,7 @@ class APSScheduler:
 
     def _build_model(self, utilization_mode: str, hard_due: bool, gap_cap=None, use_kernel: bool = True):
         self._compute_hc14_exemptions()
+        self._validate_setup_matrix_edges()
         model = cp_model.CpModel()
         x: Dict[Tuple[str, int], object] = {}
         active: Dict[Tuple[str, int], object] = {}
@@ -2246,6 +2253,29 @@ class APSScheduler:
                     model.Add(over >= inventory - ceiling)
                     penalties.append(over)
         return 50 * sum(penalties) if penalties else None
+
+    def _validate_setup_matrix_edges(self):
+        if not self.setup_matrix_strict or not self.sequence_setup or not self.setup_matrix:
+            return
+        by_line = {}
+        for task in self.tasks:
+            mold = str(getattr(task, "mold_id", "") or "")
+            if mold:
+                by_line.setdefault(str(task.line), set()).add(mold)
+        missing = []
+        for line, molds in by_line.items():
+            ordered = sorted(molds)
+            for i, frm in enumerate(ordered):
+                for to in ordered[i + 1:]:
+                    if (self.site, line, frm, to) not in self.setup_matrix and (
+                        self.site, line, to, frm
+                    ) not in self.setup_matrix:
+                        missing.append((line, frm, to))
+        if missing:
+            sample = "; ".join(f"{line}: {frm}->{to}" for line, frm, to in missing[:8])
+            raise MissingSetupEdgeError(
+                f"HC-04 换模矩阵缺少 {len(missing)} 条换模边，不能回退 60min。示例：{sample}"
+            )
 
     def _add_sequence_constraints(self, model, x, active, loads):
         """C1-b-3: optional intra-shift sequence, SDST, start/end and carry-over.

@@ -90,3 +90,30 @@ python scripts/fill_simulated_masterdata.py --force
 | C4 前置期 | SFN 列缺失，约束空转 | 由静置 45~480min + 首批 100 件加工时间推导 |
 
 > 所有模拟值只保证算法链路完整，不代表真实业务定额；上线前请用真实数据覆盖。
+
+
+---
+
+## 2026-11-02 二次补数（新模板对齐）
+
+> 备份：rchive/data/APS_DataSource_Template.pre_simulated_2026-11-02.xlsx
+> 脚本：scripts/simulate_missing_masterdata.py、scripts/fill_missing_bom_params.py、scripts/fill_missing_routing.py
+
+| 区域 | 原缺口 | 本次模拟 |
+|---|---|---|
+| Parameters-FG | 特殊班次 17 空、同时生产 13 空 | 特殊班次=常规；同时生产=N（已有 4 个 Y 保留） |
+| Parameters-SFN | 模具 14 空、特殊班次 22 空、同时生产 22 空 | 按产品族补 AXLE_05~09；特殊=常规；同时生产=Y（L/R 假设） |
+| BOM List | 28 个母件/8 个子件不在参数表；描述空 | 补 14 个 FG、8 个 SF 模拟参数；描述从参数表回填，已无空值 |
+| Routing-Machines | 单班定额产能 39 空；新增模拟件无路线 | 按 8h×3600/CT×TRP 计算；补 22 条模拟路线（FG 总装/轴套6） |
+| Tooling-Mold | 缺 AXLE_05~09 | 补 5 套模具，可用套数=1 |
+| Preventive-Maintenance | 开始/结束时间空 | 08:00–16:00；48h 大修结束日期改 10/15 |
+
+补数后 load_workbook_snapshot + uild_requirement_plan：
+
+- 65 订单 / 31 FG / 30 SF / 28 BOM / 146 任务；
+- invalid_orders = 0；
+- warnings = 0。
+
+说明：同时生产=Y 是按 SF 的 DS/PS 成对关系模拟，需业务确认真实配对；模拟路线/CT/人数也需真实数据覆盖。
+
+**C4 口径已按 2026-11 业务答复改为“整批完工后起算静置”**，上面旧章节的“首批转运起算”仅保留为历史说明。

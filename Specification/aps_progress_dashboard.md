@@ -27,7 +27,7 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 19 个；18 个已编译；`routing` 未编译 |
-| 全量测试 | **157/157 PASS（最新完整跑）** |
+| 全量测试 | **158/158 PASS（最新完整跑）** |
 | 快速测试 | **60/60 PASS，约 62s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
@@ -185,7 +185,7 @@
 - BS-04 Pull：完成偏好从“越早越好”改为“越接近交期/窗口越好”。
 - 硬 95%：规则集 `capacity_utilization` 为 hard 时，默认不做软回退；失败返回 `HARD_95_INFEASIBLE`，需显式打开软回退。
 - C2-b-3c：每个任务候选线裁剪到主+1备，候选面 ≤6 个任务时同模型 sequence；>6 仍回退 C2-b-3a。当前目录 partial 26 / needs_model 0。
-- 全量测试 **157/157**，快速 **60/60**；SY38 10 天实跑 18 任务 / OTD 100% / 33 sequence / 9 校验。
+- 全量测试 **158/158**，快速 **60/60**；SY38 10 天实跑 18 任务 / OTD 100% / 33 sequence / 9 校验。
 
 ### 仍保留的兼容项
 
@@ -273,7 +273,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 | 大规模同模型 sequence 未联立 | 候选项 >2 时回退两阶段，选线不反悔 | 列生成/候选线裁剪，或 sequence 负荷回灌 assign |
 | Labor 主数据仍缺 | HC-15/SC-10 只能用人数，不能用班次上限/共享池 | 补 `Labor-Availability`/`Line-Staffing` |
 | SY38 模板来自 legacy seed | 首次上传前需沈阳物流复核 | 用真实 SY38 模板替换后再启用 |
-| 157 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
+| 158 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
 | 工作区改动未提交前不可复现 | 交接风险 | 本次提交/推送后以 Git 版本为准 |
 
 ---
@@ -281,7 +281,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 ## 8. 验证记录
 
 ```text
-全量：157/157 PASS（BS-06 自动裁剪后）
+全量：158/158 PASS（BS-06 自动裁剪后）
 快速：60/60 PASS，约 62s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules

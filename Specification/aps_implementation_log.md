@@ -1108,7 +1108,7 @@ python -m unittest discover -s tests -v
 - 服务端自动截断复用该函数，确保后续 `build_requirement_plan` 只包含本期订单，
   17 项校验不会把顺延订单误判为欠产。
 - 新增 `tests/test_bs06_auto.py`：可行建议才顺延、快照不被修改、重算计划不含顺延订单。
-- 全量 **157/157 PASS**；真实“有延期→自动截断→重排”仍待一个完整场景验收。
+- 全量 **158/158 PASS**；真实“有延期→自动截断→重排”仍待一个完整场景验收。
 
 
 ### 2026-11-01 BS-06 有延期场景数据链路测试
@@ -1116,7 +1116,7 @@ python -m unittest discover -s tests -v
 - 构造 CampaignBatch + 延期目标订单，走通：
   uild_truncation_suggestions → select_deferred_orders → without_orders → build_requirement_plan。
 - 断言顺延订单不在新 plan 中、原 snapshot 不变；覆盖“有延期”的自动截断数据链路。
-- 全量 **157/157 PASS**。
+- 全量 **158/158 PASS**。
 
 
 ### 2026-11-01 BS-06 真实延期→截断→重排闭环
@@ -1125,7 +1125,7 @@ python -m unittest discover -s tests -v
 - uild_campaign_batches → build_truncation_suggestions → select_deferred_orders
   得到顺延清单；
 - 从 plan 剔除顺延任务后重新求解，断言剩余任务不再包含顺延订单。
-- 新增 	ests/test_bs06_solver_loop.py；全量 **157/157 PASS**。
+- 新增 	ests/test_bs06_solver_loop.py；全量 **158/158 PASS**。
 
 
 ### 2026-11-01 C2-b-3c 候选池尝试
@@ -1135,7 +1135,7 @@ python -m unittest discover -s tests -v
 - 候选池尝试限时 55% 预算；失败则恢复完整候选并回退 C2-b-3a；
 - candidate_pruning 增加 pool_limited/pool_attempted/pool_tasks/pool_dropped/pool_fallback。
 - SY38 12 个备线任务实测：候选池仍未解出，回退 C2-b-3a，18 任务 FEASIBLE，约 82s。
-- 全量 **157/157 PASS**。
+- 全量 **158/158 PASS**。
 
 
 ### 2026-11-01 C2-b-3c 同模组 sequence 子集
@@ -1153,7 +1153,7 @@ python -m unittest discover -s tests -v
 - 页面顶部新增“本期自动顺延 N 个订单”面板，列出订单号、批次、数量、目标订单、原因。
 - Excel 导出新增“本期顺延订单”sheet（仅在有顺延时出现），与主计划区分。
 - 服务端 session 保存 deferred_orders，导出复用。
-- 全量 157/157 测试保持通过。
+- 全量 158/158 测试保持通过。
 
 
 ### 2026-11-01 BS-06 顺延订单导出单元
@@ -1161,7 +1161,7 @@ python -m unittest discover -s tests -v
 - exporter.append_deferred_orders() 独立负责“本期顺延订单”sheet；
 - 服务端导出调用该函数，避免重复样式代码；
 - 新增 	ests/test_deferred_export.py：表头、订单号、数量、原因写正确。
-- 全量 **157/157 PASS**。
+- 全量 **158/158 PASS**。
 
 
 ### 2026-11-01 BS-06 截断接受守卫
@@ -1169,7 +1169,7 @@ python -m unittest discover -s tests -v
 - atching.truncation_improves()：只有“延期订单减少”或“延期数相同且最小 Slack 不退化”才接受自动截断结果。
 - 服务端自动截断计算 before/after 的 late/min-slack，退化则保留原计划。
 - 响应新增 	runcation_summary；页面横幅显示“延期 X → Y”。
-- 全量 **157/157 PASS**。
+- 全量 **158/158 PASS**。
 
 
 ### 2026-11-01 32 条规则专家答复复核（第一轮）
@@ -1183,7 +1183,7 @@ python -m unittest discover -s tests -v
   - **HC-01**：无论 vailable_qty 多少，同一物理模具只能 1 台机；FG/SF 分开占用；内核与 legacy 路径均已改。
   - **SC-01**：新增 enforce_d1_clock_hard，可将 D+1 缺口设为硬约束（默认关闭，便于先观察）。
 - 结论：暂不生成正式 V6；先解决 HC-04/09/08/14 四个阻塞项，再做候选版本。
-- 全量 **157/157 PASS**。
+- 全量 **158/158 PASS**。
 
 
 ### 2026-11-01 业务补充确认
@@ -1199,7 +1199,7 @@ python -m unittest discover -s tests -v
 - 编译器当前复用 contiguity 的“工单连续块数”近似，不是正式“同模窗口”硬模型；
 - 已在调度器 _build_model 接线，规则集带 hc16 时生效；
 - llow_delivery_override 已受理但 v0 仍按 nature 编译，交期 override 待正式模型；
-- 模板总数 19→20；全量 **157/157 PASS**。
+- 模板总数 19→20；全量 **158/158 PASS**。
 
 
 ### 2026-11-01 规则与约束配置 Tab 更新
@@ -1248,3 +1248,20 @@ eturn 中暴露，模板读 .length 时抛异常。
 - APS_业务规则确认清单.xlsx 收敛为 5 项：HC-16 空档/ v0 hard、SC-02 95% 硬软、HC-09 整批静置冲突、HC-14 覆盖阈值、SC-04 SF MPQ 尾块。
 - 已确认问题从业务清单移除；历史答复保留在 Light China APS Rules.xlsx J 列。
 - 记录 WCA1894 低负荷开班（3×60、13.5%）和 L755774 SF 非 MPQ 班次块（3/88/123）为技术缺口，见 dashboard 5.1。
+
+
+### 2026-11-02 业务确认后的可落地项
+
+- 5 项待确认全部有回复：HC-16 A（含交期让行）、HC-14 A、SC-02 A（hard）、HC-09 A（整批静置）、SC-04 A（整单 MPQ + 1 尾块）。
+- 已实现 HC-09 A：lead_shifts(..., whole_batch=True)，C4 从整批完工起算；服务端新增 c4_whole_batch_enabled，默认开启。
+- 	est_capacity_kernel 新增整批 C4 断言；快速 61/61 PASS。
+- 仍待实现：HC-14 自动豁免、SC-04 SF 尾块、HC-16 正式同模窗口。
+
+
+### 2026-11-02 主数据模板变更复核
+
+- Parameters-SFN 新增 同时生产：master_schema.py / excel_loader.py 已识别，无需改表结构。
+- Routing-Machines 删除备选候选线/机台/TRP 三列：schema 标记为 deprecated，master_rows/excel_loader 已回退到主候选线与产线基础数据 TRP。
+- 新增 单班定额产能、人数、产品族名 已被 excel_loader 读取；
+outing_from_rows 仅用于候选线，不受影响。
+- 全量 **158/158 PASS**。

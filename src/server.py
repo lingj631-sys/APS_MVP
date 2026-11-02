@@ -178,6 +178,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "slack_fallback_enabled": False,
         "d1_clock_enabled": False,
         "d1_clock_hard_enabled": False,
+        "c4_whole_batch_enabled": True,
         "pull_enabled": False,
         "truncation_auto_enabled": False,
         "allow_soft_capacity_fallback": False,
@@ -213,6 +214,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "slack_fallback_enabled": False,
         "d1_clock_enabled": False,
         "d1_clock_hard_enabled": False,
+        "c4_whole_batch_enabled": True,
         "pull_enabled": False,
         "truncation_auto_enabled": False,
         "allow_soft_capacity_fallback": False,
@@ -627,6 +629,7 @@ class SiteSettingsPayload(BaseModel):
     slack_fallback_enabled: Optional[bool] = False
     d1_clock_enabled: Optional[bool] = False
     d1_clock_hard_enabled: Optional[bool] = False
+    c4_whole_batch_enabled: Optional[bool] = True
     pull_enabled: Optional[bool] = False
     truncation_auto_enabled: Optional[bool] = False
     allow_soft_capacity_fallback: Optional[bool] = False
@@ -670,6 +673,7 @@ class SolvePayload(BaseModel):
     slack_fallback_enabled: Optional[bool] = None
     d1_clock_enabled: Optional[bool] = None
     d1_clock_hard_enabled: Optional[bool] = None
+    c4_whole_batch_enabled: Optional[bool] = None
     pull_enabled: Optional[bool] = None
     truncation_auto_enabled: Optional[bool] = None
     allow_soft_capacity_fallback: Optional[bool] = None
@@ -754,6 +758,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["d1_clock_enabled"] = payload.d1_clock_enabled
     if payload.d1_clock_hard_enabled is not None:
         cfg["d1_clock_hard_enabled"] = payload.d1_clock_hard_enabled
+    if payload.c4_whole_batch_enabled is not None:
+        cfg["c4_whole_batch_enabled"] = payload.c4_whole_batch_enabled
     if payload.pull_enabled is not None:
         cfg["pull_enabled"] = payload.pull_enabled
     if payload.truncation_auto_enabled is not None:
@@ -2065,6 +2071,11 @@ def run_solver(payload: SolvePayload):
         if payload.d1_clock_hard_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("d1_clock_hard_enabled", False)
     )
+    c4_whole_batch_enabled = (
+        payload.c4_whole_batch_enabled
+        if payload.c4_whole_batch_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("c4_whole_batch_enabled", True)
+    )
     pull_enabled = (
         payload.pull_enabled
         if payload.pull_enabled is not None
@@ -2169,6 +2180,7 @@ def run_solver(payload: SolvePayload):
         enforce_slack_fallback=slack_fallback_enabled,
         enforce_d1_clock=d1_clock_enabled,
         enforce_d1_clock_hard=d1_clock_hard_enabled,
+        c4_whole_batch=c4_whole_batch_enabled,
         enforce_pull=pull_enabled,
         demand_by_date=demand_by_date,
         baseline_tasks=baseline_tasks,
@@ -2832,6 +2844,7 @@ def run_solver(payload: SolvePayload):
         "slack_fallback_enabled": slack_fallback_enabled,
         "d1_clock_enabled": d1_clock_enabled,
         "d1_clock_hard_enabled": d1_clock_hard_enabled,
+        "c4_whole_batch_enabled": c4_whole_batch_enabled,
         "pull_enabled": pull_enabled,
         "slack_fallback": getattr(scheduler, "slack_fallback_info", {}),
         "routing_assignment": getattr(scheduler, "assignment_decisions", []),

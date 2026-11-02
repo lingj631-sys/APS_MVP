@@ -307,6 +307,7 @@ class APSScheduler:
         enforce_slack_fallback: bool = False,
         enforce_d1_clock: bool = False,
         enforce_d1_clock_hard: bool = False,
+        c4_whole_batch: bool = True,
         enforce_pull: bool = False,
         demand_by_date: Optional[Dict[str, Dict[str, float]]] = None,
         enforce_tooling_exclusivity: bool = True,
@@ -371,6 +372,7 @@ class APSScheduler:
         self.enforce_slack_fallback = bool(enforce_slack_fallback)
         self.enforce_d1_clock = bool(enforce_d1_clock)
         self.enforce_d1_clock_hard = bool(enforce_d1_clock_hard)
+        self.c4_whole_batch = bool(c4_whole_batch)
         self.enforce_pull = bool(enforce_pull)
         self.demand_by_date = dict(demand_by_date or {})
         self.slack_fallback_info: Dict[str, Any] = {}
@@ -2010,6 +2012,7 @@ class APSScheduler:
                 shift_hours=self.shift_hours,
                 quantity=float(getattr(sf_task, "quantity", 0.0) or 0.0),
                 trp=float(getattr(sf_task, "trp", 1.0) or 1.0),
+                whole_batch=self.c4_whole_batch,
             )
             if lead_shift_count <= 0:
                 continue

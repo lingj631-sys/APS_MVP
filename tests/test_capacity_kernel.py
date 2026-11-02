@@ -135,6 +135,16 @@ class TestCapacityKernelWiring(unittest.TestCase):
             lead_shifts(quick, lead_time_days=0.0, shift_hours=8.0, quantity=100, trp=0.85), 1
         )
 
+    def test_lead_shift_whole_batch_follows_expert_answer(self):
+        fast = OperationLeadTime("WL", "X", "SF", 10, "冲压", 360, 23, 0, 0, 100, 0)
+        self.assertEqual(
+            lead_shifts(fast, lead_time_days=0.0, shift_hours=8.0, quantity=1000, trp=0.85, whole_batch=True), 2
+        )
+        slow = OperationLeadTime("WL", "X", "SF", 10, "冲压", 720, 23, 0, 0, 100, 0)
+        self.assertEqual(
+            lead_shifts(slow, lead_time_days=0.0, shift_hours=8.0, quantity=1000, trp=0.85, whole_batch=True), 3
+        )
+
     def test_lead_time_soft_constraint_solves(self):
         snap, plan, start = _wl_plan(5)
         entries = load_operation_lead_times(

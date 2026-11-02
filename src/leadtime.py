@@ -71,6 +71,7 @@ def lead_shifts(
     shift_hours: float,
     quantity: float = 0.0,
     trp: float = 1.0,
+    whole_batch: bool = False,
 ) -> int:
     """Convert product lead days plus operation rest/prep into shifts.
 
@@ -91,6 +92,8 @@ def lead_shifts(
             minutes += entry.move_min
             batch_pieces = max(0.0, float(quantity))
         if entry.run_ct_seconds > 0 and batch_pieces > 0:
+            if whole_batch:
+                batch_pieces = max(0.0, float(quantity))
             minutes += batch_pieces * float(entry.run_ct_seconds) / max(1e-9, float(trp)) / 60.0
         hours += minutes / 60.0
     if hours <= 0 or shift_hours <= 0:

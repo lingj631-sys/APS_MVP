@@ -270,6 +270,23 @@ class _SchedulerCompileContext:
         return int(getattr(self._scheduler.topology, "shifts_per_day", 3))
 
     def co_product_partner(self, task):
+        # HC-08 business rule: same mold + simultaneous_production=Y, not a
+        # naming convention.  Prefer a sibling under the same FG parent.
+        mold = str(getattr(task, "mold_id", "") or "")
+        parent = getattr(task, "parent_task_id", None)
+        flag = str(getattr(task, "simultaneous_production", "") or "").upper()
+        if flag in ("Y", "YES", "TRUE", "1") and mold:
+            for other in self._scheduler.tasks:
+                if (
+                    other.task_id != task.task_id
+                    and str(getattr(other, "mold_id", "") or "") == mold
+                    and getattr(other, "parent_task_id", None) == parent
+                    and str(getattr(other, "part_no", "")) != str(getattr(task, "part_no", ""))
+                    and str(getattr(other, "simultaneous_production", "") or "").upper()
+                    in ("Y", "YES", "TRUE", "1")
+                ):
+                    return other
+        # legacy L/R suffix fallback
         part = str(getattr(task, "part_no", ""))
         if not (part.endswith("L") or part.endswith("R")):
             return None
@@ -1371,6 +1388,11 @@ class APSScheduler:
         if kernel_tooling:
             self._compile_rules_for(
                 "tooling_exclusivity", model, x, active, started, end_of, opening, tails, loads, force_hard=True
+            )
+        kernel_co_product = use_kernel and self._use_kernel("co_product")
+        if kernel_co_product:
+            self._compile_rules_for(
+                "co_product", model, x, active, started, end_of, opening, tails, loads, force_hard=False
             )
         kernel_hc16 = use_kernel and self._use_kernel("hc16")
         if kernel_hc16:

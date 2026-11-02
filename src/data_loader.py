@@ -171,6 +171,7 @@ class ProductionTask:
     due_datetime: Optional[datetime] = None
     parent_task_id: Optional[str] = None
     mold_id: Optional[str] = None
+    simultaneous_production: str = ""
     material_arrival_shift: int = 0
     customer_tier: str = "A"
     line_pm_slots: List[int] = field(default_factory=list)
@@ -808,6 +809,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
             site=site,
             due_datetime=order.due_datetime,
             mold_id=param.mold_id or mold_map.get(order.part_no),
+            simultaneous_production=param.simultaneous_production,
             material_arrival_shift=mat_arrival_map.get(order.part_no, 0),
             customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
             line_pm_slots=line_pm_slots.get(param.line, []),
@@ -865,6 +867,7 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                 due_datetime=order.due_datetime,
                 parent_task_id=fg_task.task_id,
                 mold_id=sf_param.mold_id or mold_map.get(sf_pn),
+                simultaneous_production=sf_param.simultaneous_production,
                 material_arrival_shift=mat_arrival_map.get(sf_pn, 0),
                 customer_tier=cust_tier_map.get(order.part_no, "TIER_A"),
                 line_pm_slots=line_pm_slots.get(sf_param.line, []),

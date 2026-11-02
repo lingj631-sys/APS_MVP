@@ -96,7 +96,8 @@ python scripts/fill_simulated_masterdata.py --force
 
 ## 2026-11-02 二次补数（新模板对齐）
 
-> 备份：rchive/data/APS_DataSource_Template.pre_simulated_2026-11-02.xlsx
+> 模拟文件：APS_DataSource_Template_simulated.xlsx
+> 原始模板：APS_DataSource_Template.xlsx（保留给测试/对照）
 > 脚本：scripts/simulate_missing_masterdata.py、scripts/fill_missing_bom_params.py、scripts/fill_missing_routing.py
 
 | 区域 | 原缺口 | 本次模拟 |

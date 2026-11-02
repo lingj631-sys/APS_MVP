@@ -1312,3 +1312,12 @@ outing_from_rows 仅用于候选线，不受影响。
 - 调度器新增 shift_open_penalty（毫秒/已开班次），站点开关 shift_consolidation_enabled，默认关闭。
 - V1 10 天开启/关闭该开关均为 200 FEASIBLE；当前模拟数据下 WCA1894 已合并为 **10/12 晚班 180 件单块**，不再出现 3×60/13.5% 早班。
 - 快速 **61/61 PASS**；全量基线仍为 160/160（本次仅新增可选开关）。
+
+
+### 2026-11-03 HC-03 PM 部分降载
+
+- `RequirementPlan.pm_capacity` 新增 `(line, slot) -> capacity factor`；`PreventiveMaintenance.capacity_rate` 在 0~1 时写入。
+- legacy `_legacy_capacity_body` 的 `slot_max` 与 kernel `_compile_capacity` 的班次容量都乘以该 factor。
+- PM `capacity_rate=0` 仍按整班封锁；0<rate<1 不再封锁，只降载。
+- 新增 `tests/test_pm_partial_capacity.py`：50% PM 班次无法容纳 300 件满负荷，任务被推到后续班次。
+- 全量 **162/162 PASS**。

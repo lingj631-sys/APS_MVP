@@ -333,6 +333,7 @@ class APSScheduler:
         enforce_material_arrival: bool = True,
         enforce_pm_maintenance: bool = True,
         pm_shifts: Optional[Dict[str, List[int]]] = None,
+        pm_capacity: Optional[Dict[Tuple[str, int], float]] = None,
         enforce_customer_priority: bool = True,
         enforce_weekend_penalty: bool = True,
         allow_105_utilization_fg: bool = False,
@@ -428,6 +429,7 @@ class APSScheduler:
         self._setup_ms_requested = max(0, int(round(changeover_minutes * 60 * TIME_SCALE)))
         self.sequence_setup = bool(sequence_setup)
         self.setup_technicians_available = max(0, int(setup_technicians_available or 0))
+        self.pm_capacity = dict(pm_capacity or getattr(plan, "pm_capacity", {}) or {})
         self.inventory_policies = dict(inventory_policies or {})
         self.inventory_hard = bool(inventory_hard)
         self.operation_lead_times = dict(operation_lead_times or {})
@@ -2567,7 +2569,8 @@ class APSScheduler:
                     if (t.task_id, s) in started
                 ]
                 reserve_ms = int(round(float(self.setup_reserve.get((line, s), 0.0)) * 60 * TIME_SCALE))
-                slot_max = max(1, max_line_ms - reserve_ms)
+                factor = float(self.pm_capacity.get((line, s), 1.0) or 1.0)
+                slot_max = max(1, int(round((max_line_ms - reserve_ms) * max(0.0, min(1.0, factor)))))
                 var = model.NewIntVar(0, slot_max, f"load.{line}.{s}")
                 model.Add(var == (sum(proc) + sum(setup) if proc or setup else 0))
                 o = model.NewBoolVar(f"open.{line}.{s}")

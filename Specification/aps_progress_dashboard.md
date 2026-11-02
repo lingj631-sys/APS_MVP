@@ -13,7 +13,7 @@
 |---|---:|---|
 | Phase 0：正确性止血 | **100%** | 已闭环，含 ACT-06 拆批连续 |
 | Phase 1：规则内核化 | **95%** | 20 模板、19 编译；routing 仍未编译 |
-| Phase B：32 规则数据/算子扩展 | **约 88%** | HC-08 共模同步、HC-14 低覆盖超库豁免已接；HC-03/HC-04 仍待；其余 partial 集中在真实数据/业务阈值 |
+| Phase B：32 规则数据/算子扩展 | **约 89%** | HC-08 共模同步、HC-14 低覆盖超库豁免已接；HC-03 已接、HC-04 仍待；其余 partial 集中在真实数据/业务阈值 |
 | Phase C：时间/路由/序列 | **约 80%** | C1-b-3/4、C2-a/C2-b-a/C2-b-0/C2-b-1/C2-b-2/C2-b-3a/C2-b-3b、C4、C5-a/C5-b 已做；大规模同模型 sequence、独立 Pull 未做 |
 | **整体** | **约 85%** | 可演示、可基础测试；不是完整 32 规则求解器 |
 
@@ -27,7 +27,7 @@
 | WL active | `WL_PHASE1 v4`，13 条拆分规则 |
 | SY38 active | `SY38_PHASE1 v2`，13 条 |
 | 内核模板 | 20 个；19 个已编译；`routing` 未编译 |
-| 全量测试 | **161/161 PASS（最新完整跑）** |
+| 全量测试 | **162/162 PASS（最新完整跑）** |
 | 快速测试 | **60/60 PASS，约 62s** |
 | 服务 | `http://127.0.0.1:8000`（单实例开发服） |
 
@@ -88,6 +88,7 @@
 | B8 HC-16-lite 工单连续 | 🟡 实验 | 每工单最多 1 块（`max_blocks_per_task=1`）；10 天全量开启会与 95% 班次地板/物料/PM 冲突导致不可行，暂不默认；HC-16-hard 同模跨工单防穿插未做 |
 | B9 HC-08 L/R 共模同步 | ✅ hard/soft | 同模具+同父工单+同时生产=Y；`co_product` 内核接线，hard 同班次产出相等 |
 | B10 HC-14 低覆盖超库豁免 | 🟡 部分 | 库存覆盖<2h 的 L/R 共模 SF 自动跳过超库罚/上限，返回页面告警；尚未做完整下游覆盖投影 |
+| B11 HC-03 PM 部分降载 | ✅ 部分 | `PreventiveMaintenance.capacity_rate` 0~1 写入 `plan.pm_capacity`；legacy/kernel capacity 按班次折算；测试覆盖 50% PM |
 | B9 SC-10 三班负荷平滑 | ✅ opt-in | 按日最小化早/中/晚班机时 L1 偏差（方差代理）；`labor_smoothing_enabled` 默认关闭 |
 | B10 SC-08 顺位前置填补 | 🟡 原型 | 同线自然交期顺序 vs 完成顺序的配对倒置罚；`sc08_enabled` 默认关闭，未做平方序位 |
 | B11 BS-05 同模合批 | 🟡 软约束 | 同模/campaign 每多一个生产段罚 60,000；新增 `CampaignBatch` 分组对象与 `/api/solve.campaign_batches`；不改变订单 identity |
@@ -187,7 +188,7 @@
 - BS-04 Pull：完成偏好从“越早越好”改为“越接近交期/窗口越好”。
 - 硬 95%：规则集 `capacity_utilization` 为 hard 时，默认不做软回退；失败返回 `HARD_95_INFEASIBLE`，需显式打开软回退。
 - C2-b-3c：每个任务候选线裁剪到主+1备，候选面 ≤6 个任务时同模型 sequence；>6 仍回退 C2-b-3a。当前目录 partial 26 / needs_model 0。
-- 全量测试 **161/161**，快速 **61/61**；SY38 10 天实跑 18 任务 / OTD 100% / 33 sequence / 9 校验。
+- 全量测试 **162/162**，快速 **62/62**；SY38 10 天实跑 18 任务 / OTD 100% / 33 sequence / 9 校验。
 
 ### 仍保留的兼容项
 
@@ -214,8 +215,7 @@
 7. **低负荷开班/工单合并**：已加 `shift_consolidation_enabled`（shift-open 固定成本，默认关闭）；模拟数据下 WCA1894 已合并为单班 180 件，真实数据仍需复验。
 8. **SF MPQ tail-aware**：L755774（SF）出现 3/88/123 等非 MPQ100 班次块；当前 SF unit=piece 且 piece-lot 可拆，整单总量也未向上取整。需要“整单 MPQ + 最多 1 尾块”策略，不能简单每班硬 100。
 9. **HC-16 hard v0 不可用**：V6 hard 在 WL 直接 400；当前只是“每工单最多 1 块”的近似，正式同模窗口/交期 override 尚未完成。
-10. **HC-03 PM 部分降载**：`capacity_rate` 尚未进入班次容量，目前 PM 仍按整班封锁。
-11. **HC-04 换模矩阵缺边**：缺边仍可能回退 60min，尚未硬门控。
+10. **HC-04 换模矩阵缺边**：缺边仍可能回退 60min，尚未硬门控。
 12. **工程化**：每厂独立实例部署、确定性停止条件、CI、规则审批日志、真实数据回归基准。
 
 ### 5.2 业务/数据缺口（不在此文档，见 Excel）
@@ -277,7 +277,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 | 大规模同模型 sequence 未联立 | 候选项 >2 时回退两阶段，选线不反悔 | 列生成/候选线裁剪，或 sequence 负荷回灌 assign |
 | Labor 主数据仍缺 | HC-15/SC-10 只能用人数，不能用班次上限/共享池 | 补 `Labor-Availability`/`Line-Staffing` |
 | SY38 模板来自 legacy seed | 首次上传前需沈阳物流复核 | 用真实 SY38 模板替换后再启用 |
-| 161 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
+| 162 项测试通过不等于 32 条规则全部完成 | 部分规则仍是 preprocess/audit | 以本文能力表为准，不以测试数代替完成度 |
 | 工作区改动未提交前不可复现 | 交接风险 | 本次提交/推送后以 Git 版本为准 |
 
 ---
@@ -285,7 +285,7 @@ $env:FACTORY_SITE="SY38"; $env:PORT="8001"; python run_web.py
 ## 8. 验证记录
 
 ```text
-全量：161/161 PASS（HC-14 豁免 + HC-08 后）
+全量：162/162 PASS（HC-14 + HC-03 后）
 快速：60/60 PASS，约 62s
 WL active：WL_PHASE1 v4 / 13 rules
 SY38 active：SY38_PHASE1 v2 / 13 rules

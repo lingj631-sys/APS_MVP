@@ -158,15 +158,19 @@ def _compile_capacity(ctx: CompileContext, rule: RuleInstance, params: Dict[str,
     for line in ctx.lines():
         if str(line) not in applicable_lines:
             continue
-        cap = ctx.capacity_ms(line)
-        floor = int(round(min_util * cap))
-        ceiling = int(round(max_util * cap))
         line_tasks = [
             task for task in ctx.tasks()
             if str(getattr(task, "line", "")) == str(line)
             and rule.scope.matches(_target(site, task))
         ]
         for slot in range(ctx.num_shifts):
+            cap = (
+                ctx.slot_capacity_ms(line, slot)
+                if hasattr(ctx, "slot_capacity_ms")
+                else ctx.capacity_ms(line)
+            )
+            floor = int(round(min_util * cap))
+            ceiling = int(round(max_util * cap))
             load = ctx.load(line, slot)
             tail = ctx.tail(line, slot) if tail_exempt else 0
             opened = ctx.open(line, slot)

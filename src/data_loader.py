@@ -202,6 +202,7 @@ class RequirementPlan:
     site: str = "WL"
     bom: Dict[str, List[Tuple[str, float]]] = field(default_factory=dict)
     initial_stock: Dict[str, float] = field(default_factory=dict)
+    pm_capacity: Dict[Tuple[str, int], float] = field(default_factory=dict)
 
     @property
     def tasks(self) -> List[ProductionTask]:
@@ -765,6 +766,24 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                         line_pm_slots[pm.line].append(s)
             except Exception:
                 pass
+
+    pm_capacity: Dict[Tuple[str, int], float] = {}
+    for pm in snapshot.pm_schedules:
+        rate = float(getattr(pm, "capacity_rate", 0.0) or 0.0)
+        if not (0.0 < rate < 1.0):
+            continue
+        try:
+            start_parsed = datetime.strptime(pm.start_date.replace("-", "/"), "%Y/%m/%d") if len(pm.start_date) > 5 else datetime.strptime(pm.start_date.replace("-", "/"), "%m/%d")
+            end_parsed = datetime.strptime(pm.end_date.replace("-", "/"), "%Y/%m/%d") if len(pm.end_date) > 5 else datetime.strptime(pm.end_date.replace("-", "/"), "%m/%d")
+            d_start = next((i for i, d in enumerate(snapshot.planning_dates) if datetime.strptime(d, "%m/%d").month == start_parsed.month and datetime.strptime(d, "%m/%d").day == start_parsed.day), 0)
+            d_end = next((i for i, d in enumerate(snapshot.planning_dates) if datetime.strptime(d, "%m/%d").month == end_parsed.month and datetime.strptime(d, "%m/%d").day == end_parsed.day), d_start)
+            s_start = topology.slot_index(d_start, pm.start_shift)
+            s_end = topology.slot_index(d_end, pm.end_shift)
+            for s in range(s_start, s_end + 1):
+                key = (pm.line, s)
+                pm_capacity[key] = min(rate, pm_capacity.get(key, 1.0))
+        except Exception:
+            pass
 
     for order in sorted(snapshot.orders, key=lambda o: (o.due_datetime, o.part_no)):
         param = snapshot.fg_params.get(order.part_no)

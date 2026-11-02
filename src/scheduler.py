@@ -326,6 +326,7 @@ class APSScheduler:
         enforce_d1_clock_hard: bool = False,
         c4_whole_batch: bool = True,
         sf_mpq_tail_enabled: bool = False,
+        shift_open_penalty: int = 0,
         enforce_pull: bool = False,
         demand_by_date: Optional[Dict[str, Dict[str, float]]] = None,
         enforce_tooling_exclusivity: bool = True,
@@ -392,6 +393,7 @@ class APSScheduler:
         self.enforce_d1_clock_hard = bool(enforce_d1_clock_hard)
         self.c4_whole_batch = bool(c4_whole_batch)
         self.sf_mpq_tail_enabled = bool(sf_mpq_tail_enabled)
+        self.shift_open_penalty = max(0, int(shift_open_penalty or 0))
         self.enforce_pull = bool(enforce_pull)
         self.demand_by_date = dict(demand_by_date or {})
         self.slack_fallback_info: Dict[str, Any] = {}
@@ -1575,6 +1577,10 @@ class APSScheduler:
             else:
                 group_terms["G3_CHANGEOVER"].append(changeover_objective)
         elif violations:
+            if self.shift_open_penalty:
+                group_terms["G2_CAPACITY"].append(
+                    self.shift_open_penalty * sum(opening.values())
+                )
             group_terms["G2_CAPACITY"].append(self._violation_weight() * sum(violations))
             group_terms["G2_CAPACITY"].append(SHORTFALL_WEIGHT * sum(shortfall))
         if overloads:

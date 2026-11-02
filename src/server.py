@@ -180,6 +180,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "d1_clock_hard_enabled": False,
         "c4_whole_batch_enabled": True,
         "sf_mpq_tail_enabled": False,
+        "shift_consolidation_enabled": False,
         "pull_enabled": False,
         "truncation_auto_enabled": False,
         "allow_soft_capacity_fallback": False,
@@ -217,6 +218,7 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
         "d1_clock_hard_enabled": False,
         "c4_whole_batch_enabled": True,
         "sf_mpq_tail_enabled": False,
+        "shift_consolidation_enabled": False,
         "pull_enabled": False,
         "truncation_auto_enabled": False,
         "allow_soft_capacity_fallback": False,
@@ -633,6 +635,7 @@ class SiteSettingsPayload(BaseModel):
     d1_clock_hard_enabled: Optional[bool] = False
     c4_whole_batch_enabled: Optional[bool] = True
     sf_mpq_tail_enabled: Optional[bool] = False
+    shift_consolidation_enabled: Optional[bool] = False
     pull_enabled: Optional[bool] = False
     truncation_auto_enabled: Optional[bool] = False
     allow_soft_capacity_fallback: Optional[bool] = False
@@ -678,6 +681,7 @@ class SolvePayload(BaseModel):
     d1_clock_hard_enabled: Optional[bool] = None
     c4_whole_batch_enabled: Optional[bool] = None
     sf_mpq_tail_enabled: Optional[bool] = None
+    shift_consolidation_enabled: Optional[bool] = None
     pull_enabled: Optional[bool] = None
     truncation_auto_enabled: Optional[bool] = None
     allow_soft_capacity_fallback: Optional[bool] = None
@@ -766,6 +770,8 @@ def update_site_settings(payload: SiteSettingsPayload):
         cfg["c4_whole_batch_enabled"] = payload.c4_whole_batch_enabled
     if payload.sf_mpq_tail_enabled is not None:
         cfg["sf_mpq_tail_enabled"] = payload.sf_mpq_tail_enabled
+    if payload.shift_consolidation_enabled is not None:
+        cfg["shift_consolidation_enabled"] = payload.shift_consolidation_enabled
     if payload.pull_enabled is not None:
         cfg["pull_enabled"] = payload.pull_enabled
     if payload.truncation_auto_enabled is not None:
@@ -2087,6 +2093,11 @@ def run_solver(payload: SolvePayload):
         if payload.sf_mpq_tail_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("sf_mpq_tail_enabled", False)
     )
+    shift_consolidation_enabled = (
+        payload.shift_consolidation_enabled
+        if payload.shift_consolidation_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("shift_consolidation_enabled", False)
+    )
     # The SF tail constraint only makes sense when an SF-scoped min_batch rule
     # explicitly asks for MPQ alignment.  This prevents an old browser payload
     # or a V1~V7 rule set (SF unit=piece) from enabling it accidentally.
@@ -2204,6 +2215,7 @@ def run_solver(payload: SolvePayload):
         enforce_d1_clock_hard=d1_clock_hard_enabled,
         c4_whole_batch=c4_whole_batch_enabled,
         sf_mpq_tail_enabled=sf_mpq_tail_enabled,
+        shift_open_penalty=2_000_000 if shift_consolidation_enabled else 0,
         enforce_pull=pull_enabled,
         demand_by_date=demand_by_date,
         baseline_tasks=baseline_tasks,
@@ -2869,6 +2881,7 @@ def run_solver(payload: SolvePayload):
         "d1_clock_hard_enabled": d1_clock_hard_enabled,
         "c4_whole_batch_enabled": c4_whole_batch_enabled,
         "sf_mpq_tail_enabled": sf_mpq_tail_enabled,
+        "shift_consolidation_enabled": shift_consolidation_enabled,
         "pull_enabled": pull_enabled,
         "slack_fallback": getattr(scheduler, "slack_fallback_info", {}),
         "routing_assignment": getattr(scheduler, "assignment_decisions", []),
@@ -3483,6 +3496,16 @@ def video_page():
         with open(video_file, "r", encoding="utf-8") as f:
             return f.read()
     return "<h1>APS Storyboard Video Not Found</h1>"
+
+
+@app.get("/lifecycle", response_class=HTMLResponse)
+@app.get("/roadmap", response_class=HTMLResponse)
+def lifecycle_page():
+    lifecycle_file = os.path.join(STATIC_DIR, "aps_project_lifecycle.html")
+    if os.path.exists(lifecycle_file):
+        with open(lifecycle_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>APS Project Lifecycle - File Not Found</h1>"
 
 
 @app.get("/favicon.ico")

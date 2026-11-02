@@ -1305,3 +1305,10 @@ outing_from_rows 仅用于候选线，不受影响。
 - 差异隔离：V4 的 WL_MPQ_SF.unit=piece 使 SF min_batch 走 piece-lot 分支，模型搜索在 10 天/90~150s 内无法找到可行解；V1 的单条 WL_MPQ.unit=MPQ 实际对 SF 也按 MPQ，故可解。
 - 将 V4 的 WL_MPQ_SF.unit 改为 MPQ 后，10 天恢复 200 FEASIBLE（92.5s）。候选规则集“v4 test SF MPQ”（version 14, id16）已生成，当前 archived。
 - 结论：V4 不是容量无解，而是 SF min_batch 口径与求解规模共同导致的搜索失败；V4F（SF MPQ）是可测版本。
+
+
+### 2026-11-02 shift-open 合并开关 + WCA 验证
+
+- 调度器新增 shift_open_penalty（毫秒/已开班次），站点开关 shift_consolidation_enabled，默认关闭。
+- V1 10 天开启/关闭该开关均为 200 FEASIBLE；当前模拟数据下 WCA1894 已合并为 **10/12 晚班 180 件单块**，不再出现 3×60/13.5% 早班。
+- 快速 **61/61 PASS**；全量基线仍为 160/160（本次仅新增可选开关）。

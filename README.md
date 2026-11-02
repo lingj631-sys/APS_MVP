@@ -5,7 +5,7 @@
 > **Slogan**：*精益平准 · 智排未来：面向两阶段协同的高级排产与动态平衡决策中枢*
 
 > **当前进度（2026-10-31）**：整体约 **84%**；Phase 0 100% / Phase 1 95% / Phase B ~75% / Phase C ~78%。
-> 全量 **158/158 PASS**，快速 **60/60 PASS**；C2-b 主模型内 Assign、C2-b-3c 候选线裁剪、SC-01/08/09/10、BS-04/05/06、硬 95% 严格化已落地。
+> 全量 **159/159 PASS**，快速 **60/60 PASS**；C2-b 主模型内 Assign、C2-b-3c 候选线裁剪、SC-01/08/09/10、BS-04/05/06、硬 95% 严格化已落地。
 > 详见 [aps_progress_dashboard.md](Specification/aps_progress_dashboard.md)。
 
 ## 1. 项目背景与目标
@@ -71,7 +71,7 @@ APS_MVP/
 │   ├── prechecker.py                    # 前置粗能力宏观可行性预检
 │   ├── balance_builder.py               # 生产动态平衡与 PSI 数据构建
 │   └── server.py                        # FastAPI 接入层（手工审计编排仍暂留此文件，待下沉 src/services/manual_audit.py）
-└── tests/                               # 35 个自动化测试套件 (含 capacity kernel/库存策略/主数据/Assign 测试)
+└── tests/                               # 36 个自动化测试套件 (含 capacity kernel/库存策略/主数据/Assign 测试)
     ├── fixtures/                        # 黄金基线快照 (wl_10d_baseline.json)
     └── test_*.py                        # 单元与集成测试用例
 ```
@@ -132,7 +132,7 @@ docker run --env-file .env -p 8000:8000 aps-mvp
 ### 自动化测试
 ```bash
 python run_tests.py --fast   # 快速单元/回归（60 项，约 62s）
-python run_tests.py          # 全量 35 个套件（158 项，含黄金基线与端到端，约 23.4 分钟）
+python run_tests.py          # 全量 36 个套件（159 项，含黄金基线与端到端，约 23.4 分钟）
 ```
 
 Web 界面主要特性：

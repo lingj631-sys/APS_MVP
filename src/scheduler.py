@@ -308,6 +308,7 @@ class APSScheduler:
         enforce_d1_clock: bool = False,
         enforce_d1_clock_hard: bool = False,
         c4_whole_batch: bool = True,
+        sf_mpq_tail_enabled: bool = False,
         enforce_pull: bool = False,
         demand_by_date: Optional[Dict[str, Dict[str, float]]] = None,
         enforce_tooling_exclusivity: bool = True,
@@ -373,6 +374,7 @@ class APSScheduler:
         self.enforce_d1_clock = bool(enforce_d1_clock)
         self.enforce_d1_clock_hard = bool(enforce_d1_clock_hard)
         self.c4_whole_batch = bool(c4_whole_batch)
+        self.sf_mpq_tail_enabled = bool(sf_mpq_tail_enabled)
         self.enforce_pull = bool(enforce_pull)
         self.demand_by_date = dict(demand_by_date or {})
         self.slack_fallback_info: Dict[str, Any] = {}
@@ -1161,9 +1163,12 @@ class APSScheduler:
             # pieces at a time, which no line can actually set up for.
             # ACT-06 exception: a split part of an oversized lot is a continuation,
             # not a new batch, so it is exempt from the per-shift MPQ floor.
-            min_lots = 1 if splittable else (
-                min(per_shift, task.mpq // task.lot_size) if self.enforce_mpq_batch else 1
-            )
+            if self.sf_mpq_tail_enabled and task.stage == "SF":
+                min_lots = 1
+            else:
+                min_lots = 1 if splittable else (
+                    min(per_shift, task.mpq // task.lot_size) if self.enforce_mpq_batch else 1
+                )
             task_lines = self._task_lines.get(task.task_id, [task.line])
             multi_line = self.assign_in_model and len(task_lines) > 1
             if multi_line:
@@ -1202,6 +1207,23 @@ class APSScheduler:
                 active[task.task_id, s] = used
             model.Add(sum(x[task.task_id, s] for s in range(lo, hi + 1)) == units_total)
 
+            # SC-04 (business answer A): every SF block is a whole MPQ multiple,
+            # except at most one tail block per task (1..MPQ-1).
+            if self.sf_mpq_tail_enabled and task.stage == "SF" and task.mpq > 1:
+                tail_flags = []
+                q_max = max(1, per_shift // int(task.mpq))
+                for s in range(lo, hi + 1):
+                    units = x[task.task_id, s]
+                    q = model.NewIntVar(0, q_max, f"mpq_q.{task.task_id}.{s}")
+                    tail = model.NewIntVar(0, int(task.mpq) - 1, f"mpq_tail.{task.task_id}.{s}")
+                    flag = model.NewBoolVar(f"mpq_tail_flag.{task.task_id}.{s}")
+                    model.Add(units == int(task.mpq) * q + tail)
+                    model.Add(q <= q_max * (1 - flag))
+                    model.Add(tail >= flag)
+                    model.Add(tail <= (int(task.mpq) - 1) * flag)
+                    tail_flags.append(flag)
+                model.Add(sum(tail_flags) <= 1)
+
             # Exact run-start indicator: 1 iff the task begins on shift s. Paid as a
             # changeover and charged as setup time on that shift.
             started[task.task_id, lo] = active[task.task_id, lo]
@@ -1214,7 +1236,7 @@ class APSScheduler:
                 started[task.task_id, s] = st
                 runs.append(st)
 
-            if splittable:
+            if splittable and not (self.sf_mpq_tail_enabled and task.stage == "SF"):
                 # ACT-06: the split parts must form one continuous run (no gap and
                 # no second start), and use only the minimum number of shifts needed.
                 model.Add(sum(started[task.task_id, s] for s in range(lo, hi + 1)) == 1)

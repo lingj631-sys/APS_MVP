@@ -1297,3 +1297,11 @@ outing_from_rows 仅用于候选线，不受影响。
 - 新增 	ests/test_hc08_co_product.py 1 项。
 - 主数据补数：SF 模具 14、SF 同时生产 22、BOM 缺参 22、Routing 22 条、Tooling 5 套、PM 时间；加载 0 warning/0 invalid。
 - 全量 **160/160 PASS**。
+
+
+### 2026-11-02 V4 10 天无解定位
+
+- V1 与 V4 都使用同一份模拟主数据；V1 可解，V4 400。
+- 差异隔离：V4 的 WL_MPQ_SF.unit=piece 使 SF min_batch 走 piece-lot 分支，模型搜索在 10 天/90~150s 内无法找到可行解；V1 的单条 WL_MPQ.unit=MPQ 实际对 SF 也按 MPQ，故可解。
+- 将 V4 的 WL_MPQ_SF.unit 改为 MPQ 后，10 天恢复 200 FEASIBLE（92.5s）。候选规则集“v4 test SF MPQ”（version 14, id16）已生成，当前 archived。
+- 结论：V4 不是容量无解，而是 SF min_batch 口径与求解规模共同导致的搜索失败；V4F（SF MPQ）是可测版本。

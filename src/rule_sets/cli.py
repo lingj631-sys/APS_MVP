@@ -58,6 +58,17 @@ def _kpis(plan, result) -> Dict[str, Any]:
         for task in result.tasks
         for (date_str, shift_name) in task.shift_breakdown
     }
+    sf_blocks = []
+    for task in result.tasks:
+        if task.stage != "SF":
+            continue
+        mpq = int(getattr(task, "mpq", 0) or 0)
+        for qty in task.shift_breakdown.values():
+            qty = int(round(float(qty or 0)))
+            if qty > 0:
+                sf_blocks.append((mpq, qty))
+    tiny = sum(1 for mpq, qty in sf_blocks if mpq > 1 and qty < mpq)
+    not_multiple = sum(1 for mpq, qty in sf_blocks if mpq > 1 and qty % mpq != 0)
     return {
         "feasible": True,
         "otd_pct": round(on_time / max(1, len(fg)) * 100.0, 1),
@@ -65,11 +76,28 @@ def _kpis(plan, result) -> Dict[str, Any]:
         "below_95_shifts": int(below),
         "open_shifts": len(open_shifts),
         "objective": round(float(result.objective_value), 1),
+        "sf_blocks_below_mpq": tiny,
+        "sf_blocks_not_mpq_multiple": not_multiple,
+        "sf_min_block": min((qty for _mpq, qty in sf_blocks), default=0),
+        "sf_block_count": len(sf_blocks),
     }
 
 
-def make_solve_fn(site: str, budget: float, horizon_days: int = 10):
+def make_solve_fn(
+    site: str,
+    budget: float,
+    horizon_days: int = 10,
+    *,
+    calendar_mode: str = "SEVEN_ZERO",
+    shift_hours: Optional[float] = None,
+    shifts_per_day: Optional[int] = None,
+    sf_mpq_tail_enabled: bool = False,
+):
     plan = build_plan(site, horizon_days)
+    try:
+        mode = CalendarMode(calendar_mode)
+    except ValueError:
+        mode = CalendarMode.SEVEN_ZERO
 
     def solve(payload: Dict[str, Any]) -> Dict[str, Any]:
         rule_set = RuleSet.from_dict(payload)
@@ -81,10 +109,13 @@ def make_solve_fn(site: str, budget: float, horizon_days: int = 10):
             plan,
             start_datetime=START_DT,
             planning_days=horizon_days,
-            calendar_mode=CalendarMode.SEVEN_ZERO,
+            calendar_mode=mode,
             site=site,
             rule_set=rule_set,
             kernel_templates=templates,
+            sf_mpq_tail_enabled=sf_mpq_tail_enabled,
+            shift_hours=shift_hours,
+            shifts_per_day=shifts_per_day,
         )
         try:
             result = scheduler.solve(time_limit_seconds=budget)

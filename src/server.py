@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -700,11 +701,30 @@ class RuleSetSavePayload(BaseModel):
     activate: bool = False
 
 
+class RuleSetUpdatePayload(BaseModel):
+    payload: Dict[str, Any]
+    note: Optional[str] = None
+
+
+class RuleSetNotePayload(BaseModel):
+    note: str = ""
+
+
 class RuleAnalysisPayload(BaseModel):
     version_id: Optional[int] = None
     site: str = "WL"
     budget: float = 15.0
     pct: float = 0.2
+
+
+class RuleTrialPayload(BaseModel):
+    payload: Dict[str, Any]
+    site: str = "WL"
+    budget: float = 60.0
+    horizon_days: int = 10
+    calendar_mode: str = "SEVEN_ZERO"
+    shifts_per_day: Optional[int] = None
+    shift_hours: Optional[float] = None
 
 
 # ---------------- API Endpoints ----------------
@@ -1720,6 +1740,35 @@ def save_rule_set(payload: RuleSetSavePayload):
     )
 
 
+@app.post("/api/rule-sets/{version_id}/update")
+def update_rule_set(version_id: int, payload: RuleSetUpdatePayload):
+    result = rule_set_service.update_payload(
+        payload.payload, version_id, note=payload.note
+    )
+    if not result.get("ok"):
+        detail = "；".join(e.get("message", "") for e in result.get("errors", [])) or "保存失败"
+        raise HTTPException(status_code=400, detail=detail)
+    return result
+
+
+@app.post("/api/rule-sets/{version_id}/note")
+def update_rule_set_note(version_id: int, payload: RuleSetNotePayload):
+    result = rule_set_service.update_note(version_id, payload.note)
+    if not result.get("ok"):
+        detail = "；".join(e.get("message", "") for e in result.get("errors", [])) or "更新失败"
+        raise HTTPException(status_code=400, detail=detail)
+    return result
+
+
+@app.delete("/api/rule-sets/{version_id}")
+def delete_rule_set(version_id: int):
+    result = rule_set_service.delete_version(version_id)
+    if not result.get("ok"):
+        detail = "；".join(e.get("message", "") for e in result.get("errors", [])) or "删除失败"
+        raise HTTPException(status_code=400, detail=detail)
+    return result
+
+
 @app.get("/api/rule-sets/diff")
 def diff_rule_sets(from_id: int, to_id: int):
     before = rule_set_service.get_version(from_id)
@@ -1783,6 +1832,50 @@ def rule_diagnose_endpoint(payload: RuleAnalysisPayload):
     return rule_diagnose.diagnose(data, solve_fn)
 
 
+@app.post("/api/rule-sets/trial")
+def rule_trial_endpoint(payload: RuleTrialPayload):
+    """Run one solve for an unsaved draft rule set and return business KPIs."""
+    target_site = payload.site.upper()
+    rule_set, warnings = rule_set_service.validate_payload(payload.payload)
+    if rule_set is None:
+        raise HTTPException(status_code=400, detail="规则配置无效：" + "；".join(warnings))
+    horizon = max(1, min(31, int(payload.horizon_days)))
+    budget = max(5.0, min(120.0, float(payload.budget)))
+    shift_hours = max(1.0, min(24.0, float(payload.shift_hours))) if payload.shift_hours else None
+    shifts_per_day = max(1, min(4, int(payload.shifts_per_day))) if payload.shifts_per_day else None
+    sf_tail = any(
+        rule.enabled
+        and rule.template_id == "min_batch"
+        and str(getattr(rule.scope, "stage", "")) == "SF"
+        and str(rule.params.get("unit", "")) == "MPQ"
+        for rule in rule_set.rules
+    )
+    solve_fn = rule_cli.make_solve_fn(
+        target_site,
+        budget,
+        horizon,
+        calendar_mode=payload.calendar_mode,
+        shift_hours=shift_hours,
+        shifts_per_day=shifts_per_day,
+        sf_mpq_tail_enabled=sf_tail,
+    )
+    started = time.perf_counter()
+    result = solve_fn(rule_set.to_dict())
+    result.update(
+        {
+            "site": target_site,
+            "horizon_days": horizon,
+            "calendar_mode": payload.calendar_mode,
+            "shifts_per_day": shifts_per_day,
+            "shift_hours": shift_hours,
+            "budget_seconds": budget,
+            "elapsed_seconds": round(time.perf_counter() - started, 1),
+            "warnings": warnings,
+        }
+    )
+    return result
+
+
 @app.get("/api/rule-sets/templates")
 def list_rule_templates():
     from src.kernel.registry import TEMPLATES
@@ -1794,6 +1887,17 @@ def list_rule_templates():
             "default_nature": spec.default_nature,
             "default_group": spec.default_group,
             "params": {param.name: param.default for param in spec.params},
+            "param_specs": {
+                param.name: {
+                    "type": param.type,
+                    "default": param.default,
+                    "min": param.min,
+                    "max": param.max,
+                    "choices": list(param.choices),
+                    "description": param.description,
+                }
+                for param in spec.params
+            },
         }
         for spec in TEMPLATES.values()
     ]

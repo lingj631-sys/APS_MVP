@@ -163,3 +163,53 @@ def activate(version_id: int, db_path: Optional[Path] = None) -> Dict[str, Any]:
         _activate_tx(conn, version_id, row["site"])
         conn.commit()
         return _row_to_full(conn.execute("SELECT * FROM rule_sets WHERE id=?", (version_id,)).fetchone())
+
+
+def update_version(
+    version_id: int,
+    payload: Optional[Dict[str, Any]] = None,
+    note: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Update a draft/active version in place, or edit its note.
+
+    Archived versions are immutable: they are the audit trail and can only be
+    cloned into a new version.
+    """
+    init_db(db_path)
+    with _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM rule_sets WHERE id=?", (version_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"rule set version {version_id} not found")
+        if payload is not None:
+            if row["status"] == "archived":
+                raise ValueError("历史版本不能直接覆盖，请另存为新版本")
+            digest = payload_hash(payload)
+            conn.execute(
+                "UPDATE rule_sets SET payload=?, payload_hash=? WHERE id=?",
+                (json.dumps(payload, ensure_ascii=False, sort_keys=True), digest, version_id),
+            )
+        if note is not None:
+            conn.execute("UPDATE rule_sets SET note=? WHERE id=?", (note, version_id))
+        conn.commit()
+        return _row_to_full(conn.execute("SELECT * FROM rule_sets WHERE id=?", (version_id,)).fetchone())
+
+
+def delete_version(version_id: int, db_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Delete a draft/archived version. The active version and the last version are protected."""
+    init_db(db_path)
+    with _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM rule_sets WHERE id=?", (version_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"rule set version {version_id} not found")
+        if row["status"] == "active":
+            raise ValueError("当前使用中的版本不能删除，请先切换到其他版本")
+        total = conn.execute(
+            "SELECT COUNT(*) AS n FROM rule_sets WHERE site=? AND rule_set_id=?",
+            (row["site"], row["rule_set_id"]),
+        ).fetchone()["n"]
+        if total <= 1:
+            raise ValueError("至少保留一个规则集版本")
+        conn.execute("DELETE FROM rule_sets WHERE id=?", (version_id,))
+        conn.commit()
+        return _row_to_meta(row)

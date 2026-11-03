@@ -155,6 +155,60 @@ def active_rule_set(
     return rule_set, warnings
 
 
+def update_payload(
+    payload: Dict[str, Any],
+    version_id: int,
+    note: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Overwrite an existing draft/active version (archived versions are locked)."""
+    record = store.get_version(version_id, db_path)
+    if record is None:
+        return {"ok": False, "errors": [{"sheet": "Version", "cell": "", "rule_id": "", "message": "规则集版本不存在"}]}
+    rule_set, warnings = validate_payload(payload)
+    if rule_set is None:
+        return {
+            "ok": False,
+            "errors": [{"sheet": "Payload", "cell": "", "rule_id": "", "message": w} for w in warnings],
+            "warnings": warnings,
+        }
+    normalized = rule_set.to_dict()
+    normalized["site"] = record["site"]
+    normalized["rule_set_id"] = record["rule_set_id"]
+    normalized["version"] = record["version"]
+    diff = diff_payloads(record["payload"], normalized)
+    try:
+        updated = store.update_version(version_id, normalized, note, db_path)
+    except (KeyError, ValueError) as exc:
+        return {"ok": False, "errors": [{"sheet": "Version", "cell": "", "rule_id": "", "message": str(exc)}]}
+    return {
+        "ok": True,
+        "id": updated["id"],
+        "version": updated["version"],
+        "status": updated["status"],
+        "created": False,
+        "diff": diff,
+        "warnings": warnings,
+        "errors": [],
+    }
+
+
+def update_note(version_id: int, note: str, db_path: Optional[Path] = None) -> Dict[str, Any]:
+    try:
+        updated = store.update_version(version_id, payload=None, note=note, db_path=db_path)
+    except (KeyError, ValueError) as exc:
+        return {"ok": False, "errors": [{"sheet": "Version", "cell": "", "rule_id": "", "message": str(exc)}]}
+    return {"ok": True, "id": updated["id"], "version": updated["version"], "note": updated["note"]}
+
+
+def delete_version(version_id: int, db_path: Optional[Path] = None) -> Dict[str, Any]:
+    try:
+        deleted = store.delete_version(version_id, db_path)
+    except (KeyError, ValueError) as exc:
+        return {"ok": False, "errors": [{"sheet": "Version", "cell": "", "rule_id": "", "message": str(exc)}]}
+    return {"ok": True, "deleted": deleted}
+
+
 def list_versions(site: str, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
     return store.list_versions(site, db_path)
 

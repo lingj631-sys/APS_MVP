@@ -746,7 +746,7 @@
         <span class="tag-pill">覆盖双工厂（温岭工厂 / 沈阳工厂）</span>
         <span class="tag-pill">Regional Operation 协同</span>
         <span class="tag-pill">全流程 7 个推进阶段</span>
-        <span class="tag-pill">9 个关键确认节点</span>
+        <span class="tag-pill">11 个关键确认节点</span>
         <span class="tag-pill">宽度 80% 自适应</span>
       </div>
     </header>
@@ -761,7 +761,7 @@
 
       <div class="summary-card card-sand">
         <div class="summary-label">关键确认节点</div>
-        <div class="summary-value">9 个节点</div>
+        <div class="summary-value">11 个节点</div>
         <div class="summary-desc">每阶段均有明确的结果清单与业务部门签字确认</div>
       </div>
 
@@ -1054,18 +1054,35 @@
 
           <div class="stage-purpose">
             <strong>阶段战略共识：</strong>
-            “巧妇难为无米之炊，给种子浇水施肥”。清理过去散落在各处分散表格中的历史数据，统一规范为 15 张标准基础数据表；建立前置录入防呆机制，结合真实订单开展多轮海量测试，保障系统稳定运行（当前处于数据清洗与极端工况排查阶段）。
+            “巧妇难为无米之炊，给种子浇水施肥”。以标准 <strong><code>APS_DataSource_Template.xlsx</code></strong>（涵盖订单需求、在库与ETA到料、BOM结构、工艺路线与合格机台清单、换模工时矩阵、分时段库存策略、设备PM维保等 15 张标准化表格）为统一输入底座；在多轮真实排产测试中，由<strong>工厂计划主管与 Regional 区域运营负责人</strong>共同把关，结合现场实况梳理并明确大量落地细则，持续优化收敛算法；建立前置录入防呆机制，保障系统计算稳定可靠（当前处于数据清洗、细则明确与极端工况排查阶段）。
           </div>
 
-          <!-- 里程碑 M4 -->
+          <!-- 里程碑 M4-1 & M4-2 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M4：工厂正式数据导入与测试排查完成</div>
+              <div class="milestone-name">🚩 确认节点 M4-1：现场落地细则多方审定与测试调优</div>
+              <div class="milestone-role">确认人：工厂计划主管、Regional Operation 运营负责人、系统实施团队</div>
+            </div>
+            <div class="milestone-text">
+              <strong>业务目标成果：</strong>
+              在基于 32 条规则进行系统测试和封装的过程中，针对真实生产中涌现出的大量细节工况，单纯粗略的规则条目无法直接套用。由计划主管与区域运营负责人深度参与、统筹协调，经历多轮调试与优化，将一批关键现场落地细则逐一敲定并固化入库：
+              <div style="margin-top: 6px; padding-left: 8px; font-size: 13px; color: var(--ink-body); line-height: 1.6;">
+                • <strong>工装与换模</strong>：模具严格单机运行禁止跨机台并发，独占区间仅计实际加工时间；换模时间须在矩阵中明确维护（覆盖清洗、调机、试模与首检），<strong>严禁使用兜底默认 60 分钟</strong>；<br>
+                • <strong>设备维保与防断线</strong>：设备 PM 维保精确到具体时刻，降载按时间打折折算，PM 维护拥有最高优先级且同模连产必须让避；左右件共模按 1:1 产出，单侧缺料时<strong>装配防断线绝对优先，单侧超库豁免免罚</strong>；<br>
+                • <strong>批量与计划围栏</strong>：订单收尾、交期紧迫或无后续同型号时<strong>自动豁免 MOQ 门槛</strong>，无须人工繁琐审批；时间围栏冻结期按班次配置锁定已下发工单，紧急特批调整在系统自动加星号（*）标识留痕；<br>
+                • <strong>库存收敛与退避</strong>：平时允许合理缓冲，<strong>月末最后 3~5 个工作日强制收敛压降</strong>；超级工单合批若导致其他订单交期裕度不足（Slack &lt; 0），<strong>立即按班次动态逆向截断退避</strong>，确保零违约。
+              </div>
+            </div>
+          </div>
+
+          <div class="milestone-strip" style="margin-top: -6px;">
+            <div class="milestone-top">
+              <div class="milestone-name">🚩 确认节点 M4-2：标准 15 表模板数据清洗与前置防呆通过</div>
               <div class="milestone-role">确认人：物料主数据员、计划主管、测试人员</div>
             </div>
             <div class="milestone-text">
               <strong>目标成果：</strong>
-              完成温岭工厂与沈阳工厂 15 张正式数据表（订单、在库、物料BOM、模具、设备日历）清洗与录入；系统前置防呆自动拦截并修复基础数据错误（目前正结合真实数据多轮排查）。
+              全面统一使用标准模板 <strong><code>APS_DataSource_Template.xlsx</code></strong>（包含 1 张说明页 + 14 张业务输入表），完成温岭工厂与沈阳工厂真实数据（客户需求、期初库存、物料ETA、BOM装配单耗、工艺路线Routing、换模矩阵Setup-Matrix、分时段库存策略、工序提前期静置参数、设备PM等）的清洗与规范导入；系统前置防呆自动拦截负库存、料号拼写错误、无效交期与缺失节拍，确保跨表数据严丝合缝（目前正结合真实数据进行多轮排查测试）。
             </div>
           </div>
 
@@ -1073,16 +1090,18 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
-                <li><strong>整理15张标准基础数据表</strong>：清理原有散乱旧表，汇总进统一标准文件 <code>dataSource.xlsx</code>。</li>
+                <li><strong>多方协同打磨现场落地细则</strong>：计划主管与区域运营负责人深度参与，把 32 条原则性规则在真实测试中遇到的模糊边界（换模工时、PM避让、共模防断线超库、尾单免MOQ、冻结星号留痕、月末库存收敛等），逐一审定为清晰可执行的落地细则。</li>
+                <li><strong>统一标准模板与数据清洗</strong>：全面规范使用标准模板 <code>APS_DataSource_Template.xlsx</code>（包含 15 张标准数据表），清理散乱旧表，实现多站点数据隔离与规范录入。</li>
                 <li><strong>建立前置录入防呆机制</strong>：计算前自动拦截负库存、料号拼写错误、无效交期与缺失节拍的订单，确保“干干净净进系统”。</li>
-                <li><strong>极端工况压力测试</strong>：导入海量真实订单与长周期需求测试，验证计算在十几秒内完成，系统稳定不卡死。</li>
+                <li><strong>真实订单极端工况压力测试</strong>：导入海量真实订单与长周期需求测试，验证计算在十几秒内完成，系统稳定不卡死。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
-                <li>《工厂标准基础数据库》（温岭与沈阳独立隔离）</li>
+                <li>《32条规则车间落地执行细则手册》（含专家确认答复）</li>
+                <li>《APS_DataSource_Template.xlsx》（15表标准输入数据库）</li>
                 <li>《基础数据常见错误自查与填写手册》</li>
                 <li>自动化测试回归报告（160项测试用例闭环）</li>
               </ul>
@@ -1091,15 +1110,15 @@
             <div class="detail-col">
               <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>“垃圾数据进，垃圾结果出”。借助系统实施契机，倒逼工厂彻底盘清实际库存与BOM对应关系。</li>
-                <li>严格按照模板维护数据，不允许随意更改列名或合并单元格。</li>
+                <li>规则绝不能停留在纸面概括，必须深入现场具体问题，由计划与 Regional 共同拍板定调。</li>
+                <li>借助系统实施契机，倒逼工厂彻底盘清实际库存与BOM对应关系，严格按标准维护数据。</li>
               </ul>
             </div>
           </div>
 
           <div class="handover-line">
             <span class="handover-arrow">当前进展 ➔</span>
-            <span>真实数据清洗与测试正在全力推进中，完成后将正式开启【阶段五：新旧方式对比试跑】。</span>
+            <span>真实数据清洗、落地细则审定与多轮测试正协同推进中，完成后将进入【阶段五：新旧方式对比试跑】。</span>
           </div>
         </div>
       </article>
@@ -1125,13 +1144,24 @@
 
           <div class="stage-purpose">
             <strong>阶段战略共识（待启动）：</strong>
-            “新旧同台竞技，小步慢跑，用事实说话”。待阶段三功能制作与阶段四数据整理就绪后启动。计划员每天照常做手工排产，系统同步自动生成方案，背靠背比对对账，通过客观归因逐步建立人机互信，调优规则参数。
+            “新旧同台竞技，小步慢跑，用事实说话”。在正式开启双轨对比前，先完成预生产系统架构的标准化升级（数据库集中存储、计算调度与操作网页分层独立），摆脱前期测试版本的临时机制；随后计划员每天照常做手工排产，系统同步自动生成方案，背靠背比对对账，通过客观归因逐步建立人机互信，调优规则参数。
           </div>
 
-          <!-- 里程碑 M5 -->
+          <!-- 里程碑 M5-1 & M5-2 -->
           <div class="milestone-strip">
             <div class="milestone-top">
-              <div class="milestone-name">🚩 确认节点 M5：双轨对比合格与业务签字认可</div>
+              <div class="milestone-name">🚩 确认节点 M5-1：预生产系统架构标准化与加固</div>
+              <div class="milestone-role">确认人：系统架构团队、Regional Operation 运营代表、计划主管</div>
+            </div>
+            <div class="milestone-text">
+              <strong>业务目标成果：</strong>
+              前期 MVP 为了快速验证算法包含了一些临时功能和文件存储方式。在正式进入高频双轨对比前，完成系统架构的正规化升级：<strong>将零散的数据存储转入正式数据库统一集中管理</strong>，保障并发读写安全与历史归档；<strong>将“后台排产计算程序”与“前端操作网页”进行独立分层部署</strong>，各司其职。确保双轨试跑时系统运行稳定、响应迅速、数据安全，具备准生产环境的可靠底座。
+            </div>
+          </div>
+
+          <div class="milestone-strip" style="margin-top: -6px;">
+            <div class="milestone-top">
+              <div class="milestone-name">🚩 确认节点 M5-2：双轨对比合格与业务签字认可</div>
               <div class="milestone-role">确认人：工厂计划团队、车间工段长、Regional Operation 运营负责人</div>
             </div>
             <div class="milestone-text">
@@ -1144,15 +1174,17 @@
             <div class="detail-col">
               <div class="col-header">📌 核心工作</div>
               <ul class="col-list">
+                <li><strong>预生产系统架构标准化加固</strong>：底层数据由文件升级为正式数据库管理，实现后台计算与前端网页分层部署，系统稳固脱离临时测试态。</li>
                 <li><strong>每日方案背靠背比对</strong>：计划员照常做手工表，同时系统每天自动出一份计划，逐日对账复盘。</li>
                 <li><strong>手工计划反向合规检查</strong>：计划员将手工表导入系统，让 17 项检查器反向复核手工计划是否存在漏排或延期风险。</li>
-                <li><strong>差异透明化与客观归因</strong>：当出现排产差异（如系统空出某班），系统自动给出标签（如“订单已按单完工，提前封盘避免超产积压”），区分算法需微调还是人工凭感觉盲目加班。</li>
+                <li><strong>差异透明化与客观归因</strong>：当出现排产差异（如系统空出某班），系统自动给出客观原因标签，区分算法需微调还是人工凭感觉盲目加班。</li>
               </ul>
             </div>
 
             <div class="detail-col">
               <div class="col-header">📄 交付内容</div>
               <ul class="col-list">
+                <li>预生产标准化系统环境（独立数据库集中管理 + 分层部署）</li>
                 <li>《每日手工与系统方案对比复盘记录》</li>
                 <li>《车间现场可行性反馈与规则微调清单》</li>
                 <li>《双轨对比运行总结与准签报告》</li>
@@ -1162,8 +1194,8 @@
             <div class="detail-col">
               <div class="col-header">💡 关键考量</div>
               <ul class="col-list">
-                <li>遇到分歧坚持用事实和数据说话，避免主观猜疑，心服口服才正式切线。</li>
-                <li>充分吸纳车间合理反馈，快速调整参数，让系统真正适应车间生产节奏。</li>
+                <li>系统架构必须在双轨前彻底稳固，避免因临时技术故障影响业务对系统方案的信心。</li>
+                <li>遇到分歧坚持用事实和数据说话，充分吸纳车间合理反馈，心服口服才正式切线。</li>
               </ul>
             </div>
           </div>

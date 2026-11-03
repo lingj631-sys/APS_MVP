@@ -9,6 +9,7 @@ Provides REST APIs for:
 5. Excel export of production plans.
 """
 import copy
+import json
 import os
 import shutil
 import sys
@@ -239,6 +240,53 @@ DEFAULT_SITE_SETTINGS: Dict[str, Dict[str, Any]] = {
 DEFAULT_SITE_SETTINGS["WE34"] = DEFAULT_SITE_SETTINGS["WL"]
 
 site_settings_store: Dict[str, Dict[str, Any]] = copy.deepcopy(DEFAULT_SITE_SETTINGS)
+
+#: Planner-chosen per-site strategy (calendar start date, horizon, mode, ...).
+#: Kept on disk so an edited 排产起始日 survives a server restart instead of
+#: snapping back to the shipped default (2026-10-12).
+SITE_SETTINGS_FILE = os.path.join(DATA_DIR, "site_settings.json")
+
+
+def _load_site_settings() -> None:
+    """Merge the persisted per-site strategy over the shipped defaults."""
+    if not os.path.isfile(SITE_SETTINGS_FILE):
+        return
+    try:
+        with open(SITE_SETTINGS_FILE, encoding="utf-8") as fh:
+            stored = json.load(fh)
+    except Exception:
+        return
+    if not isinstance(stored, dict):
+        return
+    for site, cfg in stored.items():
+        if not isinstance(cfg, dict):
+            continue
+        defaults = DEFAULT_SITE_SETTINGS.get(site) or DEFAULT_SITE_SETTINGS["WL"]
+        merged = copy.deepcopy(defaults)
+        merged.update(cfg)
+        merged["site"] = site
+        site_settings_store[site] = merged
+
+
+def _save_site_settings() -> None:
+    """Persist the per-site strategy store (best effort, atomic replace)."""
+    try:
+        os.makedirs(os.path.dirname(SITE_SETTINGS_FILE), exist_ok=True)
+        payload = {
+            site: cfg
+            for site, cfg in site_settings_store.items()
+            # "WE34" is an in-memory alias of the same dict as "WL".
+            if site != "WE34"
+        }
+        tmp = SITE_SETTINGS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, SITE_SETTINGS_FILE)
+    except Exception:
+        pass
+
+
+_load_site_settings()
 
 def apply_demand_lookahead(
     snapshot: ProductionInputSnapshot,
@@ -541,6 +589,20 @@ def init_app_state():
         session_state["plan"] = build_requirement_plan(session_state["snapshot"])
     except Exception as e:
         print(f"Error loading initial database: {e}")
+    # Restore the planner's saved calendar (start date, horizon, 工作制) so a
+    # restart does not silently fall back to the shipped 2026-10-12 default.
+    try:
+        cfg = site_settings_store.get(SITE) or site_settings_store.get("WL") or {}
+        if cfg:
+            session_state["calendar_config"] = {
+                "baseline_date": cfg.get("baseline_date") or "2026-10-11",
+                "start_date": cfg.get("start_date") or "2026-10-12",
+                "horizon_days": cfg.get("horizon_days") or 10,
+                "calendar_mode": cfg.get("calendar_mode") or "SEVEN_ZERO",
+                "day_shift_overrides": cfg.get("day_shift_overrides") or {},
+            }
+    except Exception as e:
+        print(f"[calendar] settings restore skipped: {e}")
     try:
         created = rule_set_service.ensure_seed()
         if created:
@@ -829,6 +891,7 @@ def update_site_settings(payload: SiteSettingsPayload):
         session_state["calendar_config"]["calendar_mode"] = cfg["calendar_mode"]
         session_state["calendar_config"]["day_shift_overrides"] = cfg["day_shift_overrides"]
 
+    _save_site_settings()
     return {"status": "success", "message": f"工厂 [{site}] 生产策略配置已更新", "settings": cfg}
 
 
@@ -1322,7 +1385,11 @@ def _validate_template_schema(uploaded_path: str) -> Dict[str, Any]:
     """
     if not os.path.isfile(TEMPLATE_PATH) and not os.path.isfile(EXCEL_PATH):
         raise ValueError("服务端缺少主数据模板")
-    wb = openpyxl.load_workbook(uploaded_path, read_only=True, data_only=True)
+    # Loaded in normal (not read-only) mode on purpose: read-only worksheets only
+    # know max_row/max_column from the file's <dimension> element, so workbooks
+    # saved by WPS Office / JS exporters (no <dimension>) used to crash the
+    # header scan with "'<' not supported between 'int' and 'NoneType'".
+    wb = openpyxl.load_workbook(uploaded_path, data_only=True)
     try:
         report = validate_workbook(wb)
     finally:
@@ -1394,7 +1461,16 @@ async def upload_data_source(file: UploadFile = File(...)):
             os.remove(temp_path)
         except OSError:
             pass
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        detail = str(exc)
+        if isinstance(exc, (TypeError, AttributeError, KeyError)):
+            # Never surface a bare Python TypeError to the planner: it means a
+            # cell/structure the parser did not expect, not something they can
+            # decode from "'<' not supported between ...".
+            detail = (
+                f"工作簿内容无法解析（{type(exc).__name__}: {detail}）；"
+                "请用 Excel 打开后另存为 .xlsx 再上传"
+            )
+        raise HTTPException(status_code=400, detail=detail) from exc
     finally:
         if wb is not None:
             try:
@@ -1911,6 +1987,35 @@ def get_rule_set_version(version_id: int):
     return record
 
 
+def _line_load_payload(precheck, plan) -> List[Dict[str, Any]]:
+    """Line-load rows for the overload modal, with a human label per row.
+
+    Tasks whose product has no 产线 (no Routing ``主候选线`` and no explicit line
+    on the parameter sheet) are grouped under the empty string by
+    :func:`src.prechecker.precheck_capacity`.  That row used to render as a blank
+    line name, which reads like a UI bug; label it explicitly instead.
+    """
+    rows: List[Dict[str, Any]] = []
+    for line, summary in precheck.line_loads.items():
+        rows.append(
+            {
+                "line": line,
+                "line_label": line or "（未分配产线）",
+                "is_unassigned": not line,
+                "req_hours": round(summary.required_hours, 1),
+                "avail_hours": round(summary.available_hours, 1),
+                "utilization_rate": round(summary.utilization_rate * 100, 1),
+                "is_overloaded": summary.is_overloaded,
+            }
+        )
+    return rows
+
+
+def _unassigned_parts(plan) -> List[str]:
+    """Part numbers whose tasks have no production line."""
+    return sorted({t.part_no for t in plan.tasks if not (t.line or "").strip()})
+
+
 @app.post("/api/solve")
 def run_solver(payload: SolvePayload):
     snap = session_state["snapshot"]
@@ -2400,16 +2505,12 @@ def run_solver(payload: SolvePayload):
         )
     except RuntimeError as e:
         precheck = precheck_capacity(plan, scheduler.shifts)
-        line_loads_payload = [
-            {
-                "line": l,
-                "req_hours": round(s.required_hours, 1),
-                "avail_hours": round(s.available_hours, 1),
-                "utilization_rate": round(s.utilization_rate * 100, 1),
-                "is_overloaded": s.is_overloaded,
-            }
-            for l, s in precheck.line_loads.items()
-        ]
+        line_loads_payload = _line_load_payload(precheck, plan)
+        unassigned_parts = _unassigned_parts(plan)
+        overloaded_lines = [l for l, s in precheck.line_loads.items() if s.is_overloaded]
+        max_rate = max(
+            (s.utilization_rate for s in precheck.line_loads.values()), default=0.0
+        )
         if getattr(scheduler, "strict_capacity_hard", False) and not scheduler.allow_soft_capacity_fallback:
             raise HTTPException(
                 status_code=400,
@@ -2427,6 +2528,7 @@ def run_solver(payload: SolvePayload):
                     ),
                     "bottlenecks": precheck.bottlenecks,
                     "line_loads": line_loads_payload,
+                    "unassigned_parts": unassigned_parts,
                     "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
                     "suggestions": [
                         "前拉未来订单或增加需求，把空班填到 95%；",
@@ -2466,38 +2568,67 @@ def run_solver(payload: SolvePayload):
                     ],
                 },
             )
+        if overloaded_lines:
+            title = f"排产不可行：当前【{cal_mode.value}】工作制下产能超载"
+            message = (
+                f"在当前【{cal_mode.value}】工作制下（{horizon_days}天内共 {len(scheduler.shifts)} 个有效工作班次 / "
+                f"{len(scheduler.shifts) * topology.shift_hours:.0f} 小时），"
+                f"{'、'.join(overloaded_lines)} 的订单需求工时超出了理论极限工时，无法在交期前排下所有工单。"
+            )
+            suggestions = [
+                f"根据排产规则 R-CL-01..04：当前 {horizon_days} 天订单负荷较重，建议切换为【做六休一】或【做七无休】"
+                f"（7×{topology.shifts_per_day} 连续生产，全量 {horizon_days * topology.shifts_per_day * topology.shift_hours:.0f} 小时产能）；",
+                f"若车间必须执行【做五休二】，建议将计划期切换至【15天扩展计划】，以提供充裕的平准与备料周期；",
+                f"或进入工厂日历工作台，为周末手动点亮 1~2 个开工班次以弥补产能缺口。",
+            ]
+        else:
+            # No line is over 100%: calling this "capacity overload" contradicts the
+            # table shown right below.  The infeasibility comes from the combination
+            # of hard rules (95% per-shift floor, due dates, setup/mold/tooling).
+            title = f"排产不可行：总工时未超载，【{cal_mode.value}】下规则组合无可行解"
+            message = (
+                f"在当前【{cal_mode.value}】工作制下（{horizon_days}天内共 {len(scheduler.shifts)} 个有效工作班次 / "
+                f"{len(scheduler.shifts) * topology.shift_hours:.0f} 小时），所有产线的需求工时都没有超过理论极限"
+                f"（最高负荷率 {max_rate * 100:.1f}%），所以不是总工时不足。"
+                "求解器是在规则集允许的口径内（95% 班次利用率、交期、换模/模具、工装占用等硬约束的组合）找不到可行解。"
+            )
+            if unassigned_parts:
+                message += (
+                    f"另外，{'、'.join(unassigned_parts)} 没有配置产线"
+                    "（Routing-Machines 的『主候选线』为空，参数表也没有产线列），"
+                    "这些任务被归入“（未分配产线）”，排产结果无法对应到车间实际产线。"
+                )
+            suggestions = []
+            if unassigned_parts:
+                suggestions.append(
+                    "先在『④ 输入与主数据管理 → 工艺路线』为 "
+                    + "、".join(unassigned_parts)
+                    + " 补上『主候选线』（以及 CT/人数），再重新排产；"
+                )
+            suggestions.extend(
+                [
+                    "检查 95% 班次利用率是否为硬约束：若业务接受，改 soft 或允许“硬 95% 失败时软回退”；",
+                    f"缩短或调整计划期（当前 {horizon_days} 天 / {len(scheduler.shifts)} 班），让班次数量与交期更匹配；",
+                    "检查模具/换模矩阵/工装占用等硬约束是否相互冲突（可先临时关闭相关规则定位）。",
+                ]
+            )
         raise HTTPException(
             status_code=400,
             detail={
                 "error_type": "CAPACITY_OVERLOAD_EXCEPTION",
-                "title": f"排产不可行：当前【{cal_mode.value}】工作制下产能严重超载",
+                "title": title,
                 "mode": cal_mode.value,
                 "horizon_days": horizon_days,
                 "total_shifts": len(scheduler.shifts),
                 "total_hours": len(scheduler.shifts) * topology.shift_hours,
-                "message": (
-                    f"在当前【{cal_mode.value}】工作制下（{horizon_days}天内共 {len(scheduler.shifts)} 个有效工作班次 / "
-                    f"{len(scheduler.shifts) * topology.shift_hours:.0f} 小时），"
-                    f"产线订单负荷超出了理论极限工时，无法在交期前排下所有工单。"
-                ),
+                "max_utilization_rate": round(max_rate * 100, 1),
+                "has_line_overload": bool(overloaded_lines),
+                "message": message,
                 "bottlenecks": precheck.bottlenecks,
-                "line_loads": [
-                    {
-                        "line": l,
-                        "req_hours": round(s.required_hours, 1),
-                        "avail_hours": round(s.available_hours, 1),
-                        "utilization_rate": round(s.utilization_rate * 100, 1),
-                        "is_overloaded": s.is_overloaded,
-                    }
-                    for l, s in precheck.line_loads.items()
-                ],
-                "suggestions": [
-                    f"根据排产规则 R-CL-01..04：当前 {horizon_days} 天订单负荷较重，建议切换为【做六休一】或【做七无休】"
-                    f"（7×{topology.shifts_per_day} 连续生产，全量 {horizon_days * topology.shifts_per_day * topology.shift_hours:.0f} 小时产能）；",
-                    f"若车间必须执行【做五休二】，建议将计划期切换至【15天扩展计划】，以提供充裕的平准与备料周期；",
-                    f"或进入工厂日历工作台，为周末手动点亮 1~2 个开工班次以弥补产能缺口。"
-                ]
-            }
+                "line_loads": line_loads_payload,
+                "unassigned_parts": unassigned_parts,
+                "suggestions": suggestions,
+            },
         )
     truncation_suggestions = (
         build_truncation_suggestions(result.tasks, campaign_batches)

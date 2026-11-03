@@ -3413,14 +3413,30 @@
                 </button>
               </div>
 
-              <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl text-xs font-mono">
+              <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl text-xs">
                 <div>
-                  <span class="text-slate-500">排产起始日 (D+1):</span>
-                  <div class="font-bold text-slate-800">{{ startDate }} 07:00</div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-slate-500">排产起始日 (D+1):</span>
+                    <span class="text-[10px] text-slate-400 font-mono" v-if="firstShiftLabel">{{ firstShiftLabel }}</span>
+                  </div>
+                  <input type="date" v-model="startDate" @change="onStartDateChange"
+                         class="mt-1 w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-bold text-slate-800 text-xs shadow-xs cursor-pointer focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                  <div class="mt-1.5 flex items-center flex-wrap gap-1.5">
+                    <button type="button" @click="setStartDateTomorrow"
+                            class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-700 transition">明天</button>
+                    <button type="button" v-if="dataBeforeDate" @click="setStartDateToDataBefore"
+                            title="起始日 = 数据首日的前一天"
+                            class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-700 transition">数据前日 {{ dataBeforeDate.slice(5) }}</button>
+                    <button type="button" v-if="dataFirstDate" @click="setStartDateToDataFirst"
+                            title="起始日 = 数据里最早的订单日期"
+                            class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-700 transition">数据首日 {{ dataFirstDate.slice(5) }}</button>
+                    <span class="text-[10px] text-slate-400 font-mono" v-if="dataDateRange">数据覆盖 {{ dataDateRange }}</span>
+                  </div>
                 </div>
                 <div>
                   <span class="text-slate-500">冻结基准日 (D+0):</span>
-                  <div class="font-bold text-slate-800">{{ calendarConfig ? calendarConfig.baseline_date : '2026-10-11' }}</div>
+                  <div class="font-bold text-slate-800 font-mono mt-1">{{ baselineDate }}</div>
+                  <div class="text-[10px] text-slate-400 mt-1">自动 = 起始日 − 1 天</div>
                 </div>
               </div>
             </div>
@@ -3830,12 +3846,13 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                   <tr v-for="ll in overloadInfo.line_loads" :key="ll.line">
-                    <td class="py-2 px-3 font-semibold text-slate-800">{{ ll.line }}</td>
+                    <td class="py-2 px-3 font-semibold" :class="ll.is_unassigned ? 'text-rose-700' : 'text-slate-800'">{{ ll.line_label || ll.line || '（未分配产线）' }}</td>
                     <td class="py-2 px-3 text-right font-mono">{{ ll.req_hours }}h</td>
                     <td class="py-2 px-3 text-right font-mono">{{ ll.avail_hours }}h</td>
                     <td class="py-2 px-3 text-center font-mono font-bold" :class="ll.is_overloaded ? 'text-rose-600' : 'text-slate-700'">{{ ll.utilization_rate }}%</td>
                     <td class="py-2 px-3 text-center">
-                      <span :class="ll.is_overloaded ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'" class="px-2 py-0.5 rounded text-[10px] font-bold">
+                      <span v-if="ll.is_unassigned" class="bg-rose-50 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">无产线</span>
+                      <span v-else :class="ll.is_overloaded ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'" class="px-2 py-0.5 rounded text-[10px] font-bold">
                         {{ ll.is_overloaded ? '严重超载' : (overloadInfo.error_type === 'HARD_95_INFEASIBLE' ? '总工时充足' : '负荷饱和') }}
                       </span>
                     </td>
@@ -3843,6 +3860,15 @@
                 </tbody>
               </table>
             </div>
+            <p v-if="overloadInfo.unassigned_parts && overloadInfo.unassigned_parts.length" class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+              <b>「（未分配产线）」是什么：</b>这些料号在 Routing-Machines 里没有『主候选线』，任务无法落到真实产线 ——
+              <span class="font-mono font-bold">{{ overloadInfo.unassigned_parts.join('、') }}</span>。
+              请在「④ 输入与主数据管理 → 工艺路线」补齐产线后再排产，否则这部分工时只会挂在一个没有名字的产线上，排产结果无法对应到车间实际产线。
+            </p>
+            <p v-if="overloadInfo.error_type === 'CAPACITY_OVERLOAD_EXCEPTION' && overloadInfo.has_line_overload === false" class="text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-2 leading-relaxed">
+              <b>这不是总工时超载：</b>上表最高负荷率只有 {{ overloadInfo.max_utilization_rate }}%，没有任何产线超过 100%。
+              求解失败的原因是 95% 班次利用率、交期、换模/模具等硬约束的组合无可行解。
+            </p>
             <p v-if="overloadInfo.error_type === 'HARD_95_INFEASIBLE'" class="text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-2 leading-relaxed">
               总工时充足不代表 95% 达标：95% 是「每个已开班次」的硬下限；当前有班次低于 95%，所以硬约束不可行。
               表中负荷率是整线总工时口径，不是班次达标率。
@@ -4302,6 +4328,39 @@
           total_orders_count: 9,
         });
         const dayShiftOverrides = ref({});
+
+        // ---- 排产起始日 (D+1) helpers ---------------------------------
+        const toIsoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const dataDateBounds = computed(() => {
+          const dates = ((inputData.value && inputData.value.orders) || [])
+            .map((o) => String(o.due_datetime || o.due_date || '').slice(0, 10))
+            .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+            .sort();
+          return {
+            first: dates.length ? dates[0] : '',
+            last: dates.length ? dates[dates.length - 1] : '',
+          };
+        });
+        const dataFirstDate = computed(() => dataDateBounds.value.first);
+        const dataLastDate = computed(() => dataDateBounds.value.last);
+        // 数据首日的前一天：起始日 (D+1) 往前挪一天，让数据首日落在计划窗口内。
+        const dataBeforeDate = computed(() => {
+          if (!dataFirstDate.value) return '';
+          const d = new Date(`${dataFirstDate.value}T00:00:00`);
+          if (isNaN(d.getTime())) return '';
+          d.setDate(d.getDate() - 1);
+          return toIsoDate(d);
+        });
+        const dataDateRange = computed(() => {
+          const { first, last } = dataDateBounds.value;
+          return first ? `${first.slice(5)} ~ ${last.slice(5)}` : '';
+        });
+        const firstShiftLabel = computed(() => {
+          const first = ((calendarInfo.value && calendarInfo.value.shifts) || [])[0];
+          if (!first || !first.time_range) return '';
+          const start = String(first.time_range).split('~')[0].trim();
+          return start ? `${first.name} ${start} 开工` : '';
+        });
 
         // Gantt Interactive state
         const ganttViewMode = ref("gantt");
@@ -4967,19 +5026,42 @@ const hc14Exempted = ref([]);
 
         const onStartDateChange = async () => {
           try {
-            const dt = new Date(startDate.value);
-            if (!isNaN(dt.getTime())) {
-              dt.setDate(dt.getDate() - 1);
-              const yyyy = dt.getFullYear();
-              const mm = String(dt.getMonth() + 1).padStart(2, '0');
-              const dd = String(dt.getDate()).padStart(2, '0');
-              baselineDate.value = `${yyyy}-${mm}-${dd}`;
+            if (!startDate.value) {
+              await loadCalendar();
+              return;
             }
+            // Parsed as local midnight on purpose: a bare "YYYY-MM-DD" is parsed
+            // as UTC and would shift the derived D+0 baseline by one day in
+            // timezones west of UTC.
+            const dt = new Date(`${startDate.value}T00:00:00`);
+            if (isNaN(dt.getTime())) {
+              startDate.value = calendarConfig.value.start_date || startDate.value;
+              return;
+            }
+            dt.setDate(dt.getDate() - 1);
+            baselineDate.value = toIsoDate(dt);
             await saveCalendarConfig(false);
+            showToast(`排产起始日已设为 ${startDate.value}（冻结基准日 ${baselineDate.value}），请重新执行智能排产。`);
           } catch (e) {
             console.error("onStartDateChange error: ", e);
           }
         };
+
+        const applyStartDate = async (iso) => {
+          if (!iso) return;
+          startDate.value = iso;
+          await onStartDateChange();
+        };
+
+        const setStartDateTomorrow = () => {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          return applyStartDate(toIsoDate(d));
+        };
+
+        const setStartDateToDataFirst = () => applyStartDate(dataFirstDate.value);
+
+        const setStartDateToDataBefore = () => applyStartDate(dataBeforeDate.value);
 
         const onBaselineDateChange = async () => {
           await saveCalendarConfig(false);
@@ -5053,6 +5135,32 @@ const hc14Exempted = ref([]);
           showToast(`已切换为【${names[mode] || mode}】工作制。请调整参数后点击右上角【执行智能排产】进行计算。`);
         };
 
+        // The calendar lives in two places on the server: the live session
+        // (used by /api/solve and /api/calendar) and the per-site strategy
+        // store behind /api/site-settings.  Persisting to both keeps the chosen
+        // start date after a restart or a site switch instead of snapping back
+        // to the shipped default.
+        const persistCalendarToSiteSettings = async () => {
+          try {
+            const payload = Object.assign({}, siteSettings.value, {
+              site: selectedSite.value,
+              start_date: startDate.value,
+              baseline_date: baselineDate.value,
+              horizon_days: horizonDays.value,
+              calendar_mode: calendarMode.value,
+              day_shift_overrides: dayShiftOverrides.value,
+            });
+            siteSettings.value = payload;
+            await fetch('/api/site-settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } catch (e) {
+            console.error("保存工厂策略设置出错: ", e);
+          }
+        };
+
         const saveCalendarConfig = async (notify = true) => {
           try {
             const res = await fetch('/api/calendar/update', {
@@ -5071,6 +5179,7 @@ const hc14Exempted = ref([]);
               calendarConfig.value = data.calendar;
               dayShiftOverrides.value = data.calendar.day_shift_overrides || {};
             }
+            await persistCalendarToSiteSettings();
             if (notify) showToast("工厂日历配置已保存");
           } catch (e) {
             console.error("保存日历配置出错: ", e);
@@ -5316,6 +5425,17 @@ const hc14Exempted = ref([]);
             const warnCount = (data.warnings || []).length;
             const counts = `成品 ${data.fg_params ?? '-'} / 半成品 ${data.sf_params ?? '-'} / 订单 ${data.orders ?? '-'}，数据提示 ${warnCount} 条`;
             showToast(`${data.message || `已载入 ${file.name}`}（${data.layout === 'v2' ? '新版 15 表' : '旧版格式'}：${counts}）`);
+
+            // A fresh workbook usually moves the demand window.  Keep the chosen
+            // start date when it still falls inside the data, otherwise offer to
+            // align it with the first demand date instead of planning in the past.
+            const first = dataFirstDate.value;
+            const last = dataLastDate.value;
+            if (first && last && startDate.value && (startDate.value < first || startDate.value > last)) {
+              if (confirm(`新数据覆盖 ${first} ~ ${last}，当前排产起始日 ${startDate.value} 不在该范围内。\n是否将排产起始日对齐为数据首日 ${first}？`)) {
+                await applyStartDate(first);
+              }
+            }
           } catch (e) {
             alert("上传失败: " + e.message);
           } finally {
@@ -5563,6 +5683,13 @@ const hc14Exempted = ref([]);
           baselineDate,
           onStartDateChange,
           onBaselineDateChange,
+          dataFirstDate,
+          dataBeforeDate,
+          dataDateRange,
+          firstShiftLabel,
+          setStartDateTomorrow,
+          setStartDateToDataFirst,
+          setStartDateToDataBefore,
           calendarConfig,
           dayShiftOverrides,
           currentTab,

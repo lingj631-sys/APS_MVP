@@ -48,6 +48,9 @@ data/rule_template.xlsx
 # Per-site uploaded master-data workbooks (runtime state, not repo fixtures)
 data/uploads/
 
+# Per-site strategy saved from the UI (calendar start date, horizon, 工作制)
+data/site_settings.json
+
 # Local visual reference files
 kimi_reference*.css
 

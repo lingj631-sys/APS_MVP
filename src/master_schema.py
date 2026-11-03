@@ -47,6 +47,22 @@ def norm(value) -> str:
     return _WS_RE.sub("", text)
 
 
+def extent_of(value) -> int:
+    """Return a worksheet extent (``max_row`` / ``max_column``) as a usable int.
+
+    openpyxl only knows a sheet's extent from the workbook's ``<dimension>``
+    element when the sheet is opened read-only.  Workbooks produced by WPS
+    Office, several JS exporters and some ERP exports omit that element, so
+    ``ws.max_row`` / ``ws.max_column`` are ``None`` there.  Scanning code must
+    never feed those values straight into ``min``/``range``: that fails with the
+    opaque ``'<' not supported between instances of 'int' and 'NoneType'``.
+    ``0`` means "unknown" to every caller.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if value > 0 else 0
+
+
 @dataclass(frozen=True)
 class Column:
     """One logical column of a master-data sheet."""
@@ -460,22 +476,32 @@ def resolve_sheet(wb, spec: SheetSpec):
 
 
 def header_row_for(ws, spec: SheetSpec) -> int:
-    """Row holding the column headers (some legacy sheets use a title row)."""
+    """Row holding the column headers (some legacy sheets use a title row).
+
+    Reads the candidate rows through ``iter_rows`` so it also works for
+    read-only sheets whose dimension is unknown (see :func:`extent_of`).
+    """
     if not spec.date_axis:
         return 1
     markers = {"站点", "site", "料号(pn)", "pn", "partno.", "partno"}
-    for row in range(1, min(ws.max_row, 6) + 1):
-        for col in range(1, min(ws.max_column, 8) + 1):
-            if norm(ws.cell(row, col).value) in markers:
-                return row
+    for row_idx, values in enumerate(
+        ws.iter_rows(min_row=1, max_row=6, max_col=8, values_only=True), start=1
+    ):
+        for value in values:
+            if norm(value) in markers:
+                return row_idx
     return 1
 
 
 def header_index(ws, row: int = 1):
-    """Build ``{normalised header: column index}`` for a worksheet header row."""
+    """Build ``{normalised header: column index}`` for a worksheet header row.
+
+    Only the requested row is read, so an unknown ``max_column`` (read-only
+    sheet without ``<dimension>``) cannot break the scan.
+    """
     mapping: Dict[str, int] = {}
-    for c in range(1, ws.max_column + 1):
-        value = ws.cell(row, c).value
+    values = next(ws.iter_rows(min_row=row, max_row=row, values_only=True), ())
+    for c, value in enumerate(values, start=1):
         if value is None:
             continue
         mapping.setdefault(norm(value), c)
@@ -570,7 +596,8 @@ def rows_as_dicts(ws, spec: SheetSpec, site: Optional[str] = None,
     positions = column_positions(ws, spec)
     site_col = positions.get("site")
     out: List[dict] = []
-    for r in range(header_row_for(ws, spec) + 1, ws.max_row + 1):
+    last_row = extent_of(getattr(ws, "max_row", None))
+    for r in range(header_row_for(ws, spec) + 1, last_row + 1):
         if site_col is not None and site:
             value = ws.cell(r, site_col).value
             if str(value or "").strip() and str(value).strip() != site:

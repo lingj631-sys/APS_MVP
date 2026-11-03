@@ -41,6 +41,7 @@ from src.master_schema import (
     SheetSpec,
     column_positions,
     detect_layout,
+    extent_of,
     header_row_for,
     norm,
     resolve_sheet,
@@ -165,7 +166,18 @@ class _Table:
 
     def rows(self, site: Optional[str] = None):
         site_idx = self.pos.get("site")
-        for row in range(self.header_row + 1, self.ws.max_row + 1):
+        last_row = extent_of(getattr(self.ws, "max_row", None))
+        if last_row:
+            candidates = range(self.header_row + 1, last_row + 1)
+        else:  # read-only sheet saved without <dimension>: let openpyxl walk it
+            candidates = (
+                row
+                for row, _values in enumerate(
+                    self.ws.iter_rows(min_row=self.header_row + 1),
+                    start=self.header_row + 1,
+                )
+            )
+        for row in candidates:
             if site_idx is not None:
                 value = _text(self.ws.cell(row, site_idx).value)
                 if value and site and value != site:
@@ -189,19 +201,22 @@ def _table(wb, key: str) -> Optional[_Table]:
 # Demand date axis
 # --------------------------------------------------------------------------
 def _demand_header_row(ws) -> Optional[int]:
-    for row in range(1, min(ws.max_row, 6) + 1):
-        for col in range(1, min(ws.max_column, 8) + 1):
-            header = norm(ws.cell(row, col).value)
-            if header in ("料号(pn)", "pn", "partno.", "partno"):
-                return row
+    for row_idx, values in enumerate(
+        ws.iter_rows(min_row=1, max_row=6, max_col=8, values_only=True), start=1
+    ):
+        for value in values:
+            if norm(value) in ("料号(pn)", "pn", "partno.", "partno"):
+                return row_idx
     return None
 
 
 def _demand_dates(ws, header_row: int) -> List[Tuple[int, str]]:
     dates: List[Tuple[int, str]] = []
-    for col in range(4, ws.max_column + 1):
-        value = ws.cell(header_row, col).value
-        if value is None:
+    header_values = next(
+        ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True), ()
+    )
+    for col, value in enumerate(header_values, start=1):
+        if col < 4 or value is None:
             continue
         if isinstance(value, datetime):
             dates.append((col, f"{value.month}/{value.day}"))

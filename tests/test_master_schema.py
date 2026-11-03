@@ -1,7 +1,9 @@
 """Regression tests for the 2026-10 master-data framework (15-sheet v2)."""
 import os
+import re
 import tempfile
 import unittest
+import zipfile
 
 import openpyxl
 
@@ -12,6 +14,21 @@ from src.master_schema import SHEET_BY_KEY, resolve_sheet, validate_workbook
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V2_PATH = os.path.join(BASE_DIR, "APS_DataSource_Template.xlsx")
 LEGACY_PATH = os.path.join(BASE_DIR, "dataSource.xlsx")
+
+
+def _strip_dimension(src: str, dst: str) -> None:
+    """Write ``dst`` as a copy of ``src`` with every ``<dimension>`` removed.
+
+    WPS Office, several JS exporters and some ERP exports save xlsx files
+    without the ``<dimension>`` element.  openpyxl then reports ``max_row`` and
+    ``max_column`` as ``None`` for read-only sheets.
+    """
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename.startswith("xl/worksheets/") and item.filename.endswith(".xml"):
+                data = re.sub(rb"<dimension[^>]*/>", b"", data)
+            zout.writestr(item, data)
 
 
 class TestMasterSchema(unittest.TestCase):
@@ -112,6 +129,29 @@ class TestMasterSchema(unittest.TestCase):
             self.assertEqual(snap.sf_params["W000061536"].line, "轴套6")
             self.assertEqual(snap.sf_params["W000061536"].trp, 0.85)
             self.assertEqual(snap.fg_params["WA14208"].ct_seconds, 38.0)
+        finally:
+            os.remove(tmp)
+
+    def test_06_workbook_without_dimension_elements_still_uploads(self):
+        """WPS/JS exporters omit <dimension>; that used to crash the header scan."""
+        tmp = tempfile.mktemp(suffix=".xlsx")
+        _strip_dimension(V2_PATH, tmp)
+        try:
+            ro_wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+            try:
+                self.assertIsNone(ro_wb.worksheets[0].max_row)  # precondition
+                self.assertIsNone(ro_wb.worksheets[0].max_column)
+                report = validate_workbook(ro_wb)
+            finally:
+                ro_wb.close()
+            self.assertTrue(report.ok, f"missing={report.missing_sheets} cols={report.missing_columns}")
+            self.assertEqual(report.layout, "v2")
+
+            snap = load_aps_database(tmp, site_filter="WL")
+            self.assertEqual(len(snap.fg_params), 17)
+            self.assertEqual(len(snap.sf_params), 22)
+            self.assertEqual(snap.fg_params["WA14208"].mpq, 48)
+            self.assertEqual(snap.fg_params["WAB6404"].ct_seconds, 46.0)
         finally:
             os.remove(tmp)
 

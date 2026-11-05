@@ -31,6 +31,7 @@ class TestWebServer(unittest.TestCase):
         res = self.client.get("/")
         self.assertEqual(200, res.status_code)
         self.assertIn("APS 2.0 智能排产与决策中枢", res.text)
+        self.assertIn("排产甘特图", res.text)
 
     def test_get_api_status(self):
         res = self.client.get(f"/api/status?db_path={self.db}&site={SITE}")
@@ -39,6 +40,23 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual("ready", data["status"])
         self.assertGreaterEqual(data["total_rows"], 0)
         self.assertIn("line", data["entity_counts"])
+
+    def test_get_api_entities(self):
+        res = self.client.get(f"/api/entities?db_path={self.db}&site={SITE}")
+        self.assertEqual(200, res.status_code)
+        entities = res.json()
+        self.assertEqual(23, len(entities))
+        names = [e["name"] for e in entities]
+        self.assertIn("line", names)
+        self.assertIn("part", names)
+
+    def test_get_api_entity_data(self):
+        res = self.client.get(f"/api/entity-data?entity=site&db_path={self.db}&site={SITE}")
+        self.assertEqual(200, res.status_code)
+        data = res.json()
+        self.assertEqual("site", data["entity"])
+        self.assertEqual(1, data["total"])
+        self.assertEqual(SITE, data["rows"][0]["site_code"])
 
     def test_get_api_dataset(self):
         res = self.client.get(f"/api/dataset?db_path={self.db}&site={SITE}&start_date=2026-11-03&days=5")

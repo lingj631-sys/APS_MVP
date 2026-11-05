@@ -88,6 +88,66 @@ def create_app() -> FastAPI:
             "entity_counts": entity_counts,
         }
 
+    @app.get("/api/entities")
+    def get_entities(db_path: str = DEFAULT_DB, site: str = DEFAULT_SITE):
+        exists = os.path.exists(db_path)
+        items = []
+        repo = SqliteRepository(db_path) if exists else None
+        try:
+            for name, spec in REGISTRY.items():
+                count = 0
+                if repo:
+                    filters = {"site_code": site} if any(f.name == "site_code" for f in spec.fields) else {}
+                    count = repo.count(name, **filters)
+                items.append({
+                    "name": name,
+                    "sheet": spec.sheet or name,
+                    "tier": "T1" if spec.sheet_required else "T2",
+                    "count": count,
+                    "fields": [f.name for f in spec.fields],
+                })
+        finally:
+            if repo:
+                repo.close()
+        return items
+
+    @app.get("/api/entity-data")
+    def get_entity_data(
+        entity: str,
+        site: str = DEFAULT_SITE,
+        limit: int = 100,
+        search: str = "",
+        db_path: str = DEFAULT_DB,
+    ):
+        if not os.path.exists(db_path):
+            raise HTTPException(status_code=404, detail="数据库未就绪")
+        if entity not in REGISTRY:
+            raise HTTPException(status_code=404, detail=f"未知实体: {entity}")
+
+        spec = REGISTRY[entity]
+        filters = {"site_code": site} if any(f.name == "site_code" for f in spec.fields) else {}
+        repo = SqliteRepository(db_path)
+        try:
+            rows = repo.list_by(entity, **filters)
+        finally:
+            repo.close()
+
+        if search:
+            s_lower = search.strip().lower()
+            filtered = []
+            for r in rows:
+                if any(s_lower in str(v).lower() for v in r.values() if v is not None):
+                    filtered.append(r)
+            rows = filtered
+
+        return {
+            "entity": entity,
+            "sheet": spec.sheet or entity,
+            "fields": [f.name for f in spec.fields],
+            "total": len(rows),
+            "rows": rows[:limit],
+        }
+
     @app.post("/api/import-file")
     async def import_file(
         file: UploadFile = File(...),

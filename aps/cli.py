@@ -211,7 +211,12 @@ def _cmd_web(args: argparse.Namespace) -> int:
     import uvicorn
     from aps.web.server import create_app
     app = create_app()
-    print(f"APS 2.0 智能决策看板服务已启动: http://{args.host}:{args.port}")
+    display_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+    print(f"\n=======================================================")
+    print(f"  APS 2.0 智能排产与决策看板服务已启动")
+    print(f"  本地浏览器访问: http://{display_host}:{args.port}")
+    print(f"  备用访问链接:   http://localhost:{args.port}")
+    print(f"=======================================================\n")
     uvicorn.run(app, host=args.host, port=args.port)
     return EXIT_OK
 
@@ -276,8 +281,8 @@ def build_parser() -> argparse.ArgumentParser:
     solve.set_defaults(handler=_cmd_solve)
 
     web = sub.add_parser("web", help="启动 APS 2.0 Web 决策工作台")
-    web.add_argument("--host", default="0.0.0.0", help="监听地址")
-    web.add_argument("--port", type=int, default=8000, help="监听端口")
+    web.add_argument("--host", default="127.0.0.1", help="监听地址（缺省 127.0.0.1）")
+    web.add_argument("--port", type=int, default=8000, help="监听端口（缺省 8000）")
     web.set_defaults(handler=_cmd_web)
 
     return parser

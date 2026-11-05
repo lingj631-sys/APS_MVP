@@ -22,6 +22,10 @@ dist/
 .coverage
 htmlcov/
 
+# Temporary directories & databases
+.superpowers/
+*.db
+
 # Logs & Environment
 *.log
 .env

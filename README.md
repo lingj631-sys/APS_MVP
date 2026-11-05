@@ -102,6 +102,15 @@ python run_web.py
 ```
 启动后在浏览器打开：**`http://127.0.0.1:8000`** 或 **`http://localhost:8000`**
 
+> **重要（2026-11-05）**：开发机请用 `RELOAD=false` 启动，否则被杀掉的父进程会留下 uvicorn 子进程继续占用 8000 端口并返回**旧代码**（表现为「改了不生效 / 新按钮不出现」）。
+>
+> ```powershell
+> $env:RELOAD="false"; python run_web.py
+> ```
+>
+> 排查端口占用：`Get-NetTCPConnection -LocalPort 8000 -State Listen`，再用 `Stop-Process -Id <pid> -Force` 清理所有残留 python 进程。
+> 排产超时时，弹窗底部提供「本次用 300 秒重排（不改默认）」，默认预算 35s（服务端挂规则集时下限 90s）。
+
 ### 单工厂实例部署（推荐）
 
 每个工厂一个独立进程，使用 `FACTORY_SITE` 固定站点，避免共享内存状态：

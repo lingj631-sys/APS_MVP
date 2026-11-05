@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <link rel="icon" type="image/png" href="/static/valeo_logo.png">
@@ -3804,7 +3804,7 @@
 
     <!-- Overload Diagnostic Modal -->
     <div v-if="showOverloadModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full border border-slate-200 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-150">
         <div class="bg-[#991b1b] text-white p-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
@@ -3817,8 +3817,184 @@
         </div>
 
         <div class="p-5 space-y-4 max-h-[75vh] overflow-y-auto text-xs">
+          <!-- ===== 结构化诊断：为什么排不出来 ===== -->
+          <div v-if="overloadInfo.diagnosis" class="space-y-3">
+            <!-- 结论 -->
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="text-[11px] font-bold tracking-wider text-rose-700">结论 · {{ overloadInfo.diagnosis.primary_cause }}</div>
+                <div class="text-[10px] text-rose-500 font-mono whitespace-nowrap">
+                  {{ overloadInfo.diagnosis.summary.start }} 起 · {{ overloadInfo.diagnosis.summary.shifts }} 班 × {{ overloadInfo.diagnosis.summary.shift_hours }}h
+                </div>
+              </div>
+              <p class="text-[11.5px] text-rose-900 leading-relaxed mt-1">{{ overloadInfo.diagnosis.headline }}</p>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                <div class="rounded-lg bg-white border border-rose-100 px-2 py-1.5">
+                  <div class="text-[9px] text-slate-500">工单 / 需生产批次</div>
+                  <div class="text-[12px] font-bold text-slate-800">{{ overloadInfo.diagnosis.summary.orders }} / {{ overloadInfo.diagnosis.summary.fg_tasks }}</div>
+                </div>
+                <div class="rounded-lg bg-white border border-rose-100 px-2 py-1.5">
+                  <div class="text-[9px] text-slate-500">全厂需求 / 可用</div>
+                  <div class="text-[12px] font-bold text-slate-800">{{ overloadInfo.diagnosis.summary.total_work_hours }}h / {{ overloadInfo.diagnosis.summary.plant_capacity_hours }}h</div>
+                </div>
+                <div class="rounded-lg bg-white border border-rose-100 px-2 py-1.5">
+                  <div class="text-[9px] text-slate-500">全厂负载率</div>
+                  <div class="text-[12px] font-bold text-slate-800">{{ overloadInfo.diagnosis.summary.utilization_rate }}%</div>
+                </div>
+                <div class="rounded-lg bg-white border border-rose-100 px-2 py-1.5">
+                  <div class="text-[9px] text-slate-500">交期不可达工单</div>
+                  <div class="text-[12px] font-bold text-rose-700">{{ overloadInfo.diagnosis.summary.gap_orders }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ① 订单缺口表 -->
+            <details open class="rounded-xl border border-slate-200 overflow-hidden">
+              <summary class="cursor-pointer select-none bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-800">
+                ① 订单缺口表（按产线累计：交期前的产能 vs 累计需求）
+                <span class="font-normal text-rose-600">— {{ overloadInfo.diagnosis.summary.gap_orders }} 张交期不可达</span>
+              </summary>
+              <div class="overflow-auto max-h-72">
+                <table class="min-w-full text-[10.5px]">
+                  <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
+                    <tr>
+                      <th class="py-1.5 px-2 text-left whitespace-nowrap">产线</th>
+                      <th class="py-1.5 px-2 text-left whitespace-nowrap">订单 / 料号</th>
+                      <th class="py-1.5 px-2 text-left whitespace-nowrap">客户要货时间</th>
+                      <th class="py-1.5 px-2 text-right whitespace-nowrap">要货数量</th>
+                      <th class="py-1.5 px-2 text-right whitespace-nowrap">期初库存</th>
+                      <th class="py-1.5 px-2 text-right whitespace-nowrap">累计需求</th>
+                      <th class="py-1.5 px-2 text-right whitespace-nowrap">交期前极限产能</th>
+                      <th class="py-1.5 px-2 text-right whitespace-nowrap">缺口</th>
+                      <th class="py-1.5 px-2 text-right whitespace-nowrap">满载最快完工</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="g in overloadInfo.diagnosis.order_gaps" :key="g.line + g.order_id"
+                        :class="g.gap_hours > 0 ? 'bg-rose-50/80' : ''">
+                      <td class="py-1 px-2 whitespace-nowrap font-semibold text-slate-700">{{ g.line }}</td>
+                      <td class="py-1 px-2 whitespace-nowrap">
+                        <span class="font-mono">{{ g.order_id }}</span>
+                        <span class="text-slate-500"> · {{ g.part_no }}</span>
+                      </td>
+                      <td class="py-1 px-2 whitespace-nowrap">{{ g.due }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ g.demand_qty }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ g.opening_stock }}</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ g.cum_required_hours }}h</td>
+                      <td class="py-1 px-2 text-right font-mono">{{ g.cum_capacity_hours }}h</td>
+                      <td class="py-1 px-2 text-right font-mono font-bold" :class="g.gap_hours > 0 ? 'text-rose-700' : 'text-emerald-700'">
+                        {{ g.gap_hours > 0 ? '+' + g.gap_hours + 'h' : '—' }}
+                      </td>
+                      <td class="py-1 px-2 text-right whitespace-nowrap" :class="g.late_hours > 0 ? 'text-rose-700' : 'text-slate-500'">
+                        {{ g.earliest_finish }}<span v-if="g.late_hours > 0" class="text-[9px]">（晚 {{ g.late_hours }}h）</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </details>
+
+            <!-- ② 产线明细 -->
+            <details class="rounded-xl border border-slate-200 overflow-hidden">
+              <summary class="cursor-pointer select-none bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-800">
+                ② 产线明细（成品线还是半成品线、做什么料、各占多少工时）
+              </summary>
+              <div class="p-2 space-y-2 max-h-80 overflow-y-auto">
+                <div v-for="l in overloadInfo.diagnosis.line_details" :key="l.line"
+                     class="rounded-lg border border-slate-200 p-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center space-x-2">
+                      <span class="font-bold text-[11.5px] text-slate-800">{{ l.line }}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                            :class="l.is_sf && !l.is_fg ? 'bg-sky-100 text-sky-700' : 'bg-indigo-100 text-indigo-700'">{{ l.stage_label }}</span>
+                      <span v-if="l.is_overloaded" class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800">超总产能</span>
+                    </div>
+                    <div class="text-[10.5px] font-mono" :class="l.utilization_rate >= 100 ? 'text-rose-700 font-bold' : 'text-slate-600'">
+                      {{ l.required_hours }}h / {{ l.capacity_hours }}h · {{ l.utilization_rate }}%
+                    </div>
+                  </div>
+                  <div class="mt-1 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full"
+                         :class="l.utilization_rate >= 100 ? 'bg-rose-500' : (l.utilization_rate >= 95 ? 'bg-amber-500' : 'bg-emerald-500')"
+                         :style="{ width: Math.min(100, l.utilization_rate) + '%' }"></div>
+                  </div>
+                  <div class="mt-1 text-[10px] text-slate-600 leading-relaxed">
+                    <span class="text-slate-500">{{ l.part_count }} 个型号 / {{ l.order_count }} 张单：</span>
+                    <span v-for="(p, i) in l.parts" :key="p.part_no">
+                      <span class="font-mono">{{ p.part_no }}</span>
+                      <span class="text-slate-400">{{ p.hours }}h</span>
+                      <span v-if="p.feeds_fg && p.feeds_fg.length" class="text-[9px] text-sky-600">→{{ p.feeds_fg.slice(0, 2).join('/') }}</span>
+                      <span v-if="i < l.parts.length - 1" class="text-slate-300"> · </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <!-- ③ 数据体检 -->
+            <details open class="rounded-xl border border-slate-200 overflow-hidden">
+              <summary class="cursor-pointer select-none bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-800">
+                ③ 数据体检（业务给的数据本身哪里不可执行）
+              </summary>
+              <div class="p-2 space-y-1.5">
+                <div v-for="(c, i) in overloadInfo.diagnosis.data_checks" :key="i" class="rounded-lg border p-2"
+                     :class="c.level === 'error' ? 'border-rose-200 bg-rose-50' : (c.level === 'warn' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50')">
+                  <div class="flex items-center space-x-1.5">
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                          :class="c.level === 'error' ? 'bg-rose-600' : (c.level === 'warn' ? 'bg-amber-500' : 'bg-slate-400')">
+                      {{ c.level === 'error' ? '错误' : (c.level === 'warn' ? '警告' : '提示') }}
+                    </span>
+                    <span class="text-[11px] font-bold text-slate-800">{{ c.title }}</span>
+                  </div>
+                  <p class="text-[10.5px] text-slate-700 mt-1 leading-relaxed">{{ c.detail }}</p>
+                </div>
+              </div>
+            </details>
+
+            <!-- ④ 规则体检 -->
+            <details open class="rounded-xl border border-slate-200 overflow-hidden">
+              <summary class="cursor-pointer select-none bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-800">
+                ④ 规则体检（哪几条业务规则在卡，卡了多少）
+              </summary>
+              <div class="p-2 space-y-1.5">
+                <div v-for="rc in overloadInfo.diagnosis.rule_checks" :key="rc.rule_id" class="rounded-lg border border-slate-200 p-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-[11px] font-bold text-slate-800">
+                      <span class="font-mono text-[10px] text-slate-500">{{ rc.rule_id }}</span> · {{ rc.rule_name }}
+                    </div>
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded text-white whitespace-nowrap"
+                          :class="rc.status === 'blocking' ? 'bg-rose-600' : (rc.status === 'suspected' ? 'bg-amber-500' : (rc.status === 'ok' ? 'bg-emerald-600' : 'bg-slate-400'))">
+                      {{ rc.status === 'blocking' ? '直接卡死' : (rc.status === 'suspected' ? '高度可疑' : (rc.status === 'ok' ? '未触发' : '参考')) }}
+                    </span>
+                  </div>
+                  <p class="text-[10.5px] text-slate-700 mt-1 leading-relaxed">{{ rc.evidence }}</p>
+                </div>
+              </div>
+            </details>
+
+            <!-- ⑤ 算法自检 -->
+            <details class="rounded-xl border border-slate-200 overflow-hidden">
+              <summary class="cursor-pointer select-none bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-800">
+                ⑤ 算法自检（数据摄入与规则计算的核对结果）
+              </summary>
+              <div class="p-2 space-y-1.5">
+                <div v-for="(c, i) in overloadInfo.diagnosis.algorithm_checks" :key="i" class="rounded-lg border p-2"
+                     :class="c.level === 'bug' ? 'border-rose-300 bg-rose-50' : (c.level === 'warn' ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50')">
+                  <div class="flex items-center space-x-1.5">
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                          :class="c.level === 'bug' ? 'bg-rose-600' : (c.level === 'warn' ? 'bg-amber-500' : 'bg-emerald-600')">
+                      {{ c.level === 'bug' ? 'BUG' : (c.level === 'warn' ? '注意' : '通过') }}
+                    </span>
+                    <span class="text-[11px] font-bold text-slate-800">{{ c.title }}</span>
+                  </div>
+                  <p class="text-[10.5px] text-slate-700 mt-1 leading-relaxed">{{ c.detail }}</p>
+                </div>
+              </div>
+            </details>
+          </div>
+
           <!-- Bottlenecks list -->
-          <div v-if="overloadInfo.bottlenecks && overloadInfo.bottlenecks.length" class="space-y-1.5">
+          <div v-if="!overloadInfo.diagnosis && overloadInfo.bottlenecks && overloadInfo.bottlenecks.length" class="space-y-1.5">
             <h4 class="font-bold text-rose-800 flex items-center space-x-1.5 uppercase text-[11px] tracking-wider">
               <span>检出关键产能瓶颈缺口:</span>
             </h4>
@@ -3831,7 +4007,7 @@
           </div>
 
           <!-- Line Load Table -->
-          <div v-if="overloadInfo.line_loads && overloadInfo.line_loads.length" class="space-y-1.5">
+          <div v-if="!overloadInfo.diagnosis && overloadInfo.line_loads && overloadInfo.line_loads.length" class="space-y-1.5">
             <h4 class="font-bold text-slate-800 uppercase text-[11px] tracking-wider">{{ overloadInfo.error_type === 'HARD_95_INFEASIBLE' ? '总工时负荷（仅供参照，不是班次达标率）' : '产线负荷极限对比' }}:</h4>
             <div class="border border-slate-200 rounded-xl overflow-hidden">
               <table class="min-w-full text-xs">
@@ -3852,8 +4028,8 @@
                     <td class="py-2 px-3 text-center font-mono font-bold" :class="ll.is_overloaded ? 'text-rose-600' : 'text-slate-700'">{{ ll.utilization_rate }}%</td>
                     <td class="py-2 px-3 text-center">
                       <span v-if="ll.is_unassigned" class="bg-rose-50 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">无产线</span>
-                      <span v-else :class="ll.is_overloaded ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'" class="px-2 py-0.5 rounded text-[10px] font-bold">
-                        {{ ll.is_overloaded ? '严重超载' : (overloadInfo.error_type === 'HARD_95_INFEASIBLE' ? '总工时充足' : '负荷饱和') }}
+                      <span v-else :class="ll.is_overloaded ? 'bg-rose-100 text-rose-800' : (ll.utilization_rate >= 95 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')" class="px-2 py-0.5 rounded text-[10px] font-bold">
+                        {{ ll.is_overloaded ? '严重超载' : (ll.utilization_rate >= 95 ? '临界饱和' : (ll.utilization_rate >= 80 ? '负荷偏高' : (overloadInfo.error_type === 'HARD_95_INFEASIBLE' ? '总工时充足' : '负荷正常'))) }}
                       </span>
                     </td>
                   </tr>
@@ -3878,7 +4054,7 @@
           <!-- Actionable Suggestions -->
           <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5">
             <h4 class="font-bold text-amber-900 flex items-center space-x-1 text-[11px]">
-              <span>排产优化建议 (基于业务规则 R-CL-01..04):</span>
+              <span>下一步怎么做（按上面的数据）:</span>
             </h4>
             <div v-for="(s, idx) in overloadInfo.suggestions" :key="idx" class="text-amber-950 text-[11.5px] leading-relaxed flex items-start space-x-1.5">
               <span class="text-amber-600 font-bold">•</span>
@@ -3890,8 +4066,17 @@
         <!-- Footer Actions -->
         <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div class="flex items-center space-x-2">
-            <button @click="resolveOverloadWith7x3" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
+            <button v-if="calendarMode !== 'SEVEN_ZERO'" @click="resolveOverloadWith7x3" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
               一键切换为 7×{{ calendarInfo.shifts_per_day || 3 }} 做七无休并排产
+            </button>
+            <button v-if="overloadInfo.diagnosis && overloadInfo.diagnosis.primary_cause.indexOf('交期') >= 0"
+                    @click="resolveOverloadShiftStart" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
+              起始日期前移 3 天并排产
+            </button>
+            <button v-if="overloadInfo.proven_infeasible !== true"
+                    @click="resolveOverloadWith300s" :title="'默认预算 ' + solveTimeLimit + ' 秒，仅本次使用 300 秒'"
+                    class="px-3.5 py-2 bg-slate-700 hover:bg-slate-800 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
+              本次用 300 秒重排（不改默认）
             </button>
             <button @click="resolveOverloadWith15Days" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer">
               一键切换为 15 天计划并排产
@@ -4309,6 +4494,10 @@
 
         // Factory Calendar & Horizon Workstation state
         const horizonDays = ref(10);
+        // Default solve budget (seconds) and an optional one-shot override used by
+        // the "retry with 300s" button; the override never changes the default.
+        const solveTimeLimit = ref(35);
+        const oneShotTimeLimit = ref(0);
         const startDate = ref("2026-10-12");
         const baselineDate = ref("2026-10-11");
         const calendarConfig = ref({
@@ -5206,6 +5395,30 @@ const hc14Exempted = ref([]);
           await runSolve();
         };
 
+        // One-shot longer budget: the timeout message tells the planner to raise the
+        // limit, so the button has to be able to do it without touching the default.
+        const resolveOverloadWith300s = async () => {
+          showOverloadModal.value = false;
+          oneShotTimeLimit.value = 300;
+          await runSolve();
+        };
+
+        // When the blocker is a due date that sits before the first possible
+        // completion, adding capacity or days changes nothing — only moving the
+        // planning start (D+1) earlier can create the lead time.
+        const resolveOverloadShiftStart = async () => {
+          showOverloadModal.value = false;
+          const d = new Date(startDate.value + 'T00:00:00');
+          if (isNaN(d.getTime())) return;
+          d.setDate(d.getDate() - 3);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          startDate.value = `${yyyy}-${mm}-${dd}`;
+          await saveCalendarConfig(false);
+          await runSolve();
+        };
+
         const adoptAiRecommendation = async (andSolve = false) => {
           if (!calendarConfig.value || !calendarConfig.value.ai_recommendation) return;
           const recMode = calendarConfig.value.ai_recommendation.recommended_mode;
@@ -5241,7 +5454,7 @@ const hc14Exempted = ref([]);
                 site: selectedSite.value,
                 calendar_mode: calendarMode.value,
                 enabled_rules: enabled_rule_ids,
-                time_limit_seconds: 35.0,
+                time_limit_seconds: oneShotTimeLimit.value || solveTimeLimit.value,
                 horizon_days: horizonDays.value,
                 start_date: startDate.value,
                 baseline_date: baselineDate.value,
@@ -5337,6 +5550,8 @@ const hc14Exempted = ref([]);
           } finally {
             clearInterval(timerInterval);
             solving.value = false;
+            // A one-shot budget only applies to the run that asked for it.
+            oneShotTimeLimit.value = 0;
           }
         };
 
@@ -5679,6 +5894,8 @@ const hc14Exempted = ref([]);
           getCellCrosshairClass,
           calendarMode,
           horizonDays,
+          solveTimeLimit,
+          oneShotTimeLimit,
           startDate,
           baselineDate,
           onStartDateChange,
@@ -5806,6 +6023,8 @@ const hc14Exempted = ref([]);
           overloadInfo,
           resolveOverloadWith7x3,
           resolveOverloadWith15Days,
+          resolveOverloadWith300s,
+          resolveOverloadShiftStart,
           showLineDetailModal,
           showAiRecModal,
           adoptAiRecommendation,

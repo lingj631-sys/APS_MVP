@@ -337,6 +337,7 @@ class APSScheduler:
         enforce_material_arrival: bool = True,
         enforce_pm_maintenance: bool = True,
         pm_shifts: Optional[Dict[str, List[int]]] = None,
+        pm_schedules: Optional[List[Any]] = None,
         pm_capacity: Optional[Dict[Tuple[str, int], float]] = None,
         setup_matrix_strict: bool = False,
         enforce_customer_priority: bool = True,
@@ -410,8 +411,15 @@ class APSScheduler:
         self.enforce_tooling_exclusivity = enforce_tooling_exclusivity
         self.enforce_material_arrival = enforce_material_arrival
         self.enforce_pm_maintenance = enforce_pm_maintenance
+        # PM windows arrive either as pre-computed shift indices or as the raw
+        # maintenance rows.  Raw rows are preferred: only the scheduler knows the
+        # calendar this run actually uses (D+1 start, rest days filtered), so the
+        # date -> shift mapping has to happen here rather than on the workbook axis.
+        self.pm_schedules = list(pm_schedules or [])
         if pm_shifts is not None:
-            self.pm_shifts = pm_shifts
+            self.pm_shifts = dict(pm_shifts)
+        elif self.pm_schedules:
+            self.pm_shifts = {}  # filled once self.shifts exists
         else:
             self.pm_shifts = defaultdict(list)
             for t in getattr(self.plan, "tasks", []):
@@ -550,6 +558,31 @@ class APSScheduler:
         self.use_kernel_capacity = rule_set is not None and "capacity_utilization" in templates
         self.allow_soft_capacity_fallback = bool(allow_soft_capacity_fallback)
         self.strict_capacity_hard = False
+        # When a compiled rule set is attached it is the source of truth: a rule it
+        # declares but disables must not come back in through the legacy boolean
+        # switch.  (due_date / capacity_utilization stay as they are — those flags
+        # choose the solver tiers, not the constraint itself.)
+        if rule_set is not None:
+            declared = {r.template_id for r in getattr(rule_set, "rules", [])}
+            self.rule_set_declared_templates = declared
+            self.disabled_legacy_switches = {
+                tpl: attr
+                for tpl, attr in (
+                    ("concurrency", "enforce_concurrency_limit"),
+                    ("tooling_exclusivity", "enforce_tooling_exclusivity"),
+                    ("material_ready", "enforce_material_arrival"),
+                    ("pm_block", "enforce_pm_maintenance"),
+                    ("min_batch", "enforce_mpq_batch"),
+                    ("material_balance", "enforce_material_balance"),
+                    ("sequence", "enforce_sequential_pulling"),
+                )
+                if tpl in declared
+            }
+            for attr in self.disabled_legacy_switches.values():
+                setattr(self, attr, False)
+        else:
+            self.rule_set_declared_templates = set()
+            self.disabled_legacy_switches = {}
         self.sequence_setup_hard = True
         if self.rule_set is not None and self.use_kernel_capacity:
             # The rule set is the source of truth for the load ceiling. Keeping the
@@ -591,6 +624,11 @@ class APSScheduler:
         self.labor_data = labor_data
         self._hint_infeasible = False
         self.capacity_note = ""
+        # Filled by the tier runs: "INFEASIBLE" means CP-SAT proved there is no plan,
+        # "UNKNOWN" only means the time budget ran out.  The UI must not call the
+        # second one "unfeasible".
+        self.tier_statuses: List[str] = []
+        self.proven_infeasible = False
 
         self.shifts = generate_shift_calendar(
             start_datetime,
@@ -605,6 +643,8 @@ class APSScheduler:
         self._shift_index = {
             (shift.date_str, shift.shift_name): shift.index for shift in self.shifts
         }
+        if self.pm_schedules:
+            self.pm_shifts = self._map_pm_schedules(self.pm_schedules)
         self.tasks = plan.tasks
         self.task_by_id = {t.task_id: t for t in self.tasks}
         self.lines = sorted(
@@ -688,6 +728,8 @@ class APSScheduler:
     def _solve_impl(self, time_limit_seconds: float = 90.0) -> ScheduleResult:
         # WE34 ranks the constraints: on-time delivery first, 95% shift utilisation
         # second, whole models per line third.
+        self.tier_statuses = []
+        self.proven_infeasible = False
         start = time.perf_counter()
         two_stage = getattr(self, "_two_stage_sequence", False)
         fallback_enabled = self.enforce_slack_fallback and self.enforce_campaign_batching
@@ -709,7 +751,16 @@ class APSScheduler:
         # the selected band or reports infeasibility.
         result = self._run_tiers(self._tiers(), initial_deadline, hint)
         if result is None:
-            raise RuntimeError("Solver found no feasible schedule in any tier.")
+            # "No plan found" and "no plan exists" are different answers: only a tier
+            # that came back INFEASIBLE proves the latter.
+            self.proven_infeasible = bool(self.tier_statuses) and all(
+                s == "INFEASIBLE" for s in self.tier_statuses
+            )
+            raise RuntimeError(
+                "Solver found no feasible schedule in any tier "
+                f"({'proven infeasible' if self.proven_infeasible else 'search timeout'}: "
+                f"{', '.join(self.tier_statuses) or 'no tier ran'})."
+            )
 
         if self.sequence_feedback and time.perf_counter() < deadline - 10.0:
             reserves = self._sequence_reserves(result)
@@ -1017,6 +1068,7 @@ class APSScheduler:
             model, x, mode, budget, hint, stopper, group_terms=aux.get("group_terms")
         )
         if result is None:
+            self.tier_statuses.append(status_name)
             print(f"  [solver] {label}: {status_name}")
             return None
 
@@ -1154,6 +1206,45 @@ class APSScheduler:
     def _due_shift(self, task: ProductionTask) -> int:
         return last_shift_on_or_before(self.shifts, task.due_datetime)
 
+    def _map_pm_schedules(self, schedules: List[Any]) -> Dict[str, List[int]]:
+        """Map maintenance rows onto this run's shift indices.
+
+        A PM row carries an absolute date and a shift name ("2026-11-10" + "中班"),
+        while a shift index is a position in *this* calendar — which starts at the
+        planner's D+1 and drops rest days in five-two / six-one patterns.  Building
+        the index off the workbook's own 34-day axis (the previous behaviour) shifted
+        every window and silently dropped the ones that landed past the horizon.
+        """
+        names = list(getattr(self.topology, "shift_names", ()) or ())
+        year = self.shifts[0].start_dt.year if self.shifts else datetime.now().year
+
+        def shift_pos(name: str) -> int:
+            try:
+                return names.index(name)
+            except (ValueError, AttributeError):
+                return 0
+
+        mapped: Dict[str, List[int]] = defaultdict(list)
+        for pm in schedules:
+            try:
+                start = datetime.strptime(str(pm.start_date).replace("/", "-")[:10], "%Y-%m-%d").date()
+                end = datetime.strptime(str(pm.end_date).replace("/", "-")[:10], "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                continue
+            lo = (start, shift_pos(getattr(pm, "start_shift", "")))
+            hi = (end, shift_pos(getattr(pm, "end_shift", "")))
+            if hi < lo:
+                lo, hi = hi, lo
+            for shift in self.shifts:
+                try:
+                    mm, dd = [int(x) for x in str(shift.date_str).split("/")]
+                    day = datetime(year, mm, dd).date()
+                except (TypeError, ValueError):
+                    continue
+                if lo <= (day, shift_pos(shift.shift_name)) <= hi and shift.index not in mapped[pm.line]:
+                    mapped[pm.line].append(shift.index)
+        return {line: sorted(idx) for line, idx in mapped.items() if idx}
+
     def _build_windows(self) -> Dict[str, Window]:
         windows: Dict[str, Window] = {}
         for task in self.plan.fg_tasks:
@@ -1177,7 +1268,7 @@ class APSScheduler:
         price_changeovers = self.price_changeovers and (utilization_mode == "hard" or gap_cap is not None)
         runs: List[object] = []
         group_terms: Dict[str, List[Any]] = defaultdict(list)
-        kernel_min_batch = self.enforce_mpq_batch and use_kernel and self._use_kernel("min_batch")
+        kernel_min_batch = use_kernel and self._use_kernel("min_batch")
 
         for task in self.tasks:
             lo, hi = self.windows[task.task_id]
@@ -1360,7 +1451,6 @@ class APSScheduler:
         # R-SF-02 & R-FG-05: 顺位紧邻前拉硬约束（同产线同型号按交期先后严格顺位排产，禁止跳序挑单）
         kernel_sequence = (
             use_kernel
-            and self.enforce_sequential_pulling
             and self._use_kernel("sequence")
             and not self.assign_in_model
         )
@@ -1385,7 +1475,7 @@ class APSScheduler:
             )
 
         # R-TL-01: 工装模具物理独占硬约束（同班次跨产线互斥，禁止并发占用同一模具）
-        kernel_tooling = use_kernel and self.enforce_tooling_exclusivity and self._use_kernel("tooling_exclusivity")
+        kernel_tooling = use_kernel and self._use_kernel("tooling_exclusivity")
         if self.enforce_tooling_exclusivity and not kernel_tooling:
             mold_groups = defaultdict(list)
             for t in self.tasks:
@@ -1415,7 +1505,7 @@ class APSScheduler:
             )
 
         # R-MT-01: 关键物料预计到货齐套开工硬约束（到料前禁止开工）
-        kernel_ready = use_kernel and self.enforce_material_arrival and self._use_kernel("material_ready")
+        kernel_ready = use_kernel and self._use_kernel("material_ready")
         if self.enforce_material_arrival and not kernel_ready:
             for t in self.tasks:
                 arr_shift = getattr(t, 'material_arrival_shift', 0)
@@ -1432,7 +1522,6 @@ class APSScheduler:
         # R-PM-01: 设备计划性预防维护（PM）避让硬约束（PM时段产能清零，任务避让）
         kernel_pm = (
             use_kernel
-            and self.enforce_pm_maintenance
             and self._use_kernel("pm_block")
             and not self.assign_in_model
         )

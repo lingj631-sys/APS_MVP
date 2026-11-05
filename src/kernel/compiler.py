@@ -230,6 +230,14 @@ def _compile_min_batch(ctx: CompileContext, rule: RuleInstance, params: Dict[str
         else:
             min_lots = max(1, mpq // lot_size) if unit == "MPQ" else max(1, minimum)
 
+        # A production run can never be bigger than the task itself.  Without this
+        # cap a rule such as "SF: >=100 pieces per shift" makes every order whose
+        # quantity is below 100 — or simply not a multiple of 100 — unschedulable,
+        # because the last, partial shift is always in violation.
+        unit_pieces_total = max(1, int(ctx.unit_pieces(task)))
+        total_units = max(1, int(round(float(getattr(task, "quantity", 0.0) or 0.0) / unit_pieces_total)))
+        min_lots = max(1, min(min_lots, total_units))
+
         lo, hi = ctx.window(task)
         if basis == "order":
             # Order/campaign-level MOQ: the task total must clear the threshold.
@@ -242,8 +250,11 @@ def _compile_min_batch(ctx: CompileContext, rule: RuleInstance, params: Dict[str
                 * max(1, int(ctx.unit_pieces(task))) >= units
             )
         else:
+            # "Minimum production batch" belongs to the *start* of a run, not to
+            # every continuing shift; binding it to `active` forbids the partial
+            # tail shift that almost every real order ends with.
             for slot in range(lo, hi + 1):
-                ctx.model.Add(ctx.x(task, slot) >= min_lots * ctx.active(task, slot))
+                ctx.model.Add(ctx.x(task, slot) >= min_lots * ctx.started(task, slot))
     return warnings, True
 
 

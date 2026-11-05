@@ -70,6 +70,7 @@ from src.leadtime import load_operation_lead_times
 from src.metric_labels import labels_for
 from src.rule_catalog import coverage_summary, load_catalog
 from src.routing import assign_routing_lines, available_hours_by_line, candidates_for, capability_violations, load_routing, solve_routing_assignment
+from src.diagnostics import build_diagnosis
 from src.prechecker import precheck_capacity
 from src.rule_sets import service as rule_set_service
 from src.rule_sets import store as rule_set_store
@@ -309,28 +310,41 @@ def apply_demand_lookahead(
     lookahead_end = start_dt + timedelta(days=lookahead_days)
     max_pull_end = min(lookahead_end, horizon_end + timedelta(days=max_pull_forward_days))
 
-    # Calculate line capacity headroom (in hours)
-    line_avail_hours: Dict[str, float] = defaultdict(float)
+    # Calendar capacity per line (hours).  A line's ceiling is set by the calendar,
+    # not by how many parts route through it: counting one 8h block per part made
+    # the ceiling scale with the number of FG parts on the line.
     if shifts:
-        for s in shifts:
-            if getattr(s, "is_work_shift", True):
-                for p in snapshot.fg_params.values():
-                    line_avail_hours[p.line] += 8.0
+        work_shifts = [s for s in shifts if getattr(s, "is_work_shift", True)]
+        calendar_hours = sum(s.duration_hours for s in work_shifts) or float(horizon_days * 24.0)
     else:
-        for p in snapshot.fg_params.values():
-            line_avail_hours[p.line] = float(horizon_days * 24.0)
+        calendar_hours = float(horizon_days * 24.0)
+
+    known_lines = {p.line for p in snapshot.fg_params.values()}
+    known_lines |= {p.line for p in snapshot.sf_params.values()}
+    line_avail_hours: Dict[str, float] = {line: calendar_hours for line in known_lines}
 
     # Separate orders
     immediate_orders = [copy.deepcopy(o) for o in snapshot.orders if o.due_datetime <= horizon_end]
     future_orders = [copy.deepcopy(o) for o in snapshot.orders if horizon_end < o.due_datetime <= max_pull_end]
 
+    def _line_load(orders) -> Dict[str, float]:
+        """Per-line workload of an order set, in the scheduler's own units.
+
+        The pull-forward guard has to measure the same thing the solver and the
+        pre-solver checker do — ``lots * lot_millis`` over FG *and* semi-finished
+        tasks.  Counting only FG orders let a line that was already full of
+        semi-finished work keep absorbing pulled demand.
+        """
+        probe = copy.copy(snapshot)
+        probe.orders = list(orders)
+        hours: Dict[str, float] = defaultdict(float)
+        for task in build_requirement_plan(probe).tasks:
+            hours[task.line] += (task.lots * task.lot_millis) / 1000.0 / 3600.0
+        return hours
+
     # Calculate load of immediate orders
-    line_used_hours: Dict[str, float] = defaultdict(float)
-    for o in immediate_orders:
-        param = snapshot.fg_params.get(o.part_no)
-        if param and param.ct_seconds > 0 and param.trp > 0:
-            hrs = (o.demand_quantity * param.ct_seconds) / (3600.0 * param.trp)
-            line_used_hours[param.line] += hrs
+    line_used_hours: Dict[str, float] = defaultdict(float, _line_load(immediate_orders))
+    selected_orders: List[Any] = list(immediate_orders)
 
     active_parts = set(o.part_no for o in immediate_orders)
     candidates = [o for o in future_orders if o.part_no in active_parts]
@@ -345,11 +359,20 @@ def apply_demand_lookahead(
         if not param:
             continue
         req_hrs = (o.demand_quantity * param.ct_seconds) / (3600.0 * param.trp) if (param.ct_seconds > 0 and param.trp > 0) else 0.0
-        line = param.line
-        cap_limit = line_avail_hours[line] * max_line_utilization
 
-        if line_used_hours[line] + req_hrs <= cap_limit or (line_used_hours[line] == 0):
-            line_used_hours[line] += req_hrs
+        # Judge the pull on the whole resulting plan rather than on this one line's
+        # FG hours: a pulled FG order also drags semi-finished work onto upstream
+        # lines, and the previous "line_used_hours[line] == 0" escape hatch let an
+        # SF-only line (whose FG hours are zero by definition) take unlimited pulls
+        # until it was 125% loaded.
+        trial_hours = _line_load(selected_orders + [o])
+        over_cap = any(
+            hours > line_avail_hours.get(name, calendar_hours) * max_line_utilization + 1e-6
+            for name, hours in trial_hours.items()
+        )
+        if not over_cap:
+            line_used_hours = defaultdict(float, trial_hours)
+            selected_orders.append(o)
             pulled_o = copy.deepcopy(o)
             pulled_o.order_id = f"PULL_{o.order_id}"
             # Adjust due datetime to the end of the horizon window
@@ -2444,6 +2467,7 @@ def run_solver(payload: SolvePayload):
         enforce_material_arrival=enforce_material_arrival,
         enforce_pm_maintenance=enforce_pm_maintenance,
         pm_shifts=pm_shifts_map,
+        pm_schedules=list(getattr(solve_snap, "pm_schedules", []) or []),
         enforce_customer_priority=enforce_customer_priority,
         enforce_weekend_penalty=enforce_weekend_penalty,
         allow_105_utilization_fg=allow_105_fg,
@@ -2507,6 +2531,30 @@ def run_solver(payload: SolvePayload):
         precheck = precheck_capacity(plan, scheduler.shifts)
         line_loads_payload = _line_load_payload(precheck, plan)
         unassigned_parts = _unassigned_parts(plan)
+        # Structured "why is this infeasible" payload: order-level gaps, line
+        # breakdown, data problems, rule bindings and an ingestion self-audit.
+        # The modal is unreadable without it, and a planner cannot act on
+        # "no feasible schedule".
+        diagnosis = None
+        try:
+            diagnosis = build_diagnosis(
+                plan=plan,
+                snapshot=solve_snap,
+                shifts=scheduler.shifts,
+                start_dt=start_dt,
+                shift_hours=topology.shift_hours,
+                enabled_rules=enabled,
+                unassigned_parts=unassigned_parts,
+                pulled_orders=int((lookahead_summary or {}).get("pulled_orders_count") or 0),
+                disabled_templates=(
+                    {r.template_id for r in kernel_rule_set.rules if not r.enabled}
+                    if kernel_rule_set is not None else None
+                ),
+            )
+        except Exception as exc:  # never let diagnostics mask the real error
+            print(f"  [diagnosis] failed: {type(exc).__name__}: {exc}")
+        # INFEASIBLE (proved) vs UNKNOWN (time budget ran out) are different answers.
+        proven = bool(getattr(scheduler, "proven_infeasible", True))
         overloaded_lines = [l for l, s in precheck.line_loads.items() if s.is_overloaded]
         max_rate = max(
             (s.utilization_rate for s in precheck.line_loads.values()), default=0.0
@@ -2529,6 +2577,7 @@ def run_solver(payload: SolvePayload):
                     "bottlenecks": precheck.bottlenecks,
                     "line_loads": line_loads_payload,
                     "unassigned_parts": unassigned_parts,
+                    "diagnosis": diagnosis,
                     "candidate_pruning": getattr(scheduler, "candidate_pruning", {}),
                     "suggestions": [
                         "前拉未来订单或增加需求，把空班填到 95%；",
@@ -2561,6 +2610,7 @@ def run_solver(payload: SolvePayload):
                     ),
                     "bottlenecks": precheck.bottlenecks,
                     "line_loads": line_loads_payload,
+                    "diagnosis": diagnosis,
                     "suggestions": [
                         "在 /rule-sets 将 WL_HC16 的 nature 改为 soft；",
                         "或把 hc16.max_blocks 从 1 放宽到 2，再测试；",
@@ -2568,6 +2618,7 @@ def run_solver(payload: SolvePayload):
                     ],
                 },
             )
+        pulled_count = int((lookahead_summary or {}).get("pulled_orders_count") or 0)
         if overloaded_lines:
             title = f"排产不可行：当前【{cal_mode.value}】工作制下产能超载"
             message = (
@@ -2575,12 +2626,31 @@ def run_solver(payload: SolvePayload):
                 f"{len(scheduler.shifts) * topology.shift_hours:.0f} 小时），"
                 f"{'、'.join(overloaded_lines)} 的订单需求工时超出了理论极限工时，无法在交期前排下所有工单。"
             )
-            suggestions = [
-                f"根据排产规则 R-CL-01..04：当前 {horizon_days} 天订单负荷较重，建议切换为【做六休一】或【做七无休】"
-                f"（7×{topology.shifts_per_day} 连续生产，全量 {horizon_days * topology.shifts_per_day * topology.shift_hours:.0f} 小时产能）；",
-                f"若车间必须执行【做五休二】，建议将计划期切换至【15天扩展计划】，以提供充裕的平准与备料周期；",
-                f"或进入工厂日历工作台，为周末手动点亮 1~2 个开工班次以弥补产能缺口。",
-            ]
+            suggestions = []
+            if cal_mode is not CalendarMode.SEVEN_ZERO:
+                suggestions.append(
+                    f"根据排产规则 R-CL-01..04：当前 {horizon_days} 天订单负荷较重，建议切换为【做六休一】或【做七无休】"
+                    f"（7×{topology.shifts_per_day} 连续生产，全量 {horizon_days * topology.shifts_per_day * topology.shift_hours:.0f} 小时产能）；"
+                )
+            else:
+                suggestions.append(
+                    f"当前已经是【做七无休】7×{topology.shifts_per_day}：{horizon_days} 天的 {len(scheduler.shifts)} 个班次 "
+                    f"（{len(scheduler.shifts) * topology.shift_hours:.0f} 小时）已全部放开，"
+                    "换工作制不会再多出任何产能；要解决只能加班/外协、把起始日期前移，或把部分订单延期。"
+                )
+            if pulled_count:
+                suggestions.append(
+                    f"注意：本次开启了计划期前拉，已把 {pulled_count} 张未来订单提前拉进本期，"
+                    "这部分工时同样要在本期班次里消化。若只想排本期订单，可在站点设置关闭前拉后重排。"
+                )
+            suggestions.append(
+                f"计划期从 {start_dt:%m/%d} 起算：交期落在起始日之后一两天的订单，交期前根本没有足够班次"
+                "（例如交期 11/03 15:00 只放得下 4 个班次 = 32 小时）。把 D+1 起始日期前移 2~3 天，"
+                "往往比换工作制更能解开排产。"
+            )
+            suggestions.append(
+                "或进入工厂日历工作台，为周末/夜班手动点亮更多开工班次，或允许部分班次 105% 上浮以换取可行解。"
+            )
         else:
             # No line is over 100%: calling this "capacity overload" contradicts the
             # table shown right below.  The infeasibility comes from the combination
@@ -2592,6 +2662,19 @@ def run_solver(payload: SolvePayload):
                 f"（最高负荷率 {max_rate * 100:.1f}%），所以不是总工时不足。"
                 "求解器是在规则集允许的口径内（95% 班次利用率、交期、换模/模具、工装占用等硬约束的组合）找不到可行解。"
             )
+            if diagnosis:
+                title = f"排产不可行：{diagnosis['primary_cause']}"
+                message = diagnosis["headline"] + " " + message
+            if not proven:
+                title = "排产未完成：求解超时（尚未证明无解）"
+                message = (
+                    "求解器在本次时限内既没有找到可行解，也没有证明无解——"
+                    "这通常意味着约束组合把可行域切得很碎、搜索空间很大，而不是数据本身互相矛盾。"
+                    "先把时间上限调大（例如 300 秒）或缩小规模（关闭前拉、缩短计划期）再试；"
+                    "如果仍然超时，再用『规则体检』逐条放宽定位。"
+                    "下方『订单缺口』『产线明细』是真实计算值，可以作为分析的起点，但不要把它们当成"
+                    "“已证明排不出来”的结论。"
+                )
             if unassigned_parts:
                 message += (
                     f"另外，{'、'.join(unassigned_parts)} 没有配置产线"
@@ -2599,18 +2682,38 @@ def run_solver(payload: SolvePayload):
                     "这些任务被归入“（未分配产线）”，排产结果无法对应到车间实际产线。"
                 )
             suggestions = []
+            if diagnosis:
+                gap_rows = [r for r in diagnosis["order_gaps"] if r["gap_hours"] > 0.05]
+                if gap_rows:
+                    worst = max(gap_rows, key=lambda r: r["gap_hours"])
+                    suggestions.append(
+                        f"先把交期改到能做完的时间：{worst['order_id']} 最快 {worst['earliest_finish']} 才能完工"
+                        f"（差 {worst['late_hours']:.0f}h），或加班/外协补 {worst['gap_hours']:.1f}h。"
+                    )
+                if diagnosis["summary"]["overloaded_lines"]:
+                    suggestions.append(
+                        "超载产线（" + "、".join(diagnosis["summary"]["overloaded_lines"])
+                        + "）要么加开产能/外协，要么把部分订单挪到其他线或延后。"
+                    )
             if unassigned_parts:
                 suggestions.append(
                     "先在『④ 输入与主数据管理 → 工艺路线』为 "
                     + "、".join(unassigned_parts)
                     + " 补上『主候选线』（以及 CT/人数），再重新排产；"
                 )
-            suggestions.extend(
-                [
-                    "检查 95% 班次利用率是否为硬约束：若业务接受，改 soft 或允许“硬 95% 失败时软回退”；",
-                    f"缩短或调整计划期（当前 {horizon_days} 天 / {len(scheduler.shifts)} 班），让班次数量与交期更匹配；",
-                    "检查模具/换模矩阵/工装占用等硬约束是否相互冲突（可先临时关闭相关规则定位）。",
-                ]
+            if pulled_count:
+                suggestions.append(
+                    f"本次前拉提前拉入了 {pulled_count} 张未来订单，若不需要跨期预产，可在站点设置关闭前拉后重排。"
+                )
+            suggestions.append(
+                "想做归因实验：先允许延期（把交期改成软约束）排一版，再逐条恢复硬规则，"
+                "第一个让结果变无解的规则就是真正的卡点；界面上方『规则体检』已标出可疑项。"
+            )
+        if not proven:
+            suggestions.insert(
+                0,
+                "把求解时间上限调大（例如 300 秒）后重试——本次是搜索时间不够，"
+                "CP-SAT 既没找到解也没证明无解，不能当成“数据不可行”。",
             )
         raise HTTPException(
             status_code=400,
@@ -2623,10 +2726,12 @@ def run_solver(payload: SolvePayload):
                 "total_hours": len(scheduler.shifts) * topology.shift_hours,
                 "max_utilization_rate": round(max_rate * 100, 1),
                 "has_line_overload": bool(overloaded_lines),
+                "proven_infeasible": proven,
                 "message": message,
                 "bottlenecks": precheck.bottlenecks,
                 "line_loads": line_loads_payload,
                 "unassigned_parts": unassigned_parts,
+                "diagnosis": diagnosis,
                 "suggestions": suggestions,
             },
         )
@@ -3762,6 +3867,16 @@ def video_page():
     return "<h1>APS Storyboard Video Not Found</h1>"
 
 
+@app.get("/video-3d", response_class=HTMLResponse)
+@app.get("/3d", response_class=HTMLResponse)
+def video_3d_page():
+    video_file = os.path.join(STATIC_DIR, "storyboard_3d.html")
+    if os.path.exists(video_file):
+        with open(video_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>APS 3D Storyboard Not Found</h1>"
+
+
 @app.get("/lifecycle", response_class=HTMLResponse)
 @app.get("/roadmap", response_class=HTMLResponse)
 def lifecycle_page():
@@ -3778,4 +3893,5 @@ def favicon():
     if os.path.exists(fav_file):
         return FileResponse(fav_file, media_type="image/png")
     return HTMLResponse("", status_code=404)
+
 

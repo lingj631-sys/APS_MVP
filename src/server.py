@@ -10,6 +10,7 @@ Provides REST APIs for:
 """
 import copy
 import json
+import logging
 import os
 import shutil
 import sys
@@ -56,6 +57,7 @@ from src.master_rows import (
 from src.master_schema import REQUIRED_SHEET_KEYS, SHEET_BY_KEY, resolve_sheet, validate_workbook
 from src.exporter import export_production_plan, export_validation_matrix_excel, append_deferred_orders
 from src.kernel.rule_mapping import describe_legacy_rule
+from src.kernel.trace import log_rule_set, rule_logger
 from src.inventory_policy import load_inventory_policy, project_inventory
 from src.labor import load_labor_data
 from src.campaign import load_campaign_families
@@ -89,6 +91,26 @@ from src.validator import validate_schedule, diagnose_empty_shifts
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+
+
+def _configure_rule_logging() -> None:
+    """Trace which rule-set parameters reach the solver (see data/logs/rule_trace.log)."""
+    logger = rule_logger()
+    if logger.handlers:
+        return
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    log_dir = os.path.join(DATA_DIR, "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    file_handler = logging.FileHandler(
+        os.path.join(log_dir, "rule_trace.log"), encoding="utf-8"
+    )
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(file_handler)
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(console)
+
 
 def uploaded_source_path(site: str) -> str:
     return os.path.join(UPLOAD_DIR, f"current_{site}.xlsx")
@@ -584,6 +606,7 @@ def generate_calendar_view(
 
 # Initialize snapshot state
 def init_app_state():
+    _configure_rule_logging()
     try:
         session_state["snapshot"] = get_fresh_snapshot(SITE)
         session_state["plan"] = build_requirement_plan(session_state["snapshot"])
@@ -2134,10 +2157,11 @@ def run_solver(payload: SolvePayload):
 
     kernel_rule_set = None
     kernel_templates = set()
+    rule_log = rule_logger()
     if payload.use_rule_set:
         kernel_rule_set, rule_warnings = rule_set_service.active_rule_set(payload.site.upper())
         for warning in rule_warnings:
-            print(f"  [rules] {warning}")
+            rule_log.warning("[rule-set] %s", warning)
         if kernel_rule_set is not None:
             from src.kernel.registry import IMPLEMENTED_TEMPLATES
 
@@ -2146,10 +2170,20 @@ def run_solver(payload: SolvePayload):
                 for rule in kernel_rule_set.rules
                 if rule.enabled and rule.template_id in IMPLEMENTED_TEMPLATES
             }
-            print(
-                f"[rules] using {kernel_rule_set.rule_set_id} v{kernel_rule_set.version} "
-                f"({len(kernel_rule_set.rules)} rules, kernel templates: {sorted(kernel_templates)})"
+            log_rule_set(kernel_rule_set, rule_log)
+            rule_log.info(
+                "[rule-set] kernel templates enabled: %s", sorted(kernel_templates)
             )
+        else:
+            rule_log.warning(
+                "[rule-set] use_rule_set=true but site=%s has no active rule set",
+                payload.site.upper(),
+            )
+    else:
+        rule_log.info(
+            "[rule-set] V2 disabled for this solve (use_rule_set=false); "
+            "only legacy rule checkboxes apply"
+        )
 
     labor_data = load_labor_data(DATA_DIR, site=payload.site.upper())
     for warning in labor_data.warnings:
@@ -2363,6 +2397,11 @@ def run_solver(payload: SolvePayload):
         if payload.inventory_policy_enabled is not None
         else site_settings_store.get(payload.site.upper(), {}).get("inventory_policy_enabled", False)
     )
+    inventory_hard_enabled = (
+        payload.inventory_hard_enabled
+        if payload.inventory_hard_enabled is not None
+        else site_settings_store.get(payload.site.upper(), {}).get("inventory_hard_enabled", False)
+    )
     inventory_policies = (
         (inventory_policy_from_rows(workbook_masters.get("inventory_policy"), payload.site.upper())
          or load_inventory_policy(os.path.join(DATA_DIR, "master", "Inventory-Policy.csv"),
@@ -2412,6 +2451,68 @@ def run_solver(payload: SolvePayload):
         )
         if campaign_batching_enabled else []
     )
+    rule_log.info(
+        "[solve] site=%s horizon=%sd start=%s calendar=%s shift=%sx%sh tasks=%d orders=%d "
+        "legacy_rules=%d use_rule_set=%s kernel_templates=%s",
+        payload.site.upper(),
+        horizon_days,
+        start_dt.isoformat(),
+        cal_mode.value,
+        topology.shifts_per_day,
+        topology.shift_hours,
+        len(plan.tasks),
+        len(getattr(snap, "orders", [])),
+        len(enabled),
+        payload.use_rule_set,
+        sorted(kernel_templates),
+    )
+    rule_log.info(
+        "[gates] utilization95=%s on_time_delivery=%s concurrency=%s mpq_batch=%s "
+        "material_balance=%s sequential_pulling=%s freeze_window=%s tooling=%s "
+        "material_arrival=%s pm=%s customer_priority=%s weekend=%s controlled_window=%s "
+        "price_changeovers=%s",
+        enforce_utilization_95,
+        enforce_on_time_delivery,
+        enforce_concurrency_limit,
+        enforce_mpq_batch,
+        enforce_material_balance,
+        enforce_sequential_pulling,
+        enforce_freeze_window,
+        enforce_tooling_exclusivity,
+        enforce_material_arrival,
+        enforce_pm_maintenance,
+        enforce_customer_priority,
+        enforce_weekend_penalty,
+        enforce_controlled_window,
+        ("R-FG-06" in enabled or "R-FG-13" in enabled or "R-WL-11" in enabled
+         or "R-WL-14" in enabled or "R-SY-05" in enabled),
+    )
+    rule_log.info(
+        "[gates] optional features: jitter=%s hc16_lite=%s labor_smooth=%s sc08=%s "
+        "campaign_batching=%s campaign=%s slack_fallback=%s d1_clock=%s d1_hard=%s "
+        "c4_whole_batch=%s sf_mpq_tail=%s pull=%s shift_consolidation=%s "
+        "setup_matrix_strict=%s inventory=%s inventory_hard=%s leadtime=%s "
+        "routing_assign=%s routing_in_model=%s",
+        jitter_enabled,
+        hc16_lite_enabled,
+        labor_smoothing_enabled,
+        sc08_enabled,
+        campaign_batching_enabled,
+        campaign_enabled,
+        slack_fallback_enabled,
+        d1_clock_enabled,
+        d1_clock_hard_enabled,
+        c4_whole_batch_enabled,
+        sf_mpq_tail_enabled,
+        pull_enabled,
+        shift_consolidation_enabled,
+        setup_matrix_strict_enabled,
+        inventory_enabled,
+        inventory_hard_enabled,
+        leadtime_enabled,
+        routing_enabled,
+        routing_in_model,
+    )
     scheduler = APSScheduler(
         plan=plan,
         start_datetime=start_dt,
@@ -2458,11 +2559,7 @@ def run_solver(payload: SolvePayload):
             else site_settings_store.get(payload.site.upper(), {}).get("setup_technicians_available", 0)
         ),
         inventory_policies=inventory_policies,
-        inventory_hard=bool(
-            payload.inventory_hard_enabled
-            if payload.inventory_hard_enabled is not None
-            else site_settings_store.get(payload.site.upper(), {}).get("inventory_hard_enabled", False)
-        ),
+        inventory_hard=bool(inventory_hard_enabled),
         operation_lead_times=operation_lead_times,
         setup_matrix=setup_matrix_from_rows(workbook_masters.get("setup_matrix"), payload.site.upper()),
         campaign_families=campaign_families,

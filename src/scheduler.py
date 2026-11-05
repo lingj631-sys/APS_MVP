@@ -24,6 +24,7 @@ tries the constraints in the order the business ranks them: utilisation and
 delivery both hard, then delivery hard with utilisation penalised, then delivery
 itself penalised. The validator reports whichever violations survive.
 """
+import json
 import math
 import os
 import time
@@ -1164,6 +1165,7 @@ class APSScheduler:
         return windows
 
     def _build_model(self, utilization_mode: str, hard_due: bool, gap_cap=None, use_kernel: bool = True):
+        self._kernel_build_log: List[Dict[str, Any]] = []
         self._compute_hc14_exemptions()
         self._validate_setup_matrix_edges()
         model = cp_model.CpModel()
@@ -1624,7 +1626,59 @@ class APSScheduler:
             group_terms["G3_CHANGEOVER"].append(campaign_run_penalty)
         all_terms = [term for group in group_terms.values() for term in group]
         model.Minimize(sum(all_terms))
+        self._log_kernel_build(utilization_mode, hard_due, price_changeovers, use_kernel)
         return model, x, {"open": opening, "tail": tails, "load": loads, "group_terms": group_terms}
+
+    def _log_kernel_build(
+        self,
+        utilization_mode: str,
+        hard_due: bool,
+        price_changeovers: bool,
+        use_kernel: bool = True,
+    ) -> None:
+        """Report which enabled kernel templates the model actually compiled."""
+        from src.kernel.trace import rule_logger
+
+        logger = rule_logger()
+        applied = {entry["template"] for entry in getattr(self, "_kernel_build_log", [])}
+        enabled = sorted(self.kernel_templates) if self.rule_set is not None else []
+        if not use_kernel:
+            logger.info(
+                "[kernel] build mode=%s hard_due=%s kernel=disabled (legacy-only model), "
+                "enabled templates=%s",
+                utilization_mode,
+                hard_due,
+                enabled or "-",
+            )
+            return
+        gates = {
+            "min_batch": self.enforce_mpq_batch,
+            "material_balance": self.enforce_material_balance,
+            "sequence": self.enforce_sequential_pulling and not self.assign_in_model,
+            "tooling_exclusivity": self.enforce_tooling_exclusivity,
+            "material_ready": self.enforce_material_arrival,
+            "pm_block": (
+                self.enforce_pm_maintenance and bool(self.pm_shifts) and not self.assign_in_model
+            ),
+            "due_date": hard_due,
+            "changeover": price_changeovers,
+            "customer_priority": not hard_due and self.enforce_customer_priority,
+            "capacity_utilization": utilization_mode == "hard" and not self.assign_in_model,
+        }
+        lines = []
+        for template in enabled:
+            if template in applied:
+                lines.append(f"{template}=COMPILED")
+            else:
+                lines.append(f"{template}=SKIPPED(gate={gates.get(template, '?')})")
+        logger.info(
+            "[kernel] build mode=%s hard_due=%s applied=%d/%d %s",
+            utilization_mode,
+            hard_due,
+            len(applied),
+            len(enabled),
+            ", ".join(lines) or "no kernel templates enabled",
+        )
 
     def _violation_weight(self) -> int:
         """One slot below 95% costs more than every deficit that could pay for it."""
@@ -1803,7 +1857,39 @@ class APSScheduler:
             self, model, x, active, started, end_of, opening, tails, loads, cumulative
         )
         compiled = compile_rules(context, derived)
+        rule_ids = [rule.rule_id for rule in rules]
+        getattr(self, "_kernel_build_log", []).append(
+            {
+                "template": template_id,
+                "rules": rule_ids,
+                "force_hard": force_hard,
+                "hard_rules": list(compiled.hard_rules),
+                "params": compiled.params,
+                "penalty_terms": len(compiled.book.terms),
+                "warnings": list(compiled.warnings),
+            }
+        )
+        from src.kernel.trace import rule_logger
+
+        logger = rule_logger()
+        logger.info(
+            "[kernel] compile template=%s rules=%s force_hard=%s hard=%s penalty_terms=%d warnings=%d",
+            template_id,
+            rule_ids,
+            force_hard,
+            compiled.hard_rules or "-",
+            len(compiled.book.terms),
+            len(compiled.warnings),
+        )
+        for rule_id, params in compiled.params.items():
+            logger.info(
+                "[kernel]   %s template=%s params=%s",
+                rule_id,
+                template_id,
+                json.dumps(params, ensure_ascii=False, sort_keys=True),
+            )
         for warning in compiled.warnings:
+            logger.warning("[kernel]   %s: %s", template_id, warning)
             print(f"  [kernel] {warning}")
         return compiled
 

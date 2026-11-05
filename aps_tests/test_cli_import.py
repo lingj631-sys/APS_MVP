@@ -51,7 +51,7 @@ class TestParser(unittest.TestCase):
         parser = build_parser()
         choices = parser._subparsers._group_actions[0].choices
         self.assertEqual(
-            {"template", "import", "verify-template", "show", "dataset", "solve"}, set(choices)
+            {"template", "import", "verify-template", "show", "dataset", "solve", "web"}, set(choices)
         )
 
     def test_missing_command_exits_2(self):

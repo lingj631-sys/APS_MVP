@@ -207,6 +207,15 @@ def _cmd_solve(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_web(args: argparse.Namespace) -> int:
+    import uvicorn
+    from aps.web.server import create_app
+    app = create_app()
+    print(f"APS 2.0 智能决策看板服务已启动: http://{args.host}:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port)
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aps", description="APS 排产系统（Excel → SQLite → DataSet → CP-SAT Solver → Excel）"
@@ -265,6 +274,11 @@ def build_parser() -> argparse.ArgumentParser:
     solve.add_argument("--calendar-mode", default="CONTINUOUS", help="四档工作制模式")
     solve.add_argument("--reload", action="store_true", help="强制从 --workbook 重新导入覆盖数据库")
     solve.set_defaults(handler=_cmd_solve)
+
+    web = sub.add_parser("web", help="启动 APS 2.0 Web 决策工作台")
+    web.add_argument("--host", default="0.0.0.0", help="监听地址")
+    web.add_argument("--port", type=int, default=8000, help="监听端口")
+    web.set_defaults(handler=_cmd_web)
 
     return parser
 

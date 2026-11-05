@@ -25,6 +25,8 @@ htmlcov/
 # Temporary directories & databases
 .superpowers/
 *.db
+data/*.xlsx
+!data/.gitkeep
 
 # Logs & Environment
 *.log

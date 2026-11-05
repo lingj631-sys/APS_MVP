@@ -162,6 +162,14 @@
 
 「填写说明 Instructions」不参与排产，不建实体。
 
+**Stage A 实施期修订（2026-11-05）**：
+
+- **A-1**：`initial_stock` 主键实测修订为 `(site_code, pn, material_type)`。原 `(site_code, pn)` 会让同一 PN 的 COMP / PACK 库存互相覆盖——V2 模板实测 87 个 PN 重复且同物料类型，其中 81 个数量不同。`dup_policy = sum`：同 PK 重复行数量求和并 warn，warn 消息列出原始 Excel 行号。
+- **A-2**：登记表实体数 19 → **23**。§3.5 的 4 张 V3 新 sheet（`班次人力可用性`、`产品配对关系`、`工作日历`、`换模技术员`）也必须登记，因为登记表是 DDL 生成器与 V3 模板生成器的唯一输入。它们 `sheet_required = False`：V2 工作簿缺这些 sheet 合法，结构门只 warn。
+- **A-3**：`mold` 与 `tooling_mold` 共用 `工装模具约束 Tooling-Mold`。实测该表 16 行有效数据、`(mold_id, line_code)` 唯一，即同一模具可跨多行（每行一条适用产线）。`tooling_mold` 按行照收；`mold` 维度实体按 `(site_code, mold_id)` 去重，`dup_policy = dedupe`。
+- **A-4**：`FieldSpec` 增加字段级 `parser` 声明，取值限 `("enum_code", "stage", "shift_index")`；`parser` 为空而 `enum_codes` 非空时隐式为 `"enum_code"`。落地实测的三类解析陷阱：`物料类型`/`阶段` 两套词表不一致（`FING`/`SFIN` vs `FG`/`SFIN`）、`预计入库班次` 值为 `'早班'`、`战略评级`/`工单处置策略` 为「中文标签 + 括号代码」。类型门按 `resolved_parser` 分派，不按字段名硬编码分支。
+- **A-5**：`FieldSpec` 增加 `fk_optional: bool = False`。为 `True` 时参照门把该外键的违规降级为 `warning` 而非 `error`。仅 `bom.child_pn` 一处使用——实测全工作簿唯一孤儿引用是 BOM 子件 `NCICLABEL01`，按 error 处理会让真实 WL 工作簿永远过不了 L1 门。
+
 Excel 适配器负责 15 表 → 19 实体的映射，**表头驱动定位列**（列序可自由调整），每个单元格错误带 `sheet / row / column / 原值` 定位。
 
 ### 3.2 冲突裁决表（写死，不留给实施者猜）
@@ -255,6 +263,11 @@ Repository 端口只暴露四个方法：`list_by(entity, **filters)` · `get_by
 | **参照门** | 主外键完整性：`pn ∈ part` · `line_code ∈ line` · `mold_id ∈ mold` · `family_code ∈ product_family` · `demand_date ∈ horizon` | `error` |
 | **业务门** | 取值域（`MPQ > 0` · `CT > 0` · `TRP ∈ (0,1]` · `报废率 ∈ [0,1)` · `安全库存 ≥ 0` · `valid_from < valid_to`）+ §3.2 冲突裁决表的一致性检查 | 取值域 → `error`；冲突 → `warn` |
 
+**Stage A 实施期修订（2026-11-05）**：
+
+- **A-6**：参照门**不检查** `demand_date ∈ horizon`。实测 V2 需求宽表跨 34 个日期列（2026-11-03 ~ 2026-12-06）共 257 个正数 `(PN, date)` 对，落在 10 天窗口内的只有 10 列 / 94 对。按窗口报错会让业务每填一张 30 天需求表就被 163 条 error 淹没。窗口过滤是 `DataSet` 层的职责；参照门只检查 `pn ∈ part`。
+- **A-7**：§3.2 的「单班工时 / 每天班次数两值不一致报 warn」**删除**。V2 模板的 `Parameters-FG` 已删掉 `产线` 列（§3.3），一行 FG 参数无法归属到任何产线，两值无从配对。落地为这两列完全不读取。§3.2 其余裁决保留。
+
 校验返回 `ValidationReport{errors, warnings, gaps}`。**校验不抛裸异常。** `errors` 阻止入库；`warnings` / `gaps` 照常入库，但会出现在绑定报告里。
 
 这是"数据问题可见但不致命"的关键——旧系统在这里要么静默吞掉要么整体崩。
@@ -340,6 +353,11 @@ CP-SAT 约束不是同质的。「方便新增规则」必须分档谈，任何�
 - 「工作日历」sheet 填了就以它为准，`calendar_mode` 与其推导结果冲突时报 `warn`（G28）。
 - `rules.<id>.enabled = false` 必须允许带 `reason` 字符串，绑定报告原样输出。
 - 策略文件是**数据不是代码**，用 git 管版本（§2 非目标：不做版本库）。
+
+**Stage A 实施期修订（2026-11-05）**：
+
+- **A-8 休息日锚定**：policy 只声明 `calendar_mode`，未规定休息日落在星期几。裁决为 **ISO 周前缀工作制**——一周从周一起，工作前 N 天、休息其余：`CONTINUOUS` 无休；`6ON1OFF` 休周日；`5ON2OFF` 休周六周日；`4ON3OFF` 休周五周六周日。该规则与现行 WL「做五休二 = 周末双休」语义一致，且完全确定、无需额外锚点参数。
+- 班次窗口公式双工厂通用：`start = combine(work_date, 00:00) + timedelta(hours=DAY_START_HOUR + i × shift_hours)`，`DAY_START_HOUR = 7`。WL（8h×3）得 07/15/23 三班，SY38（12h×2）得 07/19 两班，同一份代码。
 
 ### 5.3 B 档 —— 指标注册表
 

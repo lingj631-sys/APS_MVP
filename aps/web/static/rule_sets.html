@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>规则方案编辑器 · APS</title>
+  <style>
+    :root {
+      --ink: #14213d;
+      --muted: #64748b;
+      --line: #e3e8f2;
+      --line-strong: #cfd8e8;
+      --brand: #2456d8;
+      --brand-soft: #eef3ff;
+      --green: #0f8a5f;
+      --green-soft: #e9f8f1;
+      --amber: #b45309;
+      --amber-soft: #fff7e8;
+      --red: #b42318;
+      --red-soft: #fef3f2;
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --shadow: 0 10px 26px rgba(20, 33, 61, 0.06);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      font-size: 13px;
+    }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    a { color: var(--brand); text-decoration: none; }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 30;
+      background: rgba(255,255,255,.94); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+    .brand-mark {
+      width: 32px; height: 32px; border-radius: 9px;
+      background: linear-gradient(135deg, #14213d, #2456d8);
+      color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+      letter-spacing: .02em;
+    }
+    .brand h1 { font-size: 15px; margin: 0; letter-spacing: .01em; }
+    .brand p { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .btn {
+      border: 1px solid var(--line-strong); background: #fff; border-radius: 8px;
+      padding: 8px 12px; display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500; transition: .15s ease;
+    }
+    .btn:hover { border-color: #aebbd3; background: #fbfcff; }
+    .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .btn.primary:hover { background: #1c48bd; }
+    .btn.green { background: var(--green); border-color: var(--green); color: #fff; }
+    .btn.green:hover { background: #0c7551; }
+    .btn.ghost { background: transparent; border-color: transparent; color: var(--brand); }
+    .btn.ghost:hover { background: var(--brand-soft); }
+    .btn.danger { color: var(--red); border-color: #f2c7c2; background: var(--red-soft); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn.small { padding: 5px 9px; font-size: 11px; border-radius: 7px; }
+
+    select, input[type=text], input[type=number], input[type=date], input[type=time], textarea {
+      border: 1px solid var(--line-strong); border-radius: 8px; background: #fff;
+      padding: 8px 10px; font-size: 12px; outline: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(36,86,216,.12); }
+    input[type=number] { width: 110px; }
+
+    .shell { max-width: min(1920px, 96vw); margin: 0 auto; padding: 14px 20px 32px; }
+    .summary-strip {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 14px; color: var(--muted); font-size: 12px;
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--line); background: #fff; border-radius: 999px;
+      padding: 5px 10px; font-size: 11px; color: #475569;
+    }
+    .chip strong { color: var(--ink); font-weight: 600; }
+    .chip.hard { border-color: #f4d3ad; background: var(--amber-soft); color: var(--amber); }
+    .chip.soft { border-color: #c9d8ff; background: var(--brand-soft); color: #1e40af; }
+    .chip.dirty { border-color: #f6c66b; background: #fffaeb; color: #92400e; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; }
+    .dot.on { background: var(--green); }
+
+    .version-note-bar { display: flex; align-items: center; gap: 8px; margin: -4px 0 12px; color: var(--muted); font-size: 11.5px; flex-wrap: wrap; }
+    .version-note-bar strong { color: #475569; font-weight: 600; }
+    .version-note-bar .note-text { color: #475569; }
+    .note-edit { border: 0; background: transparent; color: var(--brand); font-size: 11px; padding: 2px 4px; border-radius: 5px; }
+    .note-edit:hover { background: var(--brand-soft); }
+
+    .trial-config { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .trial-config label { display: block; font-size: 10.5px; color: var(--muted); margin-bottom: 4px; }
+    .trial-config select { width: 100%; }
+
+    .version-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+    .version-row .v-name { font-weight: 650; font-size: 12px; white-space: nowrap; }
+    .version-row .v-note { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .version-row .v-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .workspace { display: grid; grid-template-columns: clamp(300px, 23vw, 400px) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .panel-head h2 { margin: 0; font-size: 13px; font-weight: 650; }
+    .panel-head .hint { color: var(--muted); font-size: 11px; }
+
+    .list-panel { position: sticky; top: 68px; max-height: calc(100vh - 86px); display: flex; flex-direction: column; overflow: hidden; }
+    .list-tools { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+    .list-tools input[type=text] { flex: 1; min-width: 0; }
+    .only-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .rule-list { overflow: auto; padding: 8px; }
+    .group { margin-bottom: 10px; }
+    .group-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 8px; color: #475569; font-size: 11px; font-weight: 650; letter-spacing: .02em;
+    }
+    .group-head .count { color: var(--muted); font-weight: 400; }
+    .group-head .group-toggle { margin-left: auto; border: 0; background: transparent; color: var(--brand); font-size: 10px; padding: 2px 4px; }
+    .rule-item {
+      width: 100%; text-align: left; border: 1px solid transparent; background: transparent;
+      border-radius: 10px; padding: 10px 10px 9px 12px; display: block; position: relative;
+      border-left: 3px solid transparent; transition: .12s ease;
+    }
+    .rule-item:hover { background: #f8faff; }
+    .rule-item.selected { background: var(--brand-soft); border-color: #d9e4ff; border-left-color: var(--brand); }
+    .rule-item.off { opacity: .58; }
+    .rule-title-row { display: flex; align-items: flex-start; gap: 8px; }
+    .rule-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rule-summary { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .rule-tags { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 58%; flex-shrink: 0; }
+    .tag { font-size: 9.5px; border-radius: 5px; padding: 2px 5px; border: 1px solid var(--line); color: var(--muted); background: #fafbfe; }
+    .tag.hard { color: var(--amber); border-color: #f2d2aa; background: var(--amber-soft); }
+    .tag.soft { color: #1e40af; border-color: #c9d8ff; background: var(--brand-soft); }
+    .tag.changed { color: #92400e; border-color: #f6c66b; background: #fffaeb; }
+    .tag.muted { color: #94a3b8; }
+
+    .detail-panel { min-height: calc(100vh - 160px); display: flex; flex-direction: column; }
+    .detail-empty { padding: 60px 24px; text-align: center; color: var(--muted); }
+    .detail-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 14px; align-items: flex-start; }
+    .detail-head h2 { margin: 0; font-size: 18px; letter-spacing: .01em; }
+    .detail-head .rule-desc { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .detail-head .rule-code { margin-top: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; color: #94a3b8; }
+    .switch-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .switch { position: relative; width: 40px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch span { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; transition: .18s; }
+    .switch span::after { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .18s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+    .switch input:checked + span { background: var(--green); }
+    .switch input:checked + span::after { transform: translateX(18px); }
+
+    .detail-body { padding: 18px 22px 26px; flex: 1; }
+    .section { margin-bottom: 22px; }
+    .section-title { font-size: 11px; font-weight: 650; color: #475569; letter-spacing: .04em; margin-bottom: 10px; }
+    .segmented { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 9px; overflow: hidden; background: #fff; }
+    .segmented button { border: 0; background: transparent; padding: 8px 14px; font-size: 12px; color: var(--muted); border-right: 1px solid var(--line); }
+    .segmented button:last-child { border-right: 0; }
+    .segmented button.active { background: var(--brand-soft); color: var(--brand); font-weight: 650; }
+    .segmented button.active[data-nature=soft] { background: #f0f4ff; color: #1e40af; }
+    .help { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px; }
+
+    .param-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+    .field { min-width: 0; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { display: block; font-size: 11.5px; color: #475569; margin-bottom: 6px; font-weight: 550; }
+    .field .unit { color: var(--muted); font-weight: 400; margin-left: 4px; }
+    .field .field-help { color: #94a3b8; font-size: 10.5px; margin-top: 4px; line-height: 1.45; }
+    .field input[type=text], .field select, .field input[type=number], .field input[type=date] { width: 100%; }
+    .inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .inline input[type=range] { flex: 1; min-width: 120px; accent-color: var(--brand); }
+    .tier-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .tier-grid label { margin-bottom: 2px; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+
+    details.advanced { border: 1px solid var(--line); border-radius: 10px; background: #fbfcff; }
+    details.advanced > summary { cursor: pointer; padding: 12px 14px; font-size: 12px; font-weight: 600; color: #475569; list-style: none; display: flex; align-items: center; gap: 6px; }
+    details.advanced > summary::-webkit-details-marker { display: none; }
+    details.advanced > summary::before { content: "▸"; color: #94a3b8; transition: .15s; }
+    details.advanced[open] > summary::before { transform: rotate(90deg); }
+    .advanced-body { padding: 4px 14px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
+    .advanced-body .field.full { grid-column: 1 / -1; }
+    .tech-box { background: #0f172a; color: #dbe4f5; border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; line-height: 1.55; overflow: auto; max-height: 180px; white-space: pre-wrap; }
+
+    .detail-foot { border-top: 1px solid var(--line); padding: 12px 22px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fcfdff; border-radius: 0 0 14px 14px; }
+    .dirty-text { color: #92400e; font-size: 11px; }
+    .dirty-text.clean { color: var(--muted); }
+
+    .empty { padding: 54px 20px; text-align: center; color: var(--muted); }
+    .empty strong { display: block; color: var(--ink); font-size: 14px; margin-bottom: 6px; }
+
+    .overlay { position: fixed; inset: 0; z-index: 60; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 20px; }
+    .modal { background: #fff; border-radius: 16px; box-shadow: 0 30px 70px rgba(15,23,42,.28); width: min(720px, 96vw); max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal.small { width: min(520px, 96vw); }
+    .modal-head { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+    .modal-head h3 { margin: 0; font-size: 15px; }
+    .modal-head .sub { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .modal-body { padding: 18px 22px; overflow: auto; }
+    .modal-foot { padding: 14px 22px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: #fbfcff; }
+    .x-btn { margin-left: auto; border: 0; background: transparent; font-size: 20px; line-height: 1; color: #94a3b8; padding: 2px 6px; border-radius: 6px; }
+    .x-btn:hover { background: #f1f5f9; color: var(--ink); }
+
+    .change-list { display: flex; flex-direction: column; gap: 10px; }
+    .change-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fbfcff; }
+    .change-item .name { font-weight: 650; font-size: 12px; }
+    .change-item ul { margin: 6px 0 0; padding-left: 18px; color: #475569; font-size: 11.5px; line-height: 1.6; }
+    .change-item li::marker { color: var(--brand); }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .kpi { border: 1px solid var(--line); border-radius: 11px; padding: 12px; background: #fbfcff; }
+    .kpi .k { color: var(--muted); font-size: 10.5px; }
+    .kpi .v { margin-top: 5px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+    .kpi .v small { font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+    .kpi.warn { border-color: #f6c66b; background: #fffaeb; }
+    .kpi.bad { border-color: #f2c7c2; background: var(--red-soft); }
+    .kpi.good { border-color: #bfe8d7; background: var(--green-soft); }
+    .trial-note { color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 12px; }
+    .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #dbe4ff; border-top-color: var(--brand); animation: spin .8s linear infinite; margin: 10px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .trial-wait { text-align: center; padding: 26px 10px; color: var(--muted); font-size: 12px; }
+    .trial-wait strong { color: var(--ink); display: block; margin-bottom: 6px; font-size: 13px; }
+
+    .catalog { display: flex; flex-direction: column; gap: 14px; }
+    .catalog-group h4 { margin: 0 0 6px; font-size: 11px; color: #475569; letter-spacing: .03em; }
+    .catalog-item { width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 9px 11px; margin-bottom: 6px; }
+    .catalog-item:hover { border-color: #b9cbff; background: #f8faff; }
+    .catalog-item .t { font-weight: 650; font-size: 12px; }
+    .catalog-item .d { color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.45; }
+
+    .toast { position: fixed; right: 22px; bottom: 22px; z-index: 90; background: #14213d; color: #fff; border-radius: 10px; padding: 11px 14px; font-size: 12px; box-shadow: 0 12px 30px rgba(15,23,42,.3); opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; max-width: 360px; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: #7f1d1d; }
+
+    .menu { position: relative; }
+    .menu > summary { list-style: none; }
+    .menu > summary::-webkit-details-marker { display: none; }
+    .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 190px; display: flex; flex-direction: column; }
+    .menu-pop button { text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 7px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .menu-pop button:hover { background: var(--brand-soft); }
+
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 1fr; }
+      .list-panel { position: static; max-height: 46vh; }
+      .detail-panel { min-height: auto; }
+      .advanced-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .param-grid, .kpi-grid, .trial-config { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">APS</div>
+    <div>
+      <h1>规则方案编辑器</h1>
+      <p>用业务语言调整排产规则，保存后生成新版本</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <select id="siteSelect" title="工厂">
+      <option value="WL">温岭 · WE34</option>
+      <option value="SY38">沈阳 · SY38</option>
+    </select>
+    <select id="versionSelect" title="版本" style="min-width: 180px;"></select>
+    <span id="statusPill" class="chip">—</span>
+    <button class="btn" id="trialBtn">试算此方案</button>
+    <button class="btn primary" id="saveCurrentBtn" title="覆盖当前版本（历史版本不可覆盖）">保存当前版本</button>
+    <button class="btn" id="saveNewBtn">另存为新版本</button>
+    <button class="btn green" id="activateBtn">设为当前方案</button>
+    <details class="menu">
+      <summary class="btn">更多 ▾</summary>
+      <div class="menu-pop">
+        <button id="refreshBtn">刷新页面数据</button>
+        <button id="addRuleBtn">＋ 添加规则</button>
+        <button id="versionManagerBtn">版本管理与说明</button>
+        <button id="templateBtn">下载 Excel 模板</button>
+        <button id="importBtn">导入 Excel</button>
+        <button id="exportBtn">导出当前版本</button>
+        <button id="diagnoseBtn">检查方案冲突</button>
+        <button id="sensitivityBtn">查看权重敏感度</button>
+      </div>
+    </details>
+    <input id="importFile" type="file" accept=".xlsx" hidden />
+  </div>
+</div>
+
+<div class="shell">
+  <div class="summary-strip" id="summaryStrip"></div>
+  <div class="version-note-bar" id="versionNoteBar"></div>
+  <div class="workspace">
+    <section class="panel list-panel">
+      <div class="panel-head">
+        <h2>规则清单</h2>
+        <span class="hint" id="ruleCountHint"></span>
+      </div>
+      <div class="list-tools">
+        <input type="text" id="searchInput" placeholder="搜索规则名称或作用…" />
+        <label class="only-toggle"><input type="checkbox" id="onlyEnabled" /> 只看启用</label>
+      </div>
+      <div class="rule-list" id="ruleList"></div>
+    </section>
+
+    <section class="panel detail-panel" id="detailPanel">
+      <div class="empty">
+        <strong>选择左侧一条规则</strong>
+        这里会用白话显示它的作用、范围和可调参数。
+      </div>
+    </section>
+  </div>
+</div>
+
+<datalist id="lineOptions"></datalist>
+<datalist id="partOptions"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+const GROUPS = {
+  G0_PHYSICAL: { order: 0, title: "01 现场必须遵守", desc: "物理上做不到就不能排" },
+  G1_DELIVERY: { order: 1, title: "02 交付与客户", desc: "交期、客户等级和顺位" },
+  G2_CAPACITY: { order: 2, title: "03 产能与班次", desc: "负荷、班次、批量和人力" },
+  G3_CHANGEOVER: { order: 3, title: "04 换型与合并", desc: "换型次数、连续生产和型号合并" },
+  G4_INVENTORY: { order: 4, title: "05 库存", desc: "库存上下限与覆盖天数" },
+};
+
+const TEMPLATE_META = {
+  capacity_utilization: {
+    title: "班次负荷区间",
+    desc: "规定每个已开班次的负荷下限和上限。低于下限说明开班浪费，高于上限说明产能超用。",
+    summary: (p) => `${pct(p.min_util)}% ~ ${pct(p.max_util)}%${p.tail_exempt ? " · 尾班豁免" : ""}`,
+    params: {
+      min_util: { label: "每个开班最低负荷", kind: "percent", min: 0, max: 100, help: "低于这个负荷的班次会被判为不达标" },
+      max_util: { label: "每个开班最高负荷", kind: "percent", min: 50, max: 150, help: "100% = 不加班；105% = 允许上浮 5%" },
+      tail_exempt: { label: "最后一个班次可低于下限", kind: "bool", help: "只对产线当天的最后一个开班生效" },
+      include_setup: { label: "把换型时间算进负荷", kind: "bool" },
+      setup_minutes_per_start: { label: "每次开工的换型时间", kind: "number", unit: "分钟", min: 0, max: 480, showIf: (p) => !!p.include_setup },
+    },
+  },
+  min_batch: {
+    title: "最少投产批量",
+    desc: "避免把工单拆成 1~2 件的碎班次。可以要求每个班次至少投产一个包装量，或按整单门槛控制。",
+    summary: (p) => {
+      if (p.unit === "MPQ") return `${p.basis === "order" ? "整单" : "每班"}按整箱（MPQ）`;
+      return `${p.basis === "order" ? "整单" : "每班"}至少 ${p.min_multiple || 1} 件${p.tail_exempt ? " · 允许尾块" : ""}`;
+    },
+    params: {
+      unit: { label: "按什么计量", kind: "select", options: [["MPQ", "整箱（MPQ）"], ["piece", "按件"]], help: "整箱 = 按最小包装量的倍数安排" },
+      basis: { label: "约束范围", kind: "select", options: [["shift", "每个班次"], ["order", "整张工单"]], help: "每个班次 = 每班都要达标；整张工单 = 只看整单总量" },
+      min_multiple: { label: "每班最少投产件数", kind: "int", min: 1, max: 100, showIf: (p) => p.unit === "piece" && p.basis === "shift", help: "例如填 100，则每个开班至少 100 件" },
+      quantity_source: { label: "批量来源", kind: "select", options: [["MPQ", "按 MPQ"], ["MOQ", "按 MOQ"]], help: "用最小包装量还是最小起订量作为门槛" },
+      rounding: { label: "不足一批时", kind: "select", options: [["ceil", "向上取整"], ["floor", "向下取整"], ["nearest", "就近取整"]] },
+      tail_exempt: { label: "允许一个尾班/尾块例外", kind: "bool", help: "整张工单允许有一个不足批量的尾块" },
+      moq_override: { label: "手动指定 MOQ", kind: "number", unit: "件", min: 0, showIf: (p) => p.quantity_source === "MOQ", help: "填 0 表示使用主数据里的 MOQ" },
+    },
+  },
+  contiguity: {
+    title: "连续生产（块数上限）",
+    desc: "限制一张工单最多被拆成几个生产块，减少换型和跨班切换。",
+    summary: (p) => `最多 ${p.max_blocks} 块 · ${p.mode === "hard" ? "必须" : "尽量"}`,
+    params: {
+      max_blocks: { label: "最多生产块数", kind: "int", min: 1, max: 1000 },
+      mode: { label: "执行强度", kind: "select", options: [["hard", "必须满足"], ["soft", "尽量满足"]] },
+    },
+  },
+  hc16: {
+    title: "同模连产",
+    desc: "同一模具尽量连续生产，减少穿插换模；交期有风险时允许让行。",
+    summary: (p) => `最多 ${p.max_blocks} 块${p.allow_delivery_override ? " · 交期可让行" : ""}`,
+    params: {
+      max_blocks: { label: "同模连续最多几块", kind: "int", min: 1, max: 1000 },
+      allow_delivery_override: { label: "交期风险时允许让行", kind: "bool" },
+    },
+  },
+  changeover: {
+    title: "换型时间",
+    desc: "每次换型或换模需要占用的时间。若 TRP 已经包含换型，这里填 0。",
+    summary: (p) => `${p.setup_minutes} 分钟 / 次`,
+    params: {
+      setup_minutes: { label: "每次换型时间", kind: "number", unit: "分钟", min: 0, max: 480 },
+      count_by: { label: "怎么算一次换型", kind: "select", options: [["run_start", "按开工次数"], ["model_switch", "按型号切换"]] },
+      cross_shift_inherit: { label: "跨班保持换型状态", kind: "bool" },
+    },
+  },
+  material_balance: {
+    title: "前后工序齐套",
+    desc: "后道开工前，前道半成品要留出足够缓冲，避免总装断线。",
+    summary: (p) => `缓冲 ${p.buffer_shifts} 个班次${p.include_stock ? " · 计入库存" : ""}`,
+    params: {
+      buffer_shifts: { label: "前后工序间隔班次", kind: "int", min: 0, max: 20 },
+      include_stock: { label: "可用库存视为已齐套", kind: "bool" },
+    },
+  },
+  material_ready: {
+    title: "物料到货门控",
+    desc: "关键物料未到货前不允许开工，避免现场等料。",
+    summary: (p) => `${p.source === "PO" ? "按采购单" : p.source === "ETA" ? "按预计到货" : "按库存"} · 放行 ${p.qc_release_hours} 小时`,
+    params: {
+      source: { label: "到货依据", kind: "select", options: [["PO", "采购单"], ["ETA", "预计到货"], ["STOCK", "库存"]] },
+      qc_release_hours: { label: "到货后检验放行时间", kind: "number", unit: "小时", min: 0, max: 240 },
+    },
+  },
+  due_date: {
+    title: "交期 / 截单",
+    desc: "规定订单必须在交期前完成，或把延误作为惩罚来尽量满足。",
+    summary: (p) => `${p.mode === "hard" ? "必须准时" : "尽量准时"} · 截单 ${p.cutoff_time}`,
+    params: {
+      mode: { label: "执行方式", kind: "select", options: [["hard", "必须准时"], ["soft", "尽量准时"]] },
+      cutoff_time: { label: "截单时刻", kind: "text", placeholder: "15:00", help: "当天几点之后的订单算到下一班" },
+      tolerance_minutes: { label: "允许延误时间", kind: "number", unit: "分钟", min: 0, max: 1440 },
+    },
+  },
+  sequence: {
+    title: "同料号顺位生产",
+    desc: "同一料号按交期先后顺序生产，避免后到先做、插队。",
+    summary: (p) => `按${p.order_by === "due" ? "交期" : p.order_by === "fifo" ? "先进先出" : "优先级"} · 容差 ${p.tolerance_shifts} 班`,
+    params: {
+      order_by: { label: "排序依据", kind: "select", options: [["due", "交期"], ["fifo", "先进先出"], ["priority", "优先级"]] },
+      tolerance_shifts: { label: "允许跳序的班次数", kind: "int", min: 0, max: 20 },
+    },
+  },
+  calendar: {
+    title: "工作日历",
+    desc: "决定一周上几天班、每天几个班次。",
+    summary: (p) => ({ AUTO: "自动推荐", SEVEN_ZERO: "做七休零（7×3）", SIX_ONE: "做六休一", FIVE_TWO: "做五休二", FOUR_THREE: "做四休三" }[p.mode] || p.mode) + (p.weekend_off ? " · 周末停产" : ""),
+    params: {
+      mode: { label: "工作制", kind: "select", options: [["AUTO", "自动推荐"], ["SEVEN_ZERO", "做七休零（7×3）"], ["SIX_ONE", "做六休一"], ["FIVE_TWO", "做五休二"], ["FOUR_THREE", "做四休三"]] },
+      weekend_off: { label: "周末停产", kind: "bool" },
+    },
+  },
+  tooling_exclusivity: {
+    title: "模具 / 工装独占",
+    desc: "同一套模具在同一时间只能给一条产线使用。",
+    summary: (p) => `${p.resource === "mold" ? "模具" : "工装"} · 可用 ${p.available_qty} 套`,
+    params: {
+      resource: { label: "资源类型", kind: "select", options: [["mold", "模具"], ["tool", "工装"]] },
+      available_qty: { label: "可用套数", kind: "int", min: 1, max: 100 },
+    },
+  },
+  pm_block: {
+    title: "设备维保避让",
+    desc: "设备保养期间不排产，或按比例降低产能。",
+    summary: (p) => `${p.handling === "avoid" ? "避开维保" : p.handling === "split" ? "跨维保切分" : "暂停挂起"} · 产能 ${pct(p.capacity_rate)}%`,
+    params: {
+      handling: { label: "维保期间怎么做", kind: "select", options: [["avoid", "避开"], ["split", "跨维保切分"], ["suspend", "暂停挂起"]] },
+      capacity_rate: { label: "维保期间可用产能", kind: "percent", min: 0, max: 100 },
+    },
+  },
+  concurrency: {
+    title: "单班型号数量",
+    desc: "限制一个班次内同时生产的型号数，减少频繁换型。",
+    summary: (p) => `最多 ${p.max_models} 个型号 / ${p.window === "shift" ? "班" : "天"}`,
+    params: {
+      max_models: { label: "最多型号数", kind: "int", min: 1, max: 50 },
+      window: { label: "统计范围", kind: "select", options: [["shift", "每个班次"], ["day", "每天"]] },
+    },
+  },
+  inventory_bound: {
+    title: "库存上下限",
+    desc: "控制成品和半成品的库存覆盖天数，防止断料或爆仓。",
+    summary: (p) => `${p.min_days}~${p.max_days} 天${Number(p.safety_stock) ? ` · 安全库存 ${p.safety_stock}` : ""}`,
+    params: {
+      min_days: { label: "最少库存天数", kind: "number", unit: "天", min: 0 },
+      max_days: { label: "最多库存天数", kind: "number", unit: "天", min: 0 },
+      safety_stock: { label: "安全库存", kind: "number", unit: "件", min: 0 },
+    },
+  },
+  customer_priority: {
+    title: "客户分级保供",
+    desc: "战略客户优先保供；交期临近时优先排产。",
+    summary: (p) => `战略 ${tierValue(p.tier_weights, "STRATEGIC")} / 核心 ${tierValue(p.tier_weights, "A")} / 普通 ${tierValue(p.tier_weights, "B")} · 交期窗口 ${p.due_window_days} 天`,
+    params: {
+      tier_weights: { label: "三类客户的重要程度", kind: "tiers", help: "数字越大越优先，常用战略 10、核心 3、普通 1" },
+      due_window_days: { label: "交期窗口", kind: "int", unit: "天", min: 0, max: 30, help: "离交期还有几天时开始优先安排" },
+    },
+  },
+  time_window: {
+    title: "受控时间窗",
+    desc: "只允许在指定日期和班次生产，常用于首批或试产。",
+    summary: (p) => `${p.allowed_shifts || "全部班次"}${p.allowed_dates ? ` · ${p.allowed_dates}` : ""}`,
+    params: {
+      allowed_shifts: { label: "允许的班次", kind: "text", placeholder: "早班,中班", help: "多个班次用英文逗号分隔；留空表示不限" },
+      allowed_dates: { label: "允许的日期", kind: "text", placeholder: "2026-11-05,2026-11-06", help: "多个日期用英文逗号分隔；留空表示不限" },
+      min_duration_hours: { label: "最短连续生产时间", kind: "number", unit: "小时", min: 0, max: 24 },
+    },
+  },
+  co_product: {
+    title: "联产品同步产出",
+    desc: "左右件或共模产品按固定比例同时产出。",
+    summary: (p) => `比例 ${p.ratio}${p.group_code ? ` · 组 ${p.group_code}` : ""}`,
+    params: {
+      ratio: { label: "产出比例", kind: "text", placeholder: "1:1" },
+      group_code: { label: "联产品组编号", kind: "text", placeholder: "可选" },
+    },
+  },
+  routing: {
+    title: "替代产线",
+    desc: "允许任务在认证过的替代产线上生产，缓解主线拥堵。",
+    summary: (p) => `最多 ${p.max_candidates} 条 · ${p.mode === "primary" ? "优先主线" : "负载均衡"}`,
+    params: {
+      max_candidates: { label: "最多候选产线条数", kind: "int", min: 1, max: 20 },
+      mode: { label: "选线方式", kind: "select", options: [["primary", "优先主线"], ["balanced", "负载均衡"]] },
+    },
+  },
+  freeze: {
+    title: "冻结期锁定",
+    desc: "锁定最近若干个班次的计划，避免现场频繁变更。",
+    summary: (p) => `锁定 ${p.fence_shifts} 班 · ${p.mode === "hard" ? "必须" : "尽量"}`,
+    params: {
+      fence_shifts: { label: "锁定班次数", kind: "int", min: 0, max: 200 },
+      mode: { label: "执行强度", kind: "select", options: [["hard", "必须满足"], ["soft", "尽量满足"]] },
+      use_baseline: { label: "以基线计划为准", kind: "bool" },
+    },
+  },
+  labor_capacity: {
+    title: "人力上限",
+    desc: "按在岗人数限制开班和产出，可设置是否允许加班。",
+    summary: (p) => `${Number(p.available_headcount) > 0 ? `可用 ${p.available_headcount} 人` : "不限制人数"}${p.allow_overtime ? " · 可加班" : ""}`,
+    params: {
+      available_headcount: { label: "可用人数", kind: "int", min: 0, max: 10000, help: "0 表示不限制" },
+      crew_source: { label: "人员来源", kind: "select", options: [["line", "按产线"], ["part", "按料号"]] },
+      allow_overtime: { label: "允许加班", kind: "bool" },
+      overtime_max_hours: { label: "最多加班时间", kind: "number", unit: "小时", min: 0, max: 24, showIf: (p) => !!p.allow_overtime },
+      setup_technicians_required: { label: "每次换模需要技术员", kind: "int", min: 0, max: 100 },
+      setup_technicians_available: { label: "可用换模技术员", kind: "int", min: 0, max: 10000 },
+    },
+  },
+};
+
+const GROUP_FALLBACK = { order: 99, title: "其他规则", desc: "" };
+
+const TRIAL_SHIFTS = {
+  "7x3": { label: "做七休零 · 7×3", short: "7×3", mode: "SEVEN_ZERO", shifts: 3 },
+  "6x3": { label: "做六休一 · 6×3", short: "6×3", mode: "SIX_ONE", shifts: 3 },
+  "5x3": { label: "做五休二 · 5×3", short: "5×3", mode: "FIVE_TWO", shifts: 3 },
+  "5x2": { label: "做五休二 · 5×2", short: "5×2", mode: "FIVE_TWO", shifts: 2 },
+  "4x3": { label: "做四休三 · 4×3", short: "4×3", mode: "FOUR_THREE", shifts: 3 },
+};
+
+function loadTrialSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("aps_rule_trial") || "{}");
+    const horizon = [7, 10, 15, 30].includes(Number(raw.horizon_days)) ? Number(raw.horizon_days) : 10;
+    const shift = TRIAL_SHIFTS[raw.shift] ? raw.shift : "7x3";
+    const hours = Number(raw.hours) === 12 ? 12 : 8;
+    return { horizon_days: horizon, shift, hours };
+  } catch (e) {
+    return { horizon_days: 10, shift: "7x3", hours: 8 };
+  }
+}
+
+function saveTrialSettings() {
+  localStorage.setItem("aps_rule_trial", JSON.stringify(state.trial));
+}
+
+const state = {
+  site: "WL",
+  versions: [],
+  currentId: null,
+  current: null,
+  baseline: null,
+  templates: [],
+  templateMap: {},
+  lines: [],
+  parts: [],
+  selected: null,
+  search: "",
+  onlyEnabled: false,
+  advancedOpen: false,
+  trialRunning: false,
+  trial: loadTrialSettings(),
+  trialResult: null,
+};
+
+const $ = (id) => document.getElementById(id);
+
+function deepCopy(value) { return JSON.parse(JSON.stringify(value)); }
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function pct(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * 1000) / 10 : 0;
+}
+function tierValue(raw, key) {
+  const text = String(raw || "");
+  for (const part of text.split(",")) {
+    const [k, v] = part.split(":");
+    if (String(k || "").trim() === key) return Number(v) || 0;
+  }
+  return 0;
+}
+function tierMap(raw) {
+  const out = { STRATEGIC: 10, A: 3, B: 1 };
+  String(raw || "").split(",").forEach((part) => {
+    const [k, v] = part.split(":");
+    const key = String(k || "").trim();
+    if (key) out[key] = Number(v) || 0;
+  });
+  return out;
+}
+function tierString(map) {
+  return Object.entries(map).map(([k, v]) => `${k}:${Number(v) || 0}`).join(",");
+}
+function groupMeta(id) { return GROUPS[id] || GROUP_FALLBACK; }
+function templateMeta(id) { return TEMPLATE_META[id] || { title: id, desc: "", params: {}, summary: () => "" }; }
+function ruleTitle(rule) { return templateMeta(rule.template).title || rule.id; }
+function ruleSummary(rule) {
+  if (!rule.enabled) return "已停用";
+  const meta = templateMeta(rule.template);
+  try { return meta.summary ? meta.summary(rule.params || {}) : "已启用"; }
+  catch (e) { return "已启用"; }
+}
+function ruleScopeTags(rule) {
+  const scope = rule.scope || {};
+  const tags = [];
+  if (scope.stage && scope.stage !== "*") tags.push(scope.stage === "FG" ? "成品" : scope.stage === "SF" ? "半成品" : `阶段 ${scope.stage}`);
+  if (scope.line && scope.line !== "*") tags.push(`产线 ${scope.line}`);
+  if (scope.part && scope.part !== "*") tags.push(`料号 ${scope.part}`);
+  return tags;
+}
+function formatValue(key, value, meta) {
+  if (value == null || value === "") return "空";
+  if (!meta) return String(value);
+  if (meta.kind === "bool") return value ? "开启" : "关闭";
+  if (meta.kind === "percent") return `${pct(value)}%`;
+  if (meta.kind === "select") {
+    const found = (meta.options || []).find(([v]) => String(v) === String(value));
+    return found ? found[1] : String(value);
+  }
+  if (meta.kind === "tiers") return String(value);
+  return `${value}${meta.unit ? " " + meta.unit : ""}`;
+}
+function fmtDate(value) {
+  if (!value) return "";
+  return String(value).slice(0, 10);
+}
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = { detail: text }; }
+  if (!response.ok) {
+    const detail = data && (data.detail || data.message);
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail || response.statusText));
+  }
+  return data;
+}
+
+function toast(message, isError = false) {
+  const node = $("toast");
+  node.textContent = message;
+  node.className = `toast show${isError ? " error" : ""}`;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { node.className = "toast"; }, 3200);
+}
+
+function isDirty() {
+  if (!state.current || !state.baseline) return false;
+  return JSON.stringify(state.current) !== JSON.stringify(state.baseline);
+}
+
+function markDirty() {
+  renderChrome();
+  renderRuleList();
+  renderDirtyBar();
+}
+
+function selectedRule() {
+  if (!state.current || state.selected == null) return null;
+  return state.current.rules[state.selected] || null;
+}
+
+function ruleChanged(rule) {
+  if (!state.baseline) return false;
+  const base = state.baseline.rules.find((item) => item.id === rule.id);
+  if (!base) return true;
+  return JSON.stringify(base) !== JSON.stringify(rule);
+}
+
+/* ---------------------------------------------------------------- loading */
+
+async function loadTemplates() {
+  state.templates = await api("/api/rule-sets/templates");
+  state.templateMap = Object.fromEntries(state.templates.map((item) => [item.template_id, item]));
+}
+
+async function loadInputs(site) {
+  try {
+    const data = await api(`/api/inputs?site=${encodeURIComponent(site)}`);
+    state.lines = [...new Set((data.line_base || []).map((row) => row.line).filter(Boolean))];
+    state.parts = [...new Set([...(data.fg_params || []), ...(data.sf_params || [])].map((row) => row.part_no).filter(Boolean))].sort();
+    $("lineOptions").innerHTML = state.lines.map((line) => `<option value="${escapeHtml(line)}"></option>`).join("");
+    $("partOptions").innerHTML = state.parts.map((part) => `<option value="${escapeHtml(part)}"></option>`).join("");
+  } catch (e) {
+    state.lines = [];
+    state.parts = [];
+  }
+}
+
+async function loadVersions() {
+  const site = $("siteSelect").value;
+  state.site = site;
+  const data = await api(`/api/rule-sets?site=${encodeURIComponent(site)}`);
+  state.versions = data.versions || [];
+  const select = $("versionSelect");
+  select.innerHTML = "";
+  state.versions.forEach((version) => {
+    const option = document.createElement("option");
+    const status = version.status === "active" ? "使用中" : version.status === "draft" ? "草稿" : "历史";
+    option.value = version.id;
+    option.textContent = `v${version.version} · ${status}`;
+    select.appendChild(option);
+  });
+  if (!state.versions.length) {
+    state.current = { rule_set_id: `${site}_RULES`, site, version: 1, groups: defaultGroups(), rules: [] };
+    state.baseline = deepCopy(state.current);
+    state.currentId = null;
+    state.selected = null;
+    renderAll();
+    return;
+  }
+  const active = state.versions.find((version) => version.status === "active") || state.versions[0];
+  select.value = active.id;
+  await loadVersion(active.id);
+}
+
+async function loadVersion(id) {
+  const record = await api(`/api/rule-sets/${id}`);
+  state.current = record.payload;
+  state.baseline = deepCopy(record.payload);
+  state.currentId = record.id;
+  state.selected = firstVisibleIndex();
+  $("versionSelect").value = record.id;
+  renderAll();
+}
+
+function defaultGroups() {
+  return [
+    { id: "G0_PHYSICAL", mode: "hard", priority: 0 },
+    { id: "G1_DELIVERY", mode: "lexicographic", priority: 10 },
+    { id: "G2_CAPACITY", mode: "lexicographic", priority: 20 },
+    { id: "G3_CHANGEOVER", mode: "weighted", priority: 30 },
+    { id: "G4_INVENTORY", mode: "weighted", priority: 40 },
+  ];
+}
+
+function visibleEntries() {
+  if (!state.current) return [];
+  const entries = (state.current.rules || []).map((rule, index) => ({ rule, index }));
+  const filtered = entries.filter(({ rule }) => {
+    if (state.onlyEnabled && !rule.enabled) return false;
+    if (!state.search) return true;
+    const hay = `${ruleTitle(rule)} ${rule.id} ${rule.template} ${ruleSummary(rule)}`.toLowerCase();
+    return hay.includes(state.search.toLowerCase());
+  });
+  filtered.sort((a, b) => {
+    const ga = groupMeta(a.rule.group).order, gb = groupMeta(b.rule.group).order;
+    if (ga !== gb) return ga - gb;
+    if ((a.rule.priority || 0) !== (b.rule.priority || 0)) return (a.rule.priority || 0) - (b.rule.priority || 0);
+    return ruleTitle(a.rule).localeCompare(ruleTitle(b.rule), "zh-CN");
+  });
+  return filtered;
+}
+
+function firstVisibleIndex() {
+  const entries = visibleEntries();
+  return entries.length ? entries[0].index : null;
+}
+
+/* ---------------------------------------------------------------- render */
+
+function renderAll() {
+  renderChrome();
+  renderRuleList();
+  renderDetail();
+  renderDirtyBar();
+}
+
+function renderChrome() {
+  if (!state.current) return;
+  const rules = state.current.rules || [];
+  const must = rules.filter((rule) => rule.enabled && rule.nature === "hard").length;
+  const soft = rules.filter((rule) => rule.enabled && rule.nature === "soft").length;
+  const off = rules.filter((rule) => !rule.enabled).length;
+  const dirty = isDirty();
+  const currentVersion = state.versions.find((version) => version.id === state.currentId);
+  const status = currentVersion ? currentVersion.status : null;
+  $("statusPill").textContent = currentVersion
+    ? (status === "active" ? "使用中" : status === "draft" ? "草稿" : "历史版本")
+    : "新方案";
+  $("statusPill").className = `chip ${status === "active" ? "soft" : ""}`;
+  const trial = state.trial;
+  $("summaryStrip").innerHTML = `
+    <span class="chip hard"><span class="dot on"></span><strong>${must}</strong> 条必须满足</span>
+    <span class="chip soft"><span class="dot on"></span><strong>${soft}</strong> 条尽量满足</span>
+    <span class="chip"><strong>${off}</strong> 条已停用</span>
+    ${dirty ? '<span class="chip dirty">● 有未保存修改</span>' : '<span class="chip">已保存</span>'}
+    <button class="chip" id="trialChip" title="点此打开试算并调整口径">试算口径：${trial.horizon_days} 天 · ${TRIAL_SHIFTS[trial.shift].short} · ${trial.hours}h</button>
+  `;
+  const trialChip = $("trialChip");
+  if (trialChip) trialChip.addEventListener("click", openTrialModal);
+  $("ruleCountHint").textContent = `${rules.length} 条`;
+
+  const canSaveInPlace = currentVersion && status !== "archived";
+  $("saveCurrentBtn").disabled = !dirty || !canSaveInPlace;
+  $("saveCurrentBtn").title = !currentVersion
+    ? "新方案请使用“另存为新版本”"
+    : status === "archived"
+      ? "历史版本不能覆盖，请另存为新版本"
+      : "直接覆盖当前版本，历史内容不可恢复";
+  $("saveNewBtn").disabled = !dirty;
+  $("activateBtn").disabled = !currentVersion || status === "active" || dirty;
+
+  const note = currentVersion && currentVersion.note ? currentVersion.note : "";
+  $("versionNoteBar").innerHTML = currentVersion
+    ? `<strong>版本说明：</strong><span class="note-text">${note ? escapeHtml(note) : "未填写，建议写清这次调整的原因"}</span><button class="note-edit" id="editNoteBtn">${note ? "编辑" : "填写说明"}</button>`
+    : `<strong>版本说明：</strong><span class="note-text">新方案，保存后可填写说明</span>`;
+  const editNoteBtn = $("editNoteBtn");
+  if (editNoteBtn) editNoteBtn.addEventListener("click", () => openNoteModal());
+}
+
+function renderRuleList() {
+  const container = $("ruleList");
+  if (!state.current) { container.innerHTML = ""; return; }
+  const entries = visibleEntries();
+  if (!entries.length) {
+    container.innerHTML = '<div class="empty">没有匹配的规则。可以换个关键词，或关闭“只看启用”。</div>';
+    return;
+  }
+  const byGroup = new Map();
+  entries.forEach((entry) => {
+    const key = entry.rule.group || "OTHER";
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(entry);
+  });
+  let html = "";
+  [...byGroup.entries()].sort((a, b) => groupMeta(a[0]).order - groupMeta(b[0]).order).forEach(([groupId, list]) => {
+    const meta = groupMeta(groupId);
+    const allOn = list.every(({ rule }) => rule.enabled);
+    html += `<div class="group">
+      <div class="group-head">
+        <span>${escapeHtml(meta.title)}</span><span class="count">${list.length}</span>
+        <button class="group-toggle" data-group-toggle="${escapeHtml(groupId)}">${allOn ? "全部停用" : "全部启用"}</button>
+      </div>`;
+    list.forEach(({ rule, index }) => {
+      const tags = [`<span class="tag ${rule.nature}">${rule.nature === "hard" ? "必须" : "尽量"}</span>`];
+      ruleScopeTags(rule).forEach((tag) => tags.push(`<span class="tag muted">${escapeHtml(tag)}</span>`));
+      if (ruleChanged(rule)) tags.push('<span class="tag changed">已修改</span>');
+      html += `<button class="rule-item ${state.selected === index ? "selected" : ""} ${rule.enabled ? "" : "off"}" data-index="${index}">
+        <div class="rule-title-row">
+          <span class="rule-title">${escapeHtml(ruleTitle(rule))}</span>
+          <span class="rule-tags">${tags.join("")}</span>
+        </div>
+        <div class="rule-summary">${escapeHtml(ruleSummary(rule))}</div>
+      </button>`;
+    });
+    html += "</div>";
+  });
+  container.innerHTML = html;
+  container.querySelectorAll(".rule-item").forEach((node) => {
+    node.addEventListener("click", () => {
+      state.selected = Number(node.dataset.index);
+      renderRuleList();
+      renderDetail();
+    });
+  });
+  container.querySelectorAll("[data-group-toggle]").forEach((node) => {
+    node.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const groupId = node.dataset.groupToggle;
+      const list = (state.current.rules || []).map((rule, index) => ({ rule, index })).filter(({ rule }) => rule.group === groupId);
+      const allOn = list.every(({ rule }) => rule.enabled);
+      list.forEach(({ rule }) => { rule.enabled = !allOn; });
+      markDirty();
+      renderDetail();
+    });
+  });
+}
+
+function paramControl(rule, key, meta) {
+  const value = (rule.params || {})[key];
+  const common = `data-param="${escapeHtml(key)}"`;
+  if (meta.kind === "bool") {
+    return `<label class="inline" style="gap:8px;padding-top:4px">
+      <input type="checkbox" ${common} ${value ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--green)" />
+      <span>${escapeHtml(meta.label)}</span>
+    </label>${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+  }
+  if (meta.kind === "select") {
+    const options = (meta.options || []).map(([v, label]) =>
+      `<option value="${escapeHtml(v)}" ${String(value) === String(v) ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
+    return `<label>${escapeHtml(meta.label)}</label>
+      <select ${common} data-rerender="1">${options}</select>
+      ${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+  }
+  if (meta.kind === "percent") {
+    const shown = Math.round(Number(value || 0) * 1000) / 10;
+    return `<label>${escapeHtml(meta.label)}</label>
+      <div class="inline"><input type="number" ${common} min="${meta.min ?? 0}" max="${meta.max ?? 100}" step="1" value="${shown}" /><span class="unit">%</span></div>
+      ${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+  }
+  if (meta.kind === "tiers") {
+    const map = tierMap(value);
+    return `<label>${escapeHtml(meta.label)}</label>
+      <div class="tier-grid">
+        ${[["STRATEGIC", "战略客户"], ["A", "核心客户"], ["B", "普通客户"]].map(([key, label]) => `
+          <div><label>${label}</label><input type="number" data-tier="${key}" min="0" max="1000" value="${map[key] ?? 0}" /></div>
+        `).join("")}
+      </div>
+      ${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+  }
+  if (meta.kind === "int") {
+    return `<label>${escapeHtml(meta.label)}${meta.unit ? `<span class="unit">(${escapeHtml(meta.unit)})</span>` : ""}</label>
+      <input type="number" ${common} step="1" min="${meta.min ?? 0}" max="${meta.max ?? ""}" value="${Number(value || 0)}" />
+      ${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+  }
+  if (meta.kind === "number") {
+    return `<label>${escapeHtml(meta.label)}${meta.unit ? `<span class="unit">(${escapeHtml(meta.unit)})</span>` : ""}</label>
+      <input type="number" ${common} step="0.1" min="${meta.min ?? 0}" max="${meta.max ?? ""}" value="${Number(value || 0)}" />
+      ${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+  }
+  return `<label>${escapeHtml(meta.label)}</label>
+    <input type="text" ${common} value="${escapeHtml(value == null ? "" : value)}" placeholder="${escapeHtml(meta.placeholder || "")}" />
+    ${meta.help ? `<div class="field-help">${escapeHtml(meta.help)}</div>` : ""}`;
+}
+
+function renderDetail() {
+  const panel = $("detailPanel");
+  const rule = selectedRule();
+  if (!rule || !state.current) {
+    panel.innerHTML = `<div class="empty"><strong>选择左侧一条规则</strong>这里会用白话显示它的作用、范围和可调参数。</div>`;
+    return;
+  }
+  const meta = templateMeta(rule.template);
+  const paramKeys = Object.keys(meta.params || {});
+  const extras = Object.keys(rule.params || {}).filter((key) => !paramKeys.includes(key));
+  const paramHtml = paramKeys
+    .filter((key) => {
+      const spec = meta.params[key];
+      return !spec.showIf || spec.showIf(rule.params || {});
+    })
+    .map((key) => `<div class="field ${meta.params[key].full ? "full" : ""}">${paramControl(rule, key, meta.params[key])}</div>`)
+    .join("");
+  const extraHtml = extras.map((key) => `<div class="field">
+      <label>${escapeHtml(key)}</label>
+      <input type="text" data-param="${escapeHtml(key)}" value="${escapeHtml(rule.params[key] == null ? "" : rule.params[key])}" />
+    </div>`).join("");
+  const scope = rule.scope || {};
+  const soft = rule.nature === "soft";
+  panel.innerHTML = `
+    <div class="detail-head">
+      <div>
+        <h2>${escapeHtml(ruleTitle(rule))}</h2>
+        <div class="rule-desc">${escapeHtml(meta.desc || "")}</div>
+      </div>
+      <label class="switch-wrap">启用
+        <span class="switch"><input type="checkbox" id="ruleEnabled" ${rule.enabled ? "checked" : ""} /><span></span></span>
+      </label>
+    </div>
+    <div class="detail-body">
+      <div class="section">
+        <div class="section-title">违反这条规则会怎样？</div>
+        <div class="segmented">
+          <button class="${rule.nature === "hard" ? "active" : ""}" data-nature="hard">必须满足</button>
+          <button class="${soft ? "active" : ""}" data-nature="soft">尽量满足</button>
+        </div>
+        <div class="help">${rule.nature === "hard" ? "做不到就不允许排出计划。" : "做不到不会拒绝排产，但会降低方案评分。"}</div>
+      </div>
+      <div class="section">
+        <div class="section-title">具体设置</div>
+        <div class="param-grid">${paramHtml || '<div class="help">这条规则没有可调参数。</div>'}</div>
+        ${extraHtml ? `<div class="param-grid" style="margin-top:14px">${extraHtml}</div>` : ""}
+      </div>
+      <details class="advanced" ${state.advancedOpen ? "open" : ""}>
+        <summary>高级设置：作用范围、重要程度、继承与生效时间</summary>
+        <div class="advanced-body">
+          <div class="field"><label>适用产线</label><input type="text" data-scope="line" list="lineOptions" value="${escapeHtml(scope.line && scope.line !== "*" ? scope.line : "")}" placeholder="全部产线" /></div>
+          <div class="field"><label>适用阶段</label>
+            <select data-scope="stage">
+              <option value="*" ${!scope.stage || scope.stage === "*" ? "selected" : ""}>全部阶段</option>
+              <option value="FG" ${scope.stage === "FG" ? "selected" : ""}>成品</option>
+              <option value="SF" ${scope.stage === "SF" ? "selected" : ""}>半成品</option>
+            </select>
+          </div>
+          <div class="field"><label>适用料号</label><input type="text" data-scope="part" list="partOptions" value="${escapeHtml(scope.part && scope.part !== "*" ? scope.part : "")}" placeholder="全部料号" /></div>
+
+          <div class="field"><label>分组</label>
+            <select data-adv="group">
+              ${Object.entries(GROUPS).map(([id, item]) => `<option value="${id}" ${rule.group === id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field"><label>组内顺序</label><input type="number" data-adv="priority" min="0" max="1000" value="${Number(rule.priority || 0)}" /></div>
+          <div class="field"><label>继承方式</label>
+            <select data-adv="inherit">
+              <option value="replace" ${rule.inherit !== "add" ? "selected" : ""}>覆盖同组低优先级规则</option>
+              <option value="add" ${rule.inherit === "add" ? "selected" : ""}>与同组规则叠加</option>
+            </select>
+          </div>
+
+          <div class="field"><label>重要程度${soft ? "" : "（改为“尽量满足”后可调）"}</label>
+            <div class="inline">
+              <input type="number" data-adv="weight" min="0" max="1000" step="1" value="${Number(rule.weight || 0)}" ${soft ? "" : "disabled"} />
+              ${soft ? '<button class="btn small" data-weight="10">低</button><button class="btn small" data-weight="100">中</button><button class="btn small" data-weight="1000">高</button>' : ""}
+            </div>
+          </div>
+          <div class="field"><label>生效日期</label><input type="date" data-adv="effective_from" value="${fmtDate(rule.effective_from)}" /></div>
+          <div class="field"><label>失效日期</label><input type="date" data-adv="effective_to" value="${fmtDate(rule.effective_to)}" /></div>
+
+          <div class="field full">
+            <label>技术信息（只读）</label>
+            <div class="tech-box">规则 ID：${escapeHtml(rule.id)}
+模板：${escapeHtml(rule.template)}
+原始参数：${escapeHtml(JSON.stringify(rule.params || {}, null, 2))}</div>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="detail-foot">
+      <span class="dirty-text ${isDirty() ? "" : "clean"}" id="detailDirty">${isDirty() ? "修改会进入草稿，点击右上角“另存为新版本”保存" : "当前规则与已保存版本一致"}</span>
+      <div style="flex:1"></div>
+      <button class="btn danger" id="deleteRuleBtn">删除这条规则</button>
+    </div>
+  `;
+  bindDetailEvents(rule);
+}
+
+function bindDetailEvents(rule) {
+  const enabled = $("ruleEnabled");
+  if (enabled) enabled.addEventListener("change", () => {
+    rule.enabled = enabled.checked;
+    markDirty();
+    renderDetail();
+  });
+
+  document.querySelectorAll("#detailPanel [data-nature]").forEach((button) => {
+    button.addEventListener("click", () => {
+      rule.nature = button.dataset.nature;
+      if (rule.nature === "hard" && !Number(rule.weight)) rule.weight = 100;
+      markDirty();
+      renderDetail();
+    });
+  });
+
+  const advanced = document.querySelector("#detailPanel details.advanced");
+  if (advanced) advanced.addEventListener("toggle", () => { state.advancedOpen = advanced.open; });
+
+  document.querySelectorAll("#detailPanel [data-param]").forEach((node) => {
+    node.addEventListener("change", () => {
+      const key = node.dataset.param;
+      const spec = templateMeta(rule.template).params[key];
+      let value;
+      if (node.type === "checkbox") value = node.checked;
+      else if (spec && spec.kind === "percent") value = Number(node.value) / 100;
+      else if (spec && (spec.kind === "int" || spec.kind === "number")) value = Number(node.value);
+      else value = node.value;
+      rule.params[key] = value;
+      markDirty();
+      if (spec && spec.kind === "select") renderDetail();
+    });
+  });
+
+  document.querySelectorAll("#detailPanel [data-tier]").forEach((node) => {
+    node.addEventListener("change", () => {
+      const map = tierMap(rule.params.tier_weights);
+      map[node.dataset.tier] = Number(node.value) || 0;
+      rule.params.tier_weights = tierString(map);
+      markDirty();
+    });
+  });
+
+  document.querySelectorAll("#detailPanel [data-scope]").forEach((node) => {
+    node.addEventListener("change", () => {
+      const key = node.dataset.scope;
+      rule.scope = rule.scope || {};
+      const value = String(node.value || "").trim();
+      rule.scope[key] = value || "*";
+      markDirty();
+    });
+  });
+
+  document.querySelectorAll("#detailPanel [data-adv]").forEach((node) => {
+    node.addEventListener("change", () => {
+      const key = node.dataset.adv;
+      if (key === "weight" || key === "priority") rule[key] = Number(node.value) || 0;
+      else if (key === "effective_from" || key === "effective_to") rule[key] = node.value || null;
+      else rule[key] = node.value;
+      markDirty();
+      if (key === "group") { renderRuleList(); }
+      if (key === "nature") renderDetail();
+    });
+  });
+
+  document.querySelectorAll("#detailPanel [data-weight]").forEach((button) => {
+    button.addEventListener("click", () => {
+      rule.weight = Number(button.dataset.weight);
+      markDirty();
+      renderDetail();
+    });
+  });
+
+  const deleteBtn = $("deleteRuleBtn");
+  if (deleteBtn) deleteBtn.addEventListener("click", () => {
+    if (!confirm(`确定删除「${ruleTitle(rule)}」吗？删除后需要保存新版本才会生效。`)) return;
+    state.current.rules.splice(state.selected, 1);
+    state.selected = firstVisibleIndex();
+    markDirty();
+    renderDetail();
+  });
+}
+
+function renderDirtyBar() {
+  const node = $("detailDirty");
+  if (!node) return;
+  const dirty = isDirty();
+  node.textContent = dirty ? "修改会进入草稿，点击右上角“另存为新版本”保存" : "当前规则与已保存版本一致";
+  node.className = `dirty-text ${dirty ? "" : "clean"}`;
+}
+
+/* ---------------------------------------------------------------- changes */
+
+function computeChanges() {
+  const base = state.baseline ? state.baseline.rules : [];
+  const current = state.current ? state.current.rules : [];
+  const baseMap = new Map(base.map((rule) => [rule.id, rule]));
+  const currentMap = new Map(current.map((rule) => [rule.id, rule]));
+  const added = current.filter((rule) => !baseMap.has(rule.id));
+  const removed = base.filter((rule) => !currentMap.has(rule.id));
+  const modified = current.filter((rule) => baseMap.has(rule.id) && JSON.stringify(rule) !== JSON.stringify(baseMap.get(rule.id)));
+  return { added, removed, modified, baseMap };
+}
+
+function describeRuleChanges(rule, before) {
+  const lines = [];
+  if (rule.enabled !== before.enabled) lines.push(`启用状态：${before.enabled ? "开启" : "关闭"} → ${rule.enabled ? "开启" : "关闭"}`);
+  if (rule.nature !== before.nature) lines.push(`违反后果：${before.nature === "hard" ? "必须满足" : "尽量满足"} → ${rule.nature === "hard" ? "必须满足" : "尽量满足"}`);
+  if (Number(rule.weight || 0) !== Number(before.weight || 0)) lines.push(`重要程度：${before.weight || 0} → ${rule.weight || 0}`);
+  if ((rule.group || "") !== (before.group || "")) lines.push(`分组：${groupMeta(before.group).title} → ${groupMeta(rule.group).title}`);
+  if (Number(rule.priority || 0) !== Number(before.priority || 0)) lines.push(`组内顺序：${before.priority || 0} → ${rule.priority || 0}`);
+  if ((rule.inherit || "") !== (before.inherit || "")) lines.push(`继承方式：${before.inherit === "add" ? "叠加" : "覆盖"} → ${rule.inherit === "add" ? "叠加" : "覆盖"}`);
+  if ((rule.effective_from || "") !== (before.effective_from || "")) lines.push(`生效日期：${fmtDate(before.effective_from) || "空"} → ${fmtDate(rule.effective_from) || "空"}`);
+  if ((rule.effective_to || "") !== (before.effective_to || "")) lines.push(`失效日期：${fmtDate(before.effective_to) || "空"} → ${fmtDate(rule.effective_to) || "空"}`);
+  const scopeKeys = ["line", "stage", "part", "site"];
+  const scopeChanged = scopeKeys.some((key) => String((rule.scope || {})[key] || "*") !== String((before.scope || {})[key] || "*"));
+  if (scopeChanged) {
+    const text = (scope) => {
+      const parts = [];
+      if (scope.stage && scope.stage !== "*") parts.push(scope.stage === "FG" ? "成品" : scope.stage === "SF" ? "半成品" : scope.stage);
+      if (scope.line && scope.line !== "*") parts.push(scope.line);
+      if (scope.part && scope.part !== "*") parts.push(scope.part);
+      return parts.length ? parts.join(" / ") : "全部";
+    };
+    lines.push(`适用范围：${text(before.scope || {})} → ${text(rule.scope || {})}`);
+  }
+  const meta = templateMeta(rule.template);
+  const keys = new Set([...Object.keys(before.params || {}), ...Object.keys(rule.params || {})]);
+  keys.forEach((key) => {
+    if (JSON.stringify((before.params || {})[key]) === JSON.stringify((rule.params || {})[key])) return;
+    const spec = (meta.params || {})[key];
+    const label = spec ? spec.label : key;
+    lines.push(`${label}：${formatValue(key, (before.params || {})[key], spec)} → ${formatValue(key, (rule.params || {})[key], spec)}`);
+  });
+  return lines;
+}
+
+function changeListHtml() {
+  const changes = computeChanges();
+  const blocks = [];
+  changes.added.forEach((rule) => blocks.push(`<div class="change-item"><div class="name">＋ 新增：${escapeHtml(ruleTitle(rule))}</div><ul>${describeRuleChanges(rule, { enabled: true, nature: rule.nature, params: {}, scope: {}, weight: 0, group: "", priority: 0, inherit: "replace" }).map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul></div>`));
+  changes.removed.forEach((rule) => blocks.push(`<div class="change-item"><div class="name">－ 删除：${escapeHtml(ruleTitle(rule))}</div></div>`));
+  changes.modified.forEach((rule) => {
+    const lines = describeRuleChanges(rule, changes.baseMap.get(rule.id));
+    if (lines.length) blocks.push(`<div class="change-item"><div class="name">${escapeHtml(ruleTitle(rule))}</div><ul>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul></div>`);
+  });
+  return blocks.length ? `<div class="change-list">${blocks.join("")}</div>` : '<div class="help">没有发现需要保存的修改。</div>';
+}
+
+/* ---------------------------------------------------------------- modals */
+
+function closeModal() {
+  const overlay = document.querySelector(".overlay");
+  if (overlay) overlay.remove();
+  if (state._timer) { clearInterval(state._timer); state._timer = null; }
+}
+
+function openModal(html, className = "") {
+  closeModal();
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `<div class="modal ${className}">${html}</div>`;
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll("[data-close]").forEach((node) => node.addEventListener("click", closeModal));
+  return overlay;
+}
+
+function openSaveModal(mode = "new") {
+  if (!isDirty()) { toast("没有需要保存的修改"); return; }
+  const current = state.versions.find((item) => item.id === state.currentId);
+  const isCurrent = mode === "current";
+  if (isCurrent && (!current || current.status === "archived")) {
+    toast("历史版本不能直接覆盖，请使用“另存为新版本”", true);
+    return;
+  }
+  const title = isCurrent ? `覆盖当前版本 v${current.version}` : "另存为新版本";
+  const subtitle = isCurrent
+    ? (current.status === "active"
+      ? "将直接修改正在使用的方案，下一次排产立即生效；历史内容无法恢复。"
+      : "将直接覆盖这个草稿版本，不新增版本号。")
+    : "保存后不会影响当前正在使用的方案，激活后才会生效。";
+  const warning = isCurrent && current.status === "active"
+    ? `<div class="help" style="color:#92400e;background:#fffaeb;border:1px solid #f6c66b;border-radius:8px;padding:10px 12px;margin-bottom:14px">建议优先“另存为新版本”，保留可回滚的历史记录。</div>`
+    : "";
+  const overlay = openModal(`
+    <div class="modal-head">
+      <div><h3>${escapeHtml(title)}</h3><div class="sub">${escapeHtml(subtitle)}</div></div>
+      <button class="x-btn" data-close>×</button>
+    </div>
+    <div class="modal-body">
+      ${warning}
+      <div class="section-title">本次修改</div>
+      ${changeListHtml()}
+      <div class="section" style="margin-top:18px">
+        <label style="font-size:11.5px;color:#475569;font-weight:550">版本说明（会显示在顶部，便于大家识别）</label>
+        <input type="text" id="saveNote" value="${escapeHtml(current && current.note ? current.note : "")}" placeholder="例如：半成品每班下限调到 100 件" style="width:100%;margin-top:6px" />
+      </div>
+      ${isCurrent ? "" : '<label class="inline" style="margin-top:12px"><input type="checkbox" id="saveActivate" style="width:16px;height:16px;accent-color:var(--green)" /> 保存后立即设为当前方案</label>'}
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn primary" id="confirmSave">${isCurrent ? "确认覆盖" : "保存新版本"}</button>
+    </div>
+  `);
+  overlay.querySelector("#confirmSave").addEventListener("click", async () => {
+    const note = overlay.querySelector("#saveNote").value.trim();
+    const activate = isCurrent ? false : overlay.querySelector("#saveActivate").checked;
+    const button = overlay.querySelector("#confirmSave");
+    button.disabled = true;
+    button.textContent = "保存中…";
+    try {
+      let data;
+      if (isCurrent) {
+        data = await api(`/api/rule-sets/${current.id}/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: state.current, note }),
+        });
+      } else {
+        data = await api("/api/rule-sets/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: state.current, note, activate }),
+        });
+      }
+      closeModal();
+      toast(isCurrent ? `v${current.version} 已更新` : `已保存为 v${data.version}${activate ? "，并设为当前方案" : ""}`);
+      await loadVersions();
+      if (data.id) await loadVersion(data.id);
+    } catch (e) {
+      button.disabled = false;
+      button.textContent = isCurrent ? "确认覆盖" : "保存新版本";
+      toast(e.message, true);
+    }
+  });
+}
+
+function openNoteModal(versionId = state.currentId) {
+  const version = state.versions.find((item) => item.id === Number(versionId));
+  if (!version) { toast("请先选择一个版本", true); return; }
+  const overlay = openModal(`
+    <div class="modal-head"><div><h3>编辑版本说明</h3><div class="sub">v${version.version} · 说明会显示在顶部，方便团队识别这版配置。</div></div><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body">
+      <input type="text" id="noteInput" value="${escapeHtml(version.note || "")}" placeholder="例如：半成品每班下限调到 100 件" style="width:100%" />
+      <div class="help">建议写清“改了什么、为什么改”，例如“v6 修复 1~2 件碎班次”。</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn primary" id="confirmNote">保存说明</button></div>
+  `, "small");
+  overlay.querySelector("#confirmNote").addEventListener("click", async () => {
+    const note = overlay.querySelector("#noteInput").value.trim();
+    try {
+      const data = await api(`/api/rule-sets/${version.id}/note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      const item = state.versions.find((v) => v.id === version.id);
+      if (item) item.note = data.note;
+      closeModal();
+      renderChrome();
+      toast("版本说明已更新");
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+function versionStatusLabel(status) {
+  return status === "active" ? "使用中" : status === "draft" ? "草稿" : "历史";
+}
+
+function openVersionManager() {
+  if (isDirty()) { toast("请先保存或放弃当前修改，再管理版本", true); return; }
+  const rows = state.versions.map((version) => `
+    <div class="version-row">
+      <div class="v-name">v${version.version}</div>
+      <span class="chip ${version.status === "active" ? "soft" : ""}">${versionStatusLabel(version.status)}</span>
+      <div class="v-note">${escapeHtml(version.note || "未填写说明")}
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px">${escapeHtml((version.created_at || "").slice(0, 16).replace("T", " "))}</div>
+      </div>
+      <div class="v-actions">
+        <button class="btn small" data-view="${version.id}">查看</button>
+        <button class="btn small" data-note="${version.id}">编辑说明</button>
+        <button class="btn small danger" data-delete="${version.id}" ${version.status === "active" ? "disabled title=\"当前使用中的版本不能删除\"" : ""}>删除</button>
+      </div>
+    </div>`).join("");
+  const overlay = openModal(`
+    <div class="modal-head"><div><h3>版本管理</h3><div class="sub">可以给每个版本补充中文说明；历史版本可删除，当前使用中的版本受保护。</div></div><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body">${rows || '<div class="help">还没有版本。</div>'}</div>
+    <div class="modal-foot"><button class="btn" data-close>关闭</button></div>
+  `);
+  overlay.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      closeModal();
+      await loadVersion(button.dataset.view);
+    });
+  });
+  overlay.querySelectorAll("[data-note]").forEach((button) => {
+    button.addEventListener("click", () => openNoteModal(Number(button.dataset.note)));
+  });
+  overlay.querySelectorAll("[data-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const version = state.versions.find((item) => item.id === Number(button.dataset.delete));
+      if (!version) return;
+      if (!confirm(`确定删除 v${version.version} 吗？删除后不可恢复。`)) return;
+      try {
+        await api(`/api/rule-sets/${version.id}`, { method: "DELETE" });
+        closeModal();
+        toast(`v${version.version} 已删除`);
+        await loadVersions();
+      } catch (e) { toast(e.message, true); }
+    });
+  });
+}
+
+function openActivateModal() {
+  const version = state.versions.find((item) => item.id === state.currentId);
+  if (!version) { toast("请先保存一个版本", true); return; }
+  if (isDirty()) { toast("请先另存为新版本，再切换当前方案", true); return; }
+  const overlay = openModal(`
+    <div class="modal-head"><div><h3>设为当前方案</h3><div class="sub">下一次排产将使用 v${version.version}，当前方案会自动归档。</div></div><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body"><div class="help">确认后立即生效，不需要重启服务。</div></div>
+    <div class="modal-foot"><button class="btn" data-close>取消</button><button class="btn green" id="confirmActivate">确认启用</button></div>
+  `, "small");
+  overlay.querySelector("#confirmActivate").addEventListener("click", async () => {
+    try {
+      await api(`/api/rule-sets/${state.currentId}/activate`, { method: "POST" });
+      closeModal();
+      toast(`v${version.version} 已设为当前方案`);
+      await loadVersions();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+function trialScopeLabel(data) {
+  const shifts = Number(data.shifts_per_day || 3);
+  const hours = Number(data.shift_hours || (state.site === "SY38" ? 12 : 8));
+  const modeLabel = {
+    SEVEN_ZERO: "做七休零", SIX_ONE: "做六休一", FIVE_TWO: "做五休二", FOUR_THREE: "做四休三",
+  }[data.calendar_mode] || data.calendar_mode || "标准";
+  return `${data.horizon_days || 10} 天 · ${modeLabel}（${shifts} 班/天）· 每班 ${hours}h`;
+}
+
+function trialResultHtml(data) {
+  if (!data.feasible) {
+    const raw = String(data.error || "");
+    const friendly = raw.includes("no feasible schedule")
+      ? "在当前口径下排不出可行计划，可能是产能不足、交期过紧或规则互相冲突。"
+      : (raw || "求解器没有找到满足约束的方案。");
+    return `<div class="kpi-grid"><div class="kpi bad" style="grid-column:1/-1"><div class="k">试算结果</div><div class="v" style="font-size:15px">当前方案排不出可行计划</div><div class="help" style="margin-top:8px">${escapeHtml(friendly)}</div></div></div>
+      <div class="trial-note">口径：${escapeHtml(trialScopeLabel(data))}。可以尝试：放宽产能上限、把某条“必须满足”改成“尽量满足”、延长计划期或调整工作制。试算使用的是当前草稿，尚未保存。</div>`;
+  }
+  const tiny = Number(data.sf_blocks_below_mpq || 0);
+  const nonMultiple = Number(data.sf_blocks_not_mpq_multiple || 0);
+  const below = Number(data.below_95_shifts || 0);
+  return `
+    <div class="kpi-grid">
+      <div class="kpi good"><div class="k">准时交付率</div><div class="v">${data.otd_pct}<small>%</small></div></div>
+      <div class="kpi"><div class="k">生产块数</div><div class="v">${data.blocks}</div></div>
+      <div class="kpi ${below ? "warn" : "good"}"><div class="k">低于 95% 的班次</div><div class="v">${below}</div></div>
+      <div class="kpi ${tiny ? "bad" : "good"}"><div class="k">半成品小于 MPQ 的班次</div><div class="v">${tiny}</div></div>
+      <div class="kpi ${nonMultiple ? "warn" : "good"}"><div class="k">半成品非整倍班次</div><div class="v">${nonMultiple}</div></div>
+      <div class="kpi"><div class="k">半成品最小班次批量</div><div class="v">${data.sf_min_block || 0}<small>件</small></div></div>
+    </div>
+    <div class="trial-note">
+      口径：${escapeHtml(trialScopeLabel(data))} · 求解 ${data.elapsed_seconds || 0}s。
+      试算使用当前草稿，尚未保存；正式结果以主界面排产为准。
+      ${data.warnings && data.warnings.length ? `<br />提示：${data.warnings.map(escapeHtml).join("；")}` : ""}
+    </div>`;
+}
+
+function openTrialModal() {
+  if (state.trialRunning) return;
+  const trial = state.trial;
+  const horizonOptions = [7, 10, 15, 30].map((days) =>
+    `<option value="${days}" ${trial.horizon_days === days ? "selected" : ""}>${days} 天</option>`).join("");
+  const shiftOptions = Object.entries(TRIAL_SHIFTS).map(([key, item]) =>
+    `<option value="${key}" ${trial.shift === key ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("");
+  const hourOptions = [8, 12].map((hours) =>
+    `<option value="${hours}" ${Number(trial.hours) === hours ? "selected" : ""}>每班 ${hours} 小时</option>`).join("");
+  const overlay = openModal(`
+    <div class="modal-head"><div><h3>试算此方案</h3><div class="sub">先选择试算口径，再跑一次排产；使用当前草稿，尚未保存。</div></div><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="trial-config">
+        <div><label>计划期</label><select id="trialHorizon">${horizonOptions}</select></div>
+        <div><label>工作制</label><select id="trialShift">${shiftOptions}</select></div>
+        <div><label>每班工时</label><select id="trialHours">${hourOptions}</select></div>
+      </div>
+      <div id="trialResult">${state.trialResult ? trialResultHtml(state.trialResult) : '<div class="help">选择口径后点击“开始试算”，大约需要 30~60 秒。</div>'}</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>关闭</button><button class="btn primary" id="startTrial">开始试算</button></div>
+  `);
+  const selects = ["trialHorizon", "trialShift", "trialHours"].map((id) => overlay.querySelector(`#${id}`));
+  const startBtn = overlay.querySelector("#startTrial");
+  const resultBox = overlay.querySelector("#trialResult");
+  let timer = null;
+
+  const run = async () => {
+    const settings = {
+      horizon_days: Number(overlay.querySelector("#trialHorizon").value),
+      shift: overlay.querySelector("#trialShift").value,
+      hours: Number(overlay.querySelector("#trialHours").value),
+    };
+    state.trial = settings;
+    saveTrialSettings();
+    renderChrome();
+    const shift = TRIAL_SHIFTS[settings.shift];
+    state.trialRunning = true;
+    startBtn.disabled = true;
+    startBtn.textContent = "试算中…";
+    selects.forEach((node) => { node.disabled = true; });
+    const started = Date.now();
+    resultBox.innerHTML = `<div class="trial-wait"><div class="spinner"></div><strong>正在排产…</strong><span id="trialElapsed">已用时 0 秒</span></div>`;
+    timer = setInterval(() => {
+      const node = resultBox.querySelector("#trialElapsed");
+      if (node) node.textContent = `已用时 ${Math.round((Date.now() - started) / 1000)} 秒`;
+    }, 1000);
+    try {
+      const data = await api("/api/rule-sets/trial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payload: state.current,
+          site: state.site,
+          budget: 60,
+          horizon_days: settings.horizon_days,
+          calendar_mode: shift.mode,
+          shifts_per_day: shift.shifts,
+          shift_hours: settings.hours,
+        }),
+      });
+      state.trialResult = data;
+      resultBox.innerHTML = trialResultHtml(data);
+    } catch (e) {
+      state.trialResult = null;
+      resultBox.innerHTML = `<div class="kpi-grid"><div class="kpi bad" style="grid-column:1/-1"><div class="k">试算失败</div><div class="v" style="font-size:15px">${escapeHtml(e.message)}</div></div></div>`;
+    } finally {
+      state.trialRunning = false;
+      if (timer) { clearInterval(timer); timer = null; }
+      selects.forEach((node) => { node.disabled = false; });
+      startBtn.disabled = false;
+      startBtn.textContent = "重新试算";
+    }
+  };
+  startBtn.onclick = run;
+}
+
+function openAddRuleModal() {
+  const groups = Object.keys(GROUPS).map((id) => ({ id, ...GROUPS[id] }));
+  const byGroup = new Map(groups.map((group) => [group.id, []]));
+  state.templates.forEach((template) => {
+    const key = byGroup.has(template.default_group) ? template.default_group : groups[0].id;
+    byGroup.get(key).push(template);
+  });
+  const html = [...byGroup.entries()].map(([groupId, list]) => `
+    <div class="catalog-group"><h4>${escapeHtml(GROUPS[groupId].title)}</h4>
+      ${list.map((template) => {
+        const meta = templateMeta(template.template_id);
+        return `<button class="catalog-item" data-template="${escapeHtml(template.template_id)}">
+          <div class="t">${escapeHtml(meta.title || template.template_id)}</div>
+          <div class="d">${escapeHtml(meta.desc || template.description || "")}</div>
+        </button>`;
+      }).join("")}
+    </div>`).join("");
+  const overlay = openModal(`
+    <div class="modal-head"><div><h3>添加规则</h3><div class="sub">选择一条业务规则，系统会用默认参数创建，之后可再调整。</div></div><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body"><div class="catalog">${html}</div></div>
+    <div class="modal-foot"><button class="btn" data-close>取消</button></div>
+  `);
+  overlay.querySelectorAll("[data-template]").forEach((node) => {
+    node.addEventListener("click", () => {
+      const templateId = node.dataset.template;
+      const template = state.templateMap[templateId];
+      const meta = templateMeta(templateId);
+      const rule = {
+        id: `${templateId}_${Date.now()}`,
+        template: templateId,
+        scope: { site: "*", line: "*", stage: "*", part: "*" },
+        nature: template ? template.default_nature : "soft",
+        weight: 100,
+        group: template ? template.default_group : "G0_PHYSICAL",
+        priority: 0,
+        params: deepCopy(template ? template.params : {}),
+        enabled: true,
+        inherit: "replace",
+        effective_from: null,
+        effective_to: null,
+      };
+      state.current.rules.push(rule);
+      state.selected = state.current.rules.length - 1;
+      closeModal();
+      markDirty();
+      renderDetail();
+      toast(`已添加「${meta.title || templateId}」`);
+    });
+  });
+}
+
+function openTextModal(title, text) {
+  openModal(`
+    <div class="modal-head"><div><h3>${escapeHtml(title)}</h3></div><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body"><pre class="tech-box" style="max-height:52vh">${escapeHtml(text)}</pre></div>
+    <div class="modal-foot"><button class="btn" data-close>关闭</button></div>
+  `);
+}
+
+/* ---------------------------------------------------------------- actions */
+
+async function runAnalysis(kind) {
+  if (!state.currentId) { toast("请先保存一个版本", true); return; }
+  if (isDirty()) { toast("分析针对已保存版本，请先保存草稿", true); return; }
+  openTextModal(kind === "sensitivity" ? "权重敏感度" : "方案冲突检查", "运行中…（需要多次求解，请稍候）");
+  try {
+    const data = await api(`/api/rule-sets/${kind}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version_id: state.currentId, site: state.site, budget: 15, pct: 0.2 }),
+    });
+    if (kind === "sensitivity") {
+      if (!data.feasible) { openTextModal("权重敏感度", "基准方案不可行，无法生成敏感度报告。"); return; }
+      const lines = [`基准：${JSON.stringify(data.base, null, 2)}`, ""];
+      (data.rows || []).forEach((row) => lines.push(`${row.target}  ${row.direction}  ${JSON.stringify(row.delta)}`));
+      openTextModal("权重敏感度", lines.join("\n"));
+    } else {
+      openTextModal("方案冲突检查", `${data.message}\n\n可行：${data.feasible}\n冲突分组：${data.conflict_groups}\n冲突规则：${data.conflict_rules}\n冲突组合：${data.conflict_pairs}`);
+    }
+  } catch (e) { openTextModal("分析失败", e.message); }
+}
+
+async function importExcel(file) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("site", state.site);
+  form.append("note", "Excel 导入");
+  form.append("activate", "false");
+  try {
+    const data = await api("/api/rule-sets/import", { method: "POST", body: form });
+    toast(`导入成功：v${data.version}`);
+    await loadVersions();
+    if (data.id) await loadVersion(data.id);
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---------------------------------------------------------------- bind */
+
+$("siteSelect").addEventListener("change", async () => {
+  if (isDirty() && !confirm("当前有未保存修改，切换工厂会丢弃，继续吗？")) {
+    $("siteSelect").value = state.site;
+    return;
+  }
+  state.trial.hours = $("siteSelect").value === "SY38" ? 12 : 8;
+  saveTrialSettings();
+  await loadInputs($("siteSelect").value);
+  await loadVersions();
+});
+
+$("versionSelect").addEventListener("change", async (event) => {
+  if (isDirty() && !confirm("当前有未保存修改，切换版本会丢弃，继续吗？")) {
+    $("versionSelect").value = state.currentId;
+    return;
+  }
+  await loadVersion(event.target.value);
+});
+
+$("searchInput").addEventListener("input", (event) => { state.search = event.target.value.trim(); renderRuleList(); });
+$("onlyEnabled").addEventListener("change", (event) => { state.onlyEnabled = event.target.checked; renderRuleList(); });
+
+$("saveCurrentBtn").addEventListener("click", () => openSaveModal("current"));
+$("saveNewBtn").addEventListener("click", () => openSaveModal("new"));
+$("versionManagerBtn").addEventListener("click", openVersionManager);
+$("activateBtn").addEventListener("click", openActivateModal);
+$("trialBtn").addEventListener("click", openTrialModal);
+$("addRuleBtn").addEventListener("click", openAddRuleModal);
+$("refreshBtn").addEventListener("click", async () => {
+  await loadTemplates();
+  await loadInputs(state.site);
+  await loadVersions();
+  toast("已刷新");
+});
+$("templateBtn").addEventListener("click", () => window.open(`/api/rule-sets/template?site=${encodeURIComponent(state.site)}`, "_blank"));
+$("exportBtn").addEventListener("click", () => {
+  if (!state.currentId) { toast("还没有可导出的版本", true); return; }
+  window.open(`/api/rule-sets/${state.currentId}/export`, "_blank");
+});
+$("importBtn").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  if (file) importExcel(file);
+  event.target.value = "";
+});
+document.querySelectorAll(".menu-pop button").forEach((button) => {
+  button.addEventListener("click", () => {
+    const menu = button.closest("details.menu");
+    if (menu) menu.open = false;
+  });
+});
+
+$("diagnoseBtn").addEventListener("click", () => runAnalysis("diagnose"));
+$("sensitivityBtn").addEventListener("click", () => runAnalysis("sensitivity"));
+
+loadTemplates()
+  .then(() => loadInputs("WL"))
+  .then(() => loadVersions())
+  .catch((e) => {
+    $("ruleList").innerHTML = `<div class="empty">加载失败：${escapeHtml(e.message)}</div>`;
+  });
+</script>
+</body>
+</html>

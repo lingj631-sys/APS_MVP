@@ -57,16 +57,16 @@
   <div id="app" v-cloak class="flex flex-col min-h-screen">
     
     <!-- Top Modern Light Header -->
-    <header class="border-b border-border bg-surface sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between shadow-sm">
+    <header class="border-b border-border bg-surface sticky top-0 z-40 px-6 py-3 flex items-center justify-between shadow-xs">
       <div class="flex items-center space-x-4">
         <img src="/static/valeo_logo.png" alt="Valeo Logo" class="h-8 object-contain">
         <div class="h-6 w-px bg-border"></div>
         <div>
           <div class="flex items-center space-x-2.5">
-            <h1 class="text-base font-bold text-textMain tracking-tight">APS 2.0 智能排产与决策中枢</h1>
-            <span class="text-[11px] px-2 py-0.5 rounded font-mono bg-accentLight text-accent border border-accent/20 font-semibold">OR-Tools CP-SAT</span>
+            <h1 class="text-base font-bold text-textMain tracking-tight">APS 智能制造排产与决策系统</h1>
+            <span class="text-[11px] px-2.5 py-0.5 rounded font-mono bg-accentLight text-accent border border-accent/20 font-semibold">精益调度中心</span>
           </div>
-          <p class="text-xs text-textMuted mt-0.5">面向两阶段协同的高级排产与动态平衡决策引擎</p>
+          <p class="text-xs text-textMuted mt-0.5">离散制造高级排程协同 · 约束求解与多目标动态平衡引擎</p>
         </div>
       </div>
 
@@ -656,117 +656,139 @@
       </section>
 
       <!-- ==================================================================== -->
-      <!-- TAB 5: 规则编译器报告 (Rules Binding Report)                         -->
+      <!-- TAB 5: 生产排产规则与约束准则管理 (Rules & Constraints)               -->
       <!-- ==================================================================== -->
-      <section v-show="activeTab === 'rules'" class="space-y-6">
-        <!-- Top Rule Summary KPIs -->
+      <section v-show="activeTab === 'rules'" class="space-y-5">
+        
+        <!-- Summary Cards Strip -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div class="bg-surface border border-border rounded-lg p-4 shadow-sm space-y-1">
-            <div class="text-xs text-textMuted font-medium">制造规则编译总数</div>
-            <div class="text-2xl font-bold font-mono text-accent">10 大规则全量生效</div>
-            <div class="text-[11px] text-textMuted font-mono">100% 规则编译器无缝装配</div>
+          <div class="bg-surface border border-border rounded-lg p-4 shadow-xs space-y-1">
+            <div class="text-xs text-textMuted font-medium">排产准则装配总览</div>
+            <div class="text-xl font-bold font-mono text-accent">10 项规则全量生效</div>
+            <div class="text-[11px] text-textMuted">计划引擎 100% 规则合规装配</div>
           </div>
 
-          <div class="bg-surface border border-border rounded-lg p-4 shadow-sm space-y-1">
-            <div class="text-xs text-textMuted font-medium">基石物理硬约束</div>
-            <div class="text-2xl font-bold font-mono text-fgColor">6 大不可侵犯硬红线</div>
-            <div class="text-[11px] text-textMuted font-mono">线认证/净需求/工时/流水/MPQ</div>
+          <div class="bg-surface border border-border rounded-lg p-4 shadow-xs space-y-1">
+            <div class="text-xs text-textMuted font-medium">物理工程硬约束</div>
+            <div class="text-xl font-bold font-mono text-fgColor">6 大不可违反红线</div>
+            <div class="text-[11px] text-textMuted">机台认证 / 需求守恒 / 工时 / 流水 / MPQ</div>
           </div>
 
-          <div class="bg-surface border border-border rounded-lg p-4 shadow-sm space-y-1">
-            <div class="text-xs text-textMuted font-medium">四层字典序优化目标</div>
-            <div class="text-2xl font-bold font-mono text-sfColor">4 层多目标梯度收敛</div>
-            <div class="text-[11px] text-textMuted font-mono">OTD交付 ➔ 饱和度 ➔ 换型 ➔ 在制品</div>
+          <div class="bg-surface border border-border rounded-lg p-4 shadow-xs space-y-1">
+            <div class="text-xs text-textMuted font-medium">多目标梯度收敛</div>
+            <div class="text-xl font-bold font-mono text-sfColor">4 级字典序优化目标</div>
+            <div class="text-[11px] text-textMuted">P1 交付 ➔ P2 饱和度 ➔ P3 换型 ➔ P4 在制品</div>
           </div>
 
-          <div class="bg-surface border border-border rounded-lg p-4 shadow-sm space-y-1">
-            <div class="text-xs text-textMuted font-medium">规则生效冲突与违规</div>
-            <div class="text-2xl font-bold font-mono text-success">0 违规 · 完美求解</div>
-            <div class="text-[11px] text-textMuted font-mono">Bound Freezing 锁定最优界</div>
+          <div class="bg-surface border border-border rounded-lg p-4 shadow-xs space-y-1">
+            <div class="text-xs text-textMuted font-medium">约束冲突诊断</div>
+            <div class="text-xl font-bold font-mono text-success">0 项冲突 · 全局可行</div>
+            <div class="text-[11px] text-textMuted">Bound Freezing 锁定最优排产界</div>
           </div>
         </div>
 
         <!-- Filter & Search Bar -->
-        <div class="bg-surface border border-border rounded-lg p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-          <div>
-            <h2 class="text-sm font-bold text-textMain">排产规则编译器绑定与业务白话详解</h2>
-            <p class="text-xs text-textMuted mt-0.5">将深奥的运筹优化 CP-SAT 数学约束转化为制造车间白话场景，清晰透视规则为何生效及保障价值。</p>
+        <div class="bg-surface border border-border rounded-lg p-4 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+          <div class="flex items-center space-x-2">
+            <!-- Category Filter Tabs -->
+            <button 
+              @click="ruleCategoryFilter = 'ALL'"
+              :class="ruleCategoryFilter === 'ALL' ? 'bg-primary text-white font-semibold' : 'bg-surfaceMuted text-textMuted hover:text-textMain'"
+              class="px-3 py-1.5 rounded text-xs transition-colors cursor-pointer">
+              全部准则 ({{ (solveResult?.binding_reports || []).length }})
+            </button>
+            <button 
+              @click="ruleCategoryFilter = 'HARD'"
+              :class="ruleCategoryFilter === 'HARD' ? 'bg-fgColor text-white font-semibold' : 'bg-surfaceMuted text-textMuted hover:text-textMain'"
+              class="px-3 py-1.5 rounded text-xs transition-colors cursor-pointer">
+              物理工程硬约束 (6)
+            </button>
+            <button 
+              @click="ruleCategoryFilter = 'OBJECTIVE'"
+              :class="ruleCategoryFilter === 'OBJECTIVE' ? 'bg-sfColor text-white font-semibold' : 'bg-surfaceMuted text-textMuted hover:text-textMain'"
+              class="px-3 py-1.5 rounded text-xs transition-colors cursor-pointer">
+              多目标优化准则 (4)
+            </button>
           </div>
 
           <div class="flex items-center space-x-3 text-xs">
             <input 
               type="text" 
               v-model="ruleSearch" 
-              placeholder="搜索规则中文名、编号或场景..." 
+              placeholder="检索规则名称、编号或关键对象..." 
               class="bg-surface border border-border rounded px-3 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none w-64 font-mono">
           </div>
         </div>
 
-        <!-- Rich Rule Cards Grid -->
-        <div class="space-y-4">
+        <!-- Elegant Rules Table / Structured Cards -->
+        <div class="space-y-3">
           <div 
             v-for="rule in filteredRules" 
             :key="rule.rule_id"
-            class="bg-surface border border-border rounded-lg p-5 shadow-sm space-y-3.5 hover:border-slate-300 transition-colors">
+            class="bg-surface border border-border rounded-lg p-4 shadow-xs hover:border-slate-300 transition-colors space-y-3">
             
-            <!-- Card Header: Title, Category, Status, ID -->
-            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-              <div class="flex items-center space-x-3">
-                <span class="text-sm font-bold text-textMain">{{ rule.name || rule.rule_id }}</span>
-                <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-surfaceMuted border border-border text-textMuted">{{ rule.rule_id }}</span>
-                <span class="text-[10px] px-2 py-0.5 rounded font-bold" :class="rule.category?.includes('硬') ? 'bg-fgLight text-fgColor border border-fgColor/30' : 'bg-sfLight text-sfColor border border-sfColor/30'">
-                  {{ rule.category || '核心制造规则' }}
+            <!-- Card Header Line -->
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-2.5">
+              <div class="flex items-center space-x-2.5">
+                <span class="w-7 h-7 rounded-md bg-surfaceMuted border border-border flex items-center justify-center font-mono font-bold text-xs text-textMain">
+                  {{ rule.rule_id.split('_')[0] }}
+                </span>
+                <span class="text-sm font-bold text-textMain tracking-tight">{{ rule.name || rule.rule_id }}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded font-mono text-textMuted bg-slate-100 border border-border">{{ rule.rule_id }}</span>
+                <span 
+                  :class="rule.category?.includes('硬') ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'"
+                  class="text-[10px] px-2 py-0.5 rounded font-medium">
+                  {{ rule.category || '制造准则' }}
                 </span>
               </div>
 
-              <div class="flex items-center space-x-2">
+              <div class="flex items-center space-x-3 font-mono text-xs">
+                <span class="text-textMuted text-[11px]">约束方程: <strong class="text-textMain">{{ rule.constraints_count }}</strong></span>
                 <span 
                   :class="{
                     'bg-successLight text-success border-success/30': rule.status === 'COMPILED',
                     'bg-sfLight text-sfColor border-sfColor/30': rule.status === 'DEGRADED',
                     'bg-surfaceMuted text-textMuted border-transparent': rule.status === 'SKIPPED'
                   }" 
-                  class="px-2.5 py-0.5 rounded text-xs border font-bold">
-                  {{ rule.status === 'COMPILED' ? '100% 编译生效' : (rule.status === 'DEGRADED' ? '降级保底' : '条件跳过') }}
+                  class="px-2.5 py-0.5 rounded text-[11px] border font-bold">
+                  {{ rule.status === 'COMPILED' ? '已编译生效' : (rule.status === 'DEGRADED' ? '降级运行' : '条件跳过') }}
                 </span>
               </div>
             </div>
 
-            <!-- Card Content: Plain Business Meaning & Math Logic -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <!-- Left: Business Meaning -->
-              <div class="space-y-1.5 bg-slate-50/60 p-3.5 rounded border border-border/60">
-                <div class="font-bold text-textMain flex items-center space-x-1.5">
-                  <svg class="w-3.5 h-3.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  <span>车间制造业务场景白话解释:</span>
+            <!-- Card Body Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 text-xs">
+              <!-- Left 7 cols: Business Standard & Protection -->
+              <div class="lg:col-span-7 space-y-2">
+                <div>
+                  <div class="text-[11px] font-semibold text-textMuted mb-0.5">业务管理准则</div>
+                  <p class="text-textMain leading-relaxed font-sans">{{ rule.description }}</p>
                 </div>
-                <p class="text-textMuted leading-relaxed">{{ rule.description }}</p>
-                <div v-if="rule.impact_note" class="text-[11px] text-accent pt-1 font-medium">
-                  ★ 生效保障: {{ rule.impact_note }}
+                <div v-if="rule.impact_note" class="flex items-center space-x-1.5 text-[11px] text-accent pt-0.5 font-medium">
+                  <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                  <span>管理效能保障: {{ rule.impact_note }}</span>
                 </div>
               </div>
 
-              <!-- Right: Math / CP-SAT Logic -->
-              <div class="space-y-1.5 bg-slate-50/60 p-3.5 rounded border border-border/60 font-mono">
-                <div class="font-bold text-textMain flex items-center space-x-1.5">
-                  <svg class="w-3.5 h-3.5 text-fgColor" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                  <span>运筹优化数学与 CP-SAT 建模约束:</span>
+              <!-- Right 5 cols: Mathematical Formulation -->
+              <div class="lg:col-span-5 bg-slate-50 p-2.5 rounded border border-border/80 flex flex-col justify-between font-mono">
+                <div>
+                  <div class="text-[10px] text-textMuted uppercase tracking-wider mb-1">系统约束判据条件</div>
+                  <div class="text-xs text-textMain bg-white p-2 rounded border border-border break-all whitespace-pre-wrap">
+                    {{ rule.math_expr }}
+                  </div>
                 </div>
-                <div class="text-xs text-textMain bg-white p-2.5 rounded border border-border overflow-x-auto whitespace-pre-wrap">
-                  {{ rule.math_expr || rule.provenance }}
-                </div>
-                <div class="flex items-center justify-between text-[11px] text-textMuted pt-1">
-                  <span>生成硬约束数: <strong class="text-textMain">{{ rule.constraints_count }}</strong></span>
-                  <span>目标惩罚项数: <strong class="text-textMain">{{ rule.penalty_terms_count }}</strong></span>
-                  <span class="truncate max-w-[200px]" :title="rule.provenance">源码: {{ rule.provenance }}</span>
+                <div class="flex items-center justify-between text-[10px] text-textMuted pt-1.5 border-t border-border/60 mt-1.5">
+                  <span>目标惩罚项: {{ rule.penalty_terms_count }}</span>
+                  <span class="truncate max-w-[180px]">{{ rule.provenance }}</span>
                 </div>
               </div>
             </div>
 
           </div>
 
-          <div v-if="!solveResult || !solveResult.binding_reports" class="py-16 text-center text-textMuted text-xs bg-surface border border-border rounded-lg shadow-sm">
-            请先在“智能排产工作台”执行排产以获取规则编译器运行与绑定详情。
+          <div v-if="!solveResult || !solveResult.binding_reports" class="py-16 text-center text-textMuted text-xs bg-surface border border-border rounded-lg shadow-xs">
+            请先在“智能排产工作台”执行排产以获取准则生效与约束绑定报告。
           </div>
         </div>
       </section>
@@ -938,10 +960,21 @@
 
     </main>
 
-    <!-- Clean Light Footer -->
-    <footer class="border-t border-border bg-surface px-6 py-3 text-xs font-mono text-textMuted flex items-center justify-between">
-      <div>APS MVP 2.0 · Python 3.12 · OR-Tools CP-SAT · openpyxl</div>
-      <div>测试体系: 424/424 PASS · 页面全动态渲染 · 零硬编码</div>
+    <!-- Clean Minimalist Enterprise Footer -->
+    <footer class="border-t border-border bg-surface px-6 py-3 text-xs text-textMuted flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="font-semibold text-textMain">Valeo 生产运营与高级排产系统</span>
+        <span class="text-slate-300">|</span>
+        <span>智能排产与调度中心</span>
+      </div>
+      <div class="flex items-center space-x-3 text-[11px] font-mono">
+        <span class="flex items-center space-x-1.5">
+          <span class="w-2 h-2 rounded-full bg-success"></span>
+          <span class="text-slate-600">系统运行正常</span>
+        </span>
+        <span class="text-border">|</span>
+        <span>实时数据驱动 · 运筹求解引擎就绪</span>
+      </div>
     </footer>
   </div>
 
@@ -982,8 +1015,15 @@
           return Math.max(0, totalGanttLinesCount.value - displayedGanttLines.value.length);
         });
 
+        const ruleCategoryFilter = ref('ALL');
+
         const filteredRules = computed(() => {
-          const list = solveResult.value?.binding_reports || [];
+          let list = solveResult.value?.binding_reports || [];
+          if (ruleCategoryFilter.value === 'HARD') {
+            list = list.filter(r => r.category && r.category.includes('硬'));
+          } else if (ruleCategoryFilter.value === 'OBJECTIVE') {
+            list = list.filter(r => r.category && (r.category.includes('优化') || r.category.includes('准则') || r.category.includes('目标')));
+          }
           if (!ruleSearch.value) return list;
           const s = ruleSearch.value.toLowerCase();
           return list.filter(r => 
@@ -1337,6 +1377,7 @@
           totalGanttLinesCount,
           hiddenLinesCount,
           ruleSearch,
+          ruleCategoryFilter,
           filteredRules,
           ganttSlots,
           displayedGanttLines,

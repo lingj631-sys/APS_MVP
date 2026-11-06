@@ -30,7 +30,7 @@ class TestWebServer(unittest.TestCase):
     def test_get_index_html(self):
         res = self.client.get("/")
         self.assertEqual(200, res.status_code)
-        self.assertIn("APS 2.0 智能排产与决策中枢", res.text)
+        self.assertIn("APS 智能制造排产与决策系统", res.text)
         self.assertIn("排产甘特图", res.text)
 
     def test_get_api_status(self):

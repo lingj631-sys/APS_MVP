@@ -80,6 +80,10 @@ def build_core_constraints(ctx: StructureContext,
             for l_code in cert_lines:
                 route = ds.route(task.pn, l_code)
                 ub = route.per_shift_cap if route and route.per_shift_cap > 0 else task.net_requirement
+                if task.mpq > ub:
+                    # 当成品物料的包装箱量 MPQ 大于产线单班物理最大额定产能时 (例如包装箱 420 件，而产线单班产能仅 336 件)
+                    # 此时单班物理上不可能一次出整箱，必须跨班连续装箱，免除单班整倍数约束
+                    continue
                 max_q = ub // task.mpq + 1
 
                 for s, x_var in ctx.x_by_task_line.get((t_id, l_code), ()):

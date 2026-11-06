@@ -62,6 +62,10 @@ def build_core_constraints(ctx: StructureContext,
                     route = ds.route(task.pn, l_code)
                     unit_ms = route.unit_ms if route else int(round(20.0 * 1000 / line.trp_efficiency))
                     load_terms.append(unit_ms * ctx.x[(t_id, l_code, s)])
+                    setup_min = route.changeover_min if route and route.changeover_min else 0.0
+                    if setup_min > 0 and (t_id, l_code, s) in ctx.started:
+                        setup_ms = int(round(setup_min * 60 * 1000))
+                        load_terms.append(setup_ms * ctx.started[(t_id, l_code, s)])
 
             max_util = ctx.config.max_utilization_pct if (hasattr(ctx, "config") and ctx.config) else 1.05
             effective_cap_ms = int(round(cap_ms * max_util))
@@ -222,6 +226,33 @@ def build_core_constraints(ctx: StructureContext,
                 if len(active_terms) > (1 + max_chg):
                     model.Add(sum(active_terms) <= 1 + max_chg)
         rule_names.append("c10_max_changeovers_per_shift")
+
+    # 11. 跨产线共享工装模具并发总套数硬约束 (Shared Tooling Mold Concurrency Limit)
+    if hasattr(ds, "mold_available_sets") and ds.mold_available_sets:
+        max_slots = max((ds.slot_count(l.line_code) for l in ds.lines), default=0)
+        for m_id, avail_sets in ds.mold_available_sets.items():
+            if avail_sets <= 0:
+                continue
+            mold_candidates = []
+            for (t_id, l_code) in ctx.assign:
+                task = ctx.tasks_by_id[t_id]
+                route = ds.route(task.pn, l_code)
+                task_molds = set(route.mold_ids) if (route and route.mold_ids) else set()
+                if task.mold_id:
+                    task_molds.add(task.mold_id)
+                if m_id in task_molds:
+                    mold_candidates.append((t_id, l_code))
+
+            if len(mold_candidates) > avail_sets:
+                for s in range(max_slots):
+                    active_in_slot = [
+                        ctx.active[(t_id, l_code, s)]
+                        for (t_id, l_code) in mold_candidates
+                        if (t_id, l_code, s) in ctx.active
+                    ]
+                    if len(active_in_slot) > avail_sets:
+                        _add(sum(active_in_slot) <= avail_sets, f"c11_mold.{m_id}.{s}")
+        rule_names.append("c11_shared_mold_concurrency")
 
     if use_assumptions and ctx.assumptions:
         model.AddAssumptions(list(ctx.assumptions.values()))

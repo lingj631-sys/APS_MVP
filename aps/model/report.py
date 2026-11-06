@@ -191,4 +191,21 @@ def build_binding_reports(ctx: StructureContext) -> list[BindingReport]:
         )
     )
 
+    # 11. 跨产线共享工装模具并发总套数硬约束
+    has_molds = bool(getattr(ctx.dataset, "mold_available_sets", None))
+    reports.append(
+        BindingReport(
+            rule_id="R11_SHARED_MOLD_CONCURRENCY",
+            name="共享工装模具并发互斥",
+            category="物理硬约束",
+            description="多条产线共享同一套模具时，同一班次内使用该模具的活跃产线总数绝不能超出模具物理总套数 (available_sets)。",
+            math_expr="sum(active[t, l, s] for l using mold) <= available_sets[mold]",
+            status="COMPILED" if has_molds else "SKIPPED",
+            constraints_count=len(ctx.dataset.mold_available_sets) if has_molds else 0,
+            penalty_terms_count=0,
+            provenance="aps.model.rules:c11_shared_mold_concurrency",
+            impact_note="彻底杜绝一套模具被两台机床在同一班次同时占用的物理不可行冲突。",
+        )
+    )
+
     return reports

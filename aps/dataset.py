@@ -68,6 +68,8 @@ class Task:
     description: str | None
     is_safety_topup: bool
     parent_pn: str | None = None
+    customer_code: str | None = None
+    weight: int = 1
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,7 @@ class DataSet:
     mold_to_parts: Mapping[str, frozenset[str]]
     initial_stock: Mapping[str, int]
     calendar_overrides: Mapping[SlotKey, bool]
+    mold_available_sets: Mapping[str, int] = dc_field(default_factory=dict)
     degraded_fields: frozenset[str] = frozenset()
 
     _setup_matrix: Mapping[tuple[str, str, str], float] = dc_field(
@@ -261,6 +264,17 @@ class DataSet:
             if r.get("changeover_min") is not None
         }
 
+        try:
+            mold_rows = repo.list_by("mold", site_code=site)
+        except Exception:
+            mold_rows = []
+
+        mold_sets = {
+            r["mold_id"]: int(r.get("available_sets") or 1)
+            for r in mold_rows
+            if r.get("available_sets") is not None
+        }
+
         return cls(
             horizon=horizon,
             mode=resolved_mode,
@@ -273,6 +287,7 @@ class DataSet:
             mold_to_parts=mold_lookup,
             initial_stock=initial_stock,
             calendar_overrides=cal_overrides,
+            mold_available_sets=mold_sets,
             degraded_fields=degraded_fields,
             _setup_matrix=sm_lookup,
             _mold_changeover=mold_co_lookup,
@@ -347,6 +362,19 @@ def _build_tasks(repo: Repository, site: str, horizon: Horizon,
         if horizon.contains(row["demand_date"]):
             demand_by_pn[row["pn"]].append(row)
 
+    # 战略客户保供权重查找表
+    customer_weights: dict[str, int] = {}
+    try:
+        cust_rows = repo.list_by("customer_priority", site_code=site)
+    except Exception:
+        cust_rows = []
+    for r in cust_rows:
+        w = r.get("supply_weight")
+        if w is None:
+            tier_str = str(r.get("tier") or "")
+            w = 10 if "TIER_A" in tier_str else (3 if "TIER_B" in tier_str else 1)
+        customer_weights[r["customer_code"]] = max(1, int(round(w)))
+
     tasks: list[Task] = []
     fg_tasks_by_pn: dict[str, list[Task]] = defaultdict(list)
     for pn in sorted(demand_by_pn):
@@ -358,8 +386,11 @@ def _build_tasks(repo: Repository, site: str, horizon: Horizon,
             remaining = quantity - covered
             if remaining <= 0:
                 continue
+            c_code = row.get("customer_code")
+            c_weight = customer_weights.get(c_code, 1) if c_code else 1
             t = _make_task(pn, parts, fg_params, sf_params, remaining,
-                           row["demand_date"], False, parent_pn=None)
+                           row["demand_date"], False, parent_pn=None,
+                           customer_code=c_code, weight=c_weight)
             tasks.append(t)
             fg_tasks_by_pn[pn].append(t)
 
@@ -374,8 +405,12 @@ def _build_tasks(repo: Repository, site: str, horizon: Horizon,
             child_part = parts.get(child_pn, {})
             if child_part.get("stage") != "SF":
                 continue
+            sf_cfg = sf_params.get(child_pn) or {}
+            scrap_rate = float(sf_cfg.get("scrap_rate") or 0.0)
+            scrap_divisor = max(0.01, 1.0 - scrap_rate) if 0.0 <= scrap_rate < 1.0 else 1.0
             for pt in parent_tasks:
-                gross_qty = int(math.ceil(pt.net_requirement * link.ratio))
+                nominal_qty = pt.net_requirement * link.ratio
+                gross_qty = int(math.ceil(nominal_qty / scrap_divisor))
                 sf_gross_demand[child_pn].append((pt.due_date, gross_qty, parent_pn))
 
     for child_pn in sorted(sf_gross_demand):
@@ -404,7 +439,9 @@ def _make_task(pn: str, parts: Mapping[str, Mapping[str, Any]],
                fg_params: Mapping[str, Mapping[str, Any]],
                sf_params: Mapping[str, Mapping[str, Any]],
                amount: int, due_date: dt.date, topup: bool,
-               parent_pn: str | None = None) -> Task:
+               parent_pn: str | None = None,
+               customer_code: str | None = None,
+               weight: int = 1) -> Task:
     part = parts.get(pn, {})
     stage = part.get("stage") or "COMP"
     fg = fg_params.get(pn)
@@ -427,6 +464,8 @@ def _make_task(pn: str, parts: Mapping[str, Mapping[str, Any]],
         family_code=family or part.get("family_code"),
         description=part.get("description"), is_safety_topup=topup,
         parent_pn=parent_pn,
+        customer_code=customer_code,
+        weight=weight,
     )
 
 

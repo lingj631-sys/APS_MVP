@@ -72,12 +72,25 @@ def _write_line_shifts(ws: Worksheet, shift_summaries: Sequence[LineShiftSummary
         ws.cell(row_idx, 10, "是" if s.is_tail else "否")
 
 
-def _write_order_delivery(ws: Worksheet, tasks: Sequence[Task], plan_rows: Sequence[PlanRow]) -> None:
+def _write_order_delivery(
+    ws: Worksheet,
+    tasks: Sequence[Task],
+    plan_rows: Sequence[PlanRow],
+    shift_summaries: Sequence[LineShiftSummary] | None = None,
+) -> None:
     headers = [
         "工单ID", "料号", "品名描述", "阶段", "需求件数",
         "实排件数", "需求交期", "完工日期", "完工班次", "延误班次数", "交付状态",
     ]
     _style_headers(ws, headers)
+
+    # 索引每个产线在各日期的最大槽位 (用于精确核算交期所在槽位)
+    due_slot_by_line_date: dict[tuple[str, str], int] = {}
+    if shift_summaries:
+        for s in shift_summaries:
+            key = (s.line_code, s.date_str)
+            if key not in due_slot_by_line_date or s.slot_index > due_slot_by_line_date[key]:
+                due_slot_by_line_date[key] = s.slot_index
 
     # 索引每个工单的排产情况
     rows_by_task: dict[str, list[PlanRow]] = {}
@@ -109,7 +122,11 @@ def _write_order_delivery(ws: Worksheet, tasks: Sequence[Task], plan_rows: Seque
             finish_date = last_p.date_str
             finish_shift = last_p.shift_name
             is_delayed = finish_date > due_str
-            delay_shifts = max(0, (last_p.slot_index - 0)) if is_delayed else 0
+            due_slot = due_slot_by_line_date.get((last_p.line_code, due_str))
+            if due_slot is not None:
+                delay_shifts = max(0, last_p.slot_index - due_slot) if is_delayed else 0
+            else:
+                delay_shifts = max(0, last_p.slot_index) if is_delayed else 0
             status_desc = "按期交付" if not is_delayed and planned_qty >= task.net_requirement else "延误交付"
         else:
             finish_date = "-"
@@ -222,7 +239,7 @@ def export_production_plan(
     _write_line_shifts(ws2, shift_summaries)
 
     ws3 = wb.create_sheet("订单交付汇总 Order Delivery")
-    _write_order_delivery(ws3, tasks, plan_rows)
+    _write_order_delivery(ws3, tasks, plan_rows, shift_summaries)
 
     ws4 = wb.create_sheet("求解报告 Solver Report")
     _write_solver_report(ws4, solve_summary, binding_reports)

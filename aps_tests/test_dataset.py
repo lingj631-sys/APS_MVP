@@ -591,6 +591,39 @@ class TestBomMrpExplosion(unittest.TestCase):
         self.assertEqual("P1", sf_tasks[0].parent_pn)
         self.assertEqual(96, sf_tasks[0].mpq)
 
+    def test_fg_demand_explodes_to_sf_tasks_with_scrap_rate(self):
+        # 100 FG net req * 2.0 ratio = 200 nominal SF pieces needed.
+        # With 10% scrap rate (0.10), gross needed is ceil(200 / 0.90) = 223.
+        # Minus 50 initial stock => net requirement = 173.
+        tables = base_tables(
+            part=[
+                {"site_code": SITE, "pn": "P1", "description": "成品总成", "stage": "FG", "family_code": "FAM1", "uom": "件"},
+                {"site_code": SITE, "pn": "S1", "description": "半成品转子", "stage": "SF", "family_code": "FAM1", "uom": "件"},
+            ],
+            part_param_fg=[
+                {"site_code": SITE, "pn": "P1", "description": "成品总成", "mpq": 48, "moq": None, "family_code": "FAM1",
+                 "mold_id": None, "special_shift": None, "co_production": None},
+            ],
+            part_param_sf=[
+                {"site_code": SITE, "pn": "S1", "description": "半成品转子", "mpq": 96, "scrap_rate": 0.10, "max_stock": None,
+                 "moq": None, "family_code": "FAM1", "mold_id": None, "special_shift": None, "co_production": None},
+            ],
+            bom=[
+                {"site_code": SITE, "parent_pn": "P1", "parent_description": None,
+                 "child_pn": "S1", "child_description": None, "ratio": 2.0},
+            ],
+            demand=[
+                {"site_code": SITE, "pn": "P1", "demand_date": START, "description": None, "quantity": 100, "customer_code": None},
+            ],
+            initial_stock=[
+                {"site_code": SITE, "pn": "S1", "material_type": "SF", "description": None, "quantity": 50},
+            ],
+        )
+        ds = load(tables, days=10)
+        sf_tasks = [t for t in ds.tasks if t.stage == "SF"]
+        self.assertEqual(1, len(sf_tasks))
+        self.assertEqual(173, sf_tasks[0].net_requirement)
+
 
 if __name__ == "__main__":
     unittest.main()

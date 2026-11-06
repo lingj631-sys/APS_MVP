@@ -129,6 +129,34 @@ class TestExportExcel(unittest.TestCase):
         self.assertIn("实排件数", headers)
         self.assertIn("交付状态", headers)
 
+    def test_order_delivery_delay_shifts_calculation_when_delayed(self):
+        # Construct scenario where due date is 2026-11-03, and finish is on 2026-11-04 slot 4 (1 shift late)
+        from aps.model.plan_row import PlanRow
+        fake_task = Task(pn="FG01", stage="FG", net_requirement=10, due_date=START,
+                         mpq=1, moq=None, mold_id="M1", family_code="F1", description="电机",
+                         is_safety_topup=False)
+        fake_p = PlanRow(
+            site=SITE, line_code="LINE_FG", date_str="2026-11-04", shift_name="早班",
+            slot_index=3, task_id="FG_FG01_2026-11-03_0", pn="FG01", stage="FG",
+            quantity=10, start_min=0.0, end_min=10.0, setup_min=0.0,
+            is_tail_shift=False
+        )
+        fake_out = os.path.join(self._tmp.name, "delayed.xlsx")
+        export_production_plan(
+            plan_rows=[fake_p],
+            shift_summaries=self.shift_summaries,
+            solve_summary=self.summary,
+            binding_reports=self.binding_reports,
+            tasks=[fake_task],
+            out_path=fake_out,
+        )
+        wb = load_workbook(fake_out)
+        self.addCleanup(wb.close)
+        ws = wb["订单交付汇总 Order Delivery"]
+        # Delay shifts is column 10, should be 1 shift late (slot 3 vs last slot of 11-03 which is slot 2: 3 - 2 = 1)
+        delay_val = ws.cell(2, 10).value
+        self.assertEqual(1, delay_val)
+
     def test_solver_report_sheet_content(self):
         wb = load_workbook(self.out_path)
         self.addCleanup(wb.close)

@@ -105,6 +105,31 @@ class TestModelSolver(unittest.TestCase):
         self.assertIn(summary.status, ("OPTIMAL", "FEASIBLE"))
         self.assertEqual(0, summary.p1_lateness_shifts)
 
+    def test_p1_prioritizes_tier_a_customer_over_normal(self):
+        # Both tasks take full shift capacity (1224 pcs).
+        # Task Normal (weight 1) vs Task Tier A (weight 10). Both due on Day 1.
+        # With weighted P1, Tier A must have 0 late shifts!
+        t_normal = Task(
+            pn="FG01", stage="FG", net_requirement=1224, due_date=START,
+            mpq=48, moq=None, mold_id="M1", family_code="F1", description="普通订单",
+            is_safety_topup=False, customer_code="CUST_NORMAL", weight=1
+        )
+        t_tier_a = Task(
+            pn="FG01", stage="FG", net_requirement=1224, due_date=START,
+            mpq=48, moq=None, mold_id="M1", family_code="F1", description="战略A级客户",
+            is_safety_topup=False, customer_code="CUST_TIER_A", weight=10
+        )
+        # Put t_normal first in tasks list so without weighting it would naturally be preferred or tied
+        ds = _make_dataset(tasks=(t_normal, t_tier_a), days=2)
+        ctx = StructureContext.build(ds)
+
+        solver, summary = solve_schedule(ctx, time_limit_seconds=5.0)
+        self.assertIsNotNone(solver)
+        # The late shift variable for Tier A task must be 0
+        tier_a_t_id = f"FG_FG01_{START.isoformat()}_1"
+        tier_a_lateness = solver.Value(ctx.late_shifts[tier_a_t_id])
+        self.assertEqual(0, tier_a_lateness)
+
     def test_four_layer_lexicographic_summary_fields(self):
         tasks = (
             Task(pn="FG01", stage="FG", net_requirement=48, due_date=START + dt.timedelta(days=1),

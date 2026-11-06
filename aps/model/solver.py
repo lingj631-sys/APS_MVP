@@ -106,9 +106,14 @@ def solve_schedule(ctx: StructureContext,
     # Layer 1: P1 交付优先 (OTD Delivery / Late Shifts Minimization)
     # -------------------------------------------------------------
     solver.parameters.max_time_in_seconds = stage_time_limit
-    late_vars = list(ctx.late_shifts.values())
-    if late_vars:
-        obj_p1 = sum(late_vars)
+    late_terms = []
+    for t_id, late_var in ctx.late_shifts.items():
+        task = ctx.tasks_by_id[t_id]
+        w = getattr(task, "weight", 1) or 1
+        late_terms.append(late_var * w)
+
+    if late_terms:
+        obj_p1 = sum(late_terms)
         model.Minimize(obj_p1)
     status_p1 = solver.Solve(model)
 
@@ -136,7 +141,7 @@ def solve_schedule(ctx: StructureContext,
         )
 
     best_snapshot = _snapshot(solver)
-    if late_vars:
+    if late_terms:
         val_p1 = int(round(solver.ObjectiveValue()))
         model.Add(obj_p1 <= val_p1)
 

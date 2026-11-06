@@ -9,7 +9,15 @@ from ortools.sat.python import cp_model
 from aps.calendar.geometry import MS_PER_HOUR
 from aps.dataset import DataSet, LineGeometry, RouteOption, Task
 
-__all__ = ["StructureContext"]
+__all__ = ["StructureContext", "SolveConfig"]
+
+
+@dataclass(frozen=True)
+class SolveConfig:
+    min_utilization_pct: float = 0.95        # 产线开班最小饱和度底线 (0.0 ~ 1.0, 0表示关闭)
+    max_utilization_pct: float = 1.05        # 产线单班最大负荷利用率上限 (最高 1.05 即 105% 加班产能)
+    sf_min_batch_qty: int | None = None       # 半成品最小生产批次(个数)；若为 None 则使用料号本身的 mpq
+    max_changeovers_per_shift: int | None = None  # 单班最多换型次数 (0=单品专线, 1=最多换1次, 2=最多换2次, None=不限)
 
 
 @dataclass
@@ -19,6 +27,7 @@ class StructureContext:
     horizon_days: int
     task_ids: list[str]
     tasks_by_id: dict[str, Task]
+    config: SolveConfig = dc_field(default_factory=SolveConfig)
 
     assign: dict[tuple[str, str], cp_model.IntVar] = dc_field(default_factory=dict)
     x: dict[tuple[str, str, int], cp_model.IntVar] = dc_field(default_factory=dict)
@@ -39,7 +48,7 @@ class StructureContext:
     assumption_names: dict[int, str] = dc_field(default_factory=dict)
 
     @classmethod
-    def build(cls, dataset: DataSet) -> "StructureContext":
+    def build(cls, dataset: DataSet, config: SolveConfig | None = None) -> "StructureContext":
         model = cp_model.CpModel()
         horizon_days = dataset.horizon.days
 
@@ -56,6 +65,7 @@ class StructureContext:
             horizon_days=horizon_days,
             task_ids=task_ids,
             tasks_by_id=tasks_by_id,
+            config=config or SolveConfig(),
         )
 
         ctx._create_variables()

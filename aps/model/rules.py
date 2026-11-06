@@ -63,9 +63,11 @@ def build_core_constraints(ctx: StructureContext,
                     unit_ms = route.unit_ms if route else int(round(20.0 * 1000 / line.trp_efficiency))
                     load_terms.append(unit_ms * ctx.x[(t_id, l_code, s)])
 
+            max_util = ctx.config.max_utilization_pct if (hasattr(ctx, "config") and ctx.config) else 1.05
+            effective_cap_ms = int(round(cap_ms * max_util))
             model.Add(ctx.load_ms[(l_code, s)] == (sum(load_terms) if load_terms else 0))
-            _add(ctx.load_ms[(l_code, s)] <= cap_ms * ctx.is_open[(l_code, s)], f"c3_cap.{l_code}.{s}")
-            model.Add(ctx.load_ms[(l_code, s)] <= cap_ms * 2 * ctx.is_open[(l_code, s)])
+            _add(ctx.load_ms[(l_code, s)] <= effective_cap_ms * ctx.is_open[(l_code, s)], f"c3_cap.{l_code}.{s}")
+            model.Add(ctx.load_ms[(l_code, s)] <= effective_cap_ms * 2 * ctx.is_open[(l_code, s)])
     rule_names.append("c3_slot_capacity")
 
     # 4. 成品（FG）MPQ 整数倍生产 (FG MPQ Multiple with Tail Remainder) - O(1) indexed
@@ -92,15 +94,18 @@ def build_core_constraints(ctx: StructureContext,
                 model.Add(sum(task_tail_vars) <= 1)
     rule_names.append("c4_fg_mpq")
 
-    # 5. 半成品（SF）MPQ 订单门槛 (SF MPQ Batch Threshold) - O(1) indexed
+    # 5. 半成品（SF）MPQ 订单门槛与自定义最小生产批次个数 - O(1) indexed
     for t_id in ctx.task_ids:
         task = ctx.tasks_by_id[t_id]
-        if task.stage == "SF" and task.mpq > 1:
-            x_vars = ctx.x_by_task[t_id]
-            if x_vars:
-                sf_open = model.NewBoolVar(f"sf_open.{t_id}")
-                _add(sum(x_vars) >= task.mpq * sf_open, f"c5_sf_mpq.{t_id}.min")
-                _add(sum(x_vars) <= task.net_requirement * sf_open, f"c5_sf_mpq.{t_id}.max")
+        if task.stage == "SF":
+            sf_batch = ctx.config.sf_min_batch_qty if (hasattr(ctx, "config") and ctx.config and ctx.config.sf_min_batch_qty) else task.mpq
+            if sf_batch > 1:
+                effective_batch = min(sf_batch, task.net_requirement)
+                x_vars = ctx.x_by_task[t_id]
+                if x_vars:
+                    sf_open = model.NewBoolVar(f"sf_open.{t_id}")
+                    _add(sum(x_vars) >= effective_batch * sf_open, f"c5_sf_mpq.{t_id}.min")
+                    _add(sum(x_vars) <= task.net_requirement * sf_open, f"c5_sf_mpq.{t_id}.max")
     rule_names.append("c5_sf_mpq")
 
     # 6. 跨工序时间相位流水累计平衡 (Cross-Stage Cumulative Balance) - O(1) dictionary lookups
@@ -175,29 +180,44 @@ def build_core_constraints(ctx: StructureContext,
                 model.Add(ctx.is_open[(l_code, s_next)] == 0).OnlyEnforceIf(ctx.is_tail[(l_code, s)])
     rule_names.append("c8_tail_shift_definition")
 
-    # 9. 95% 班次利用率底线与末班豁免 (95% Utilization Floor)
-    for line in ds.lines:
-        l_code = line.line_code
-        line_slots = ds.slot_count(l_code)
-        cap_ms = int(round(line.shift_hours * MS_PER_HOUR))
-        floor_ms = int(round(0.95 * cap_ms))
+    # 9. 产线单班最小开班利用率底线与末班豁免 (Utilization Floor)
+    min_util = ctx.config.min_utilization_pct if (hasattr(ctx, "config") and ctx.config) else 0.95
+    if min_util > 0.0:
+        for line in ds.lines:
+            l_code = line.line_code
+            line_slots = ds.slot_count(l_code)
+            cap_ms = int(round(line.shift_hours * MS_PER_HOUR))
+            floor_ms = int(round(min_util * cap_ms))
 
-        for s in range(line_slots):
-            if allow_soft_utilization:
-                gap_var = model.NewIntVar(0, floor_ms, f"under_util.{l_code}.{s}")
-                ctx.under_util[(l_code, s)] = gap_var
-                _add(
-                    ctx.load_ms[(l_code, s)] + gap_var + floor_ms * ctx.is_tail[(l_code, s)]
-                    >= floor_ms * ctx.is_open[(l_code, s)],
-                    f"c9_floor.{l_code}.{s}",
-                )
-            else:
-                _add(
-                    ctx.load_ms[(l_code, s)] + floor_ms * ctx.is_tail[(l_code, s)]
-                    >= floor_ms * ctx.is_open[(l_code, s)],
-                    f"c9_floor.{l_code}.{s}",
-                )
-    rule_names.append("c9_utilization_floor")
+            for s in range(line_slots):
+                if allow_soft_utilization:
+                    gap_var = model.NewIntVar(0, floor_ms, f"under_util.{l_code}.{s}")
+                    ctx.under_util[(l_code, s)] = gap_var
+                    _add(
+                        ctx.load_ms[(l_code, s)] + gap_var + floor_ms * ctx.is_tail[(l_code, s)]
+                        >= floor_ms * ctx.is_open[(l_code, s)],
+                        f"c9_floor.{l_code}.{s}",
+                    )
+                else:
+                    _add(
+                        ctx.load_ms[(l_code, s)] + floor_ms * ctx.is_tail[(l_code, s)]
+                        >= floor_ms * ctx.is_open[(l_code, s)],
+                        f"c9_floor.{l_code}.{s}",
+                    )
+        rule_names.append("c9_utilization_floor")
+
+    # 10. 单班最大换型次数限制 (Max Changeovers Per Shift)
+    max_chg = ctx.config.max_changeovers_per_shift if (hasattr(ctx, "config") and ctx.config) else None
+    if max_chg is not None and max_chg >= 0:
+        for line in ds.lines:
+            l_code = line.line_code
+            line_slots = ds.slot_count(l_code)
+            candidate_tasks = [t_id for (t_id, lc) in ctx.assign if lc == l_code]
+            for s in range(line_slots):
+                active_terms = [ctx.active[(t_id, l_code, s)] for t_id in candidate_tasks if (t_id, l_code, s) in ctx.active]
+                if len(active_terms) > (1 + max_chg):
+                    model.Add(sum(active_terms) <= 1 + max_chg)
+        rule_names.append("c10_max_changeovers_per_shift")
 
     if use_assumptions and ctx.assumptions:
         model.AddAssumptions(list(ctx.assumptions.values()))

@@ -201,6 +201,56 @@
                 </button>
               </div>
             </div>
+
+            <!-- Advanced Rules Fine-Tuning Accordion Panel -->
+            <div class="border-t border-border pt-3">
+              <div class="flex items-center justify-between cursor-pointer py-1" @click="showAdvanced = !showAdvanced">
+                <div class="flex items-center space-x-2 text-xs font-bold text-textMain">
+                  <svg class="w-4 h-4 text-accent transition-transform duration-200" :class="showAdvanced ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                  <span>高级制造物理与运筹规则微调</span>
+                </div>
+                <span class="text-[11px] text-textMuted font-mono">{{ showAdvanced ? '收起配置 ▲' : '展开微调 (最大105%利用率 / 半成品批量个数 / 换型次数) ▼' }}</span>
+              </div>
+
+              <div v-show="showAdvanced" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 p-3.5 bg-slate-50/70 rounded-lg border border-border text-xs">
+                <div>
+                  <label class="block font-medium text-textMuted mb-1">产线最大利用率上限</label>
+                  <div class="flex items-center space-x-1.5">
+                    <input type="number" v-model.number="form.maxUtilizationPct" min="80" max="105" step="1" class="w-full bg-white border border-border rounded px-2.5 py-1 text-xs focus:border-accent font-mono font-bold">
+                    <span class="text-textMuted font-mono">%</span>
+                  </div>
+                  <span class="text-[10px] text-textMuted">最高支持 105% 负荷缓冲</span>
+                </div>
+
+                <div>
+                  <label class="block font-medium text-textMuted mb-1">开班最小饱和度底线</label>
+                  <select v-model.number="form.minUtilizationPct" class="w-full bg-white border border-border rounded px-2.5 py-1 text-xs focus:border-accent">
+                    <option :value="95">95% (标准制造红线)</option>
+                    <option :value="90">90% (轻度柔性排产)</option>
+                    <option :value="80">80% (低开班门槛)</option>
+                    <option :value="0">0% (不限开班负荷)</option>
+                  </select>
+                  <span class="text-[10px] text-textMuted">单班实际负荷达标率</span>
+                </div>
+
+                <div>
+                  <label class="block font-medium text-textMuted mb-1">半成品最小批量 (个数)</label>
+                  <input type="number" v-model.number="form.sfMinBatchQty" min="1" placeholder="留空默认按料号 MPQ" class="w-full bg-white border border-border rounded px-2.5 py-1 text-xs focus:border-accent font-mono">
+                  <span class="text-[10px] text-textMuted">冲压/转子单次开机最小件数</span>
+                </div>
+
+                <div>
+                  <label class="block font-medium text-textMuted mb-1">单班最多换型次数</label>
+                  <select v-model="form.maxChangeovers" class="w-full bg-white border border-border rounded px-2.5 py-1 text-xs focus:border-accent">
+                    <option :value="null">不设限制 (由P3目标优化)</option>
+                    <option :value="0">0 次 (专线单品生产)</option>
+                    <option :value="1">最多 1 次 (单班限做2品种)</option>
+                    <option :value="2">最多 2 次 (单班限做3品种)</option>
+                  </select>
+                  <span class="text-[10px] text-textMuted">单线单班允许的切模上限</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Quick Actions & Data Switch Card -->
@@ -733,7 +783,16 @@
               <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"/></svg>
               <h2 class="text-sm font-bold text-textMain">可用数据源工作簿管理 (Workbooks)</h2>
             </div>
-            <span class="text-xs text-textMuted font-mono">在下方直接切换不同业务场景的数据源 (.xlsx)</span>
+            
+            <div class="flex items-center space-x-3">
+              <span class="text-xs text-textMuted font-mono hidden md:inline">支持物理删除文件或彻底清空库表</span>
+              <button 
+                @click="clearDatabase" 
+                class="px-3 py-1.5 rounded text-xs text-danger hover:bg-dangerLight border border-danger/30 transition-colors flex items-center space-x-1.5 cursor-pointer font-medium">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <span>重置清空数据库 (Clear DB)</span>
+              </button>
+            </div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -746,7 +805,7 @@
               
               <div>
                 <div class="flex items-center justify-between">
-                  <div class="font-bold font-mono text-xs text-textMain truncate max-w-[180px]">{{ wb.filename }}</div>
+                  <div class="font-bold font-mono text-xs text-textMain truncate max-w-[180px]" :title="wb.filename">{{ wb.filename }}</div>
                   <span v-if="status.active_workbook === wb.path || status.active_workbook === wb.filename" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent text-white">当前使用中</span>
                 </div>
                 <div class="text-[11px] text-textMuted font-mono mt-1 space-y-0.5">
@@ -755,13 +814,19 @@
                 </div>
               </div>
 
-              <div>
+              <div class="flex items-center space-x-2 pt-1">
                 <button 
                   @click="switchWorkbook(wb.path)"
                   :disabled="status.active_workbook === wb.path || status.active_workbook === wb.filename"
-                  class="w-full py-1.5 px-3 rounded text-xs font-mono font-medium transition-colors flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  class="flex-1 py-1.5 px-2 rounded text-xs font-mono font-medium transition-colors flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   :class="status.active_workbook === wb.path || status.active_workbook === wb.filename ? 'bg-surfaceMuted text-textMuted' : 'bg-primary text-white hover:bg-slate-800'">
                   <span>{{ (status.active_workbook === wb.path || status.active_workbook === wb.filename) ? '已激活' : '切换为此数据源' }}</span>
+                </button>
+                <button 
+                  @click="deleteWorkbook(wb.filename)"
+                  title="从磁盘彻底删除此工作簿"
+                  class="px-2.5 py-1.5 rounded text-xs text-danger hover:bg-dangerLight border border-danger/20 transition-colors cursor-pointer font-mono">
+                  删除
                 </button>
               </div>
             </div>
@@ -891,12 +956,17 @@
         const status = ref({ status: 'loading', total_rows: 0, entity_counts: {}, active_workbook: '' });
         const solveResult = ref(null);
 
+        const showAdvanced = ref(false);
         const form = ref({
           site: 'WL',
           startDate: '2026-11-03',
           days: 10,
           timeout: 60,
           calendarMode: 'CONTINUOUS',
+          maxUtilizationPct: 105,
+          minUtilizationPct: 95,
+          sfMinBatchQty: null,
+          maxChangeovers: null,
         });
 
         // Gantt Chart State
@@ -1081,6 +1151,10 @@
                 days: form.value.days,
                 timeout: form.value.timeout,
                 calendar_mode: form.value.calendarMode,
+                max_utilization_pct: (form.value.maxUtilizationPct || 105) / 100.0,
+                min_utilization_pct: (form.value.minUtilizationPct ?? 95) / 100.0,
+                sf_min_batch_qty: form.value.sfMinBatchQty ? parseInt(form.value.sfMinBatchQty) : null,
+                max_changeovers_per_shift: form.value.maxChangeovers !== null && form.value.maxChangeovers !== undefined ? parseInt(form.value.maxChangeovers) : null,
               })
             });
             const data = await res.json();
@@ -1095,6 +1169,41 @@
             alert('求解请求异常: ' + e);
           } finally {
             solving.value = false;
+          }
+        };
+
+        const deleteWorkbook = async (filename) => {
+          if (!confirm(`确认要从磁盘中物理删除工作簿文件 "${filename}" 吗？此操作无法撤销。`)) return;
+          try {
+            const res = await fetch(`/api/workbooks/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) {
+              alert(`删除失败 (${res.status}): ${data.detail || '未知错误'}`);
+              return;
+            }
+            alert(`工作簿 ${filename} 已成功从磁盘删除。`);
+            await fetchWorkbooks();
+            await fetchStatus();
+          } catch (e) {
+            alert('删除文件异常: ' + e);
+          }
+        };
+
+        const clearDatabase = async () => {
+          if (!confirm('警告：确定要彻底重置清空 SQLite 数据库吗？\n清空后 23 张实体数据表行数将全部归零，需重新导入！')) return;
+          try {
+            const res = await fetch('/api/clear-database', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+              alert(`清空失败 (${res.status}): ${data.detail || '未知错误'}`);
+              return;
+            }
+            alert(data.message || '数据库已成功重置清空。');
+            await fetchStatus();
+            await fetchEntities();
+            solveResult.value = null;
+          } catch (e) {
+            alert('重置数据库异常: ' + e);
           }
         };
 
@@ -1249,6 +1358,9 @@
           workbookList,
           selectedWorkbookPath,
           switchWorkbook,
+          deleteWorkbook,
+          clearDatabase,
+          showAdvanced,
           handleHeaderWorkbookChange,
           selectEntity,
           fetchEntityData,

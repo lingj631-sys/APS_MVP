@@ -18,7 +18,7 @@ from aps.data.issues import IssueLog
 from aps.data.sqlite import SqliteRepository
 from aps.dataset import DataSet
 from aps.export.excel import export_production_plan
-from aps.model.context import StructureContext
+from aps.model.context import SolveConfig, StructureContext
 from aps.model.plan_row import extract_line_shifts, extract_plan_rows
 from aps.model.report import build_binding_reports
 from aps.model.solver import solve_schedule
@@ -85,6 +85,10 @@ class SolveRequest(BaseModel):
     timeout: float = 60.0
     calendar_mode: str = "CONTINUOUS"
     db_path: str = DEFAULT_DB
+    min_utilization_pct: float = 0.95
+    max_utilization_pct: float = 1.05
+    sf_min_batch_qty: int | None = None
+    max_changeovers_per_shift: int | None = None
 
 
 def create_app() -> FastAPI:
@@ -362,6 +366,49 @@ def create_app() -> FastAPI:
             ],
         }
 
+    @app.delete("/api/workbooks/{filename}")
+    def delete_workbook(filename: str):
+        global ACTIVE_WORKBOOK
+        safe_filename = os.path.basename(filename)
+        target_path = None
+        for candidate in (safe_filename, os.path.join("data", safe_filename), os.path.join("data", "uploads", safe_filename)):
+            if os.path.exists(candidate) and candidate.endswith(".xlsx"):
+                target_path = candidate
+                break
+        if not target_path:
+            raise HTTPException(status_code=404, detail=f"工作簿文件不存在: {safe_filename}")
+
+        try:
+            os.remove(target_path)
+        except OSError as err:
+            raise HTTPException(status_code=500, detail=f"删除文件失败: {err}")
+
+        available = _find_available_workbooks()
+        if ACTIVE_WORKBOOK and (ACTIVE_WORKBOOK == target_path.replace("\\", "/") or os.path.basename(ACTIVE_WORKBOOK) == safe_filename):
+            ACTIVE_WORKBOOK = available[0]["path"] if available else ""
+
+        return {
+            "ok": True,
+            "deleted": safe_filename,
+            "active_workbook": ACTIVE_WORKBOOK,
+        }
+
+    @app.post("/api/clear-database")
+    def clear_database(db_path: str = DEFAULT_DB):
+        if os.path.exists(db_path):
+            try:
+                os.remove(db_path)
+            except OSError as err:
+                raise HTTPException(status_code=500, detail=f"清空数据库失败: {err}")
+        repo = SqliteRepository(db_path)
+        repo.close()
+        return {
+            "ok": True,
+            "status": "ready",
+            "total_rows": 0,
+            "message": "数据库已成功重置清空，所有实体数据表归零。",
+        }
+
     @app.post("/api/solve")
     def run_solve(req: SolveRequest):
         if not os.path.exists(req.db_path):
@@ -378,7 +425,13 @@ def create_app() -> FastAPI:
         finally:
             repo.close()
 
-        ctx = StructureContext.build(dataset)
+        config = SolveConfig(
+            min_utilization_pct=req.min_utilization_pct,
+            max_utilization_pct=req.max_utilization_pct,
+            sf_min_batch_qty=req.sf_min_batch_qty,
+            max_changeovers_per_shift=req.max_changeovers_per_shift,
+        )
+        ctx = StructureContext.build(dataset, config=config)
         snapshot, summary = solve_schedule(ctx, time_limit_seconds=req.timeout)
 
         if snapshot is None:

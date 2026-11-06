@@ -74,6 +74,10 @@ class TestWebServer(unittest.TestCase):
             "timeout": 10.0,
             "calendar_mode": "CONTINUOUS",
             "db_path": self.db,
+            "max_utilization_pct": 1.05,
+            "min_utilization_pct": 0.90,
+            "sf_min_batch_qty": 50,
+            "max_changeovers_per_shift": 1,
         })
         self.assertEqual(200, res.status_code)
         data = res.json()
@@ -81,6 +85,26 @@ class TestWebServer(unittest.TestCase):
         self.assertIn(data["status"], ("OPTIMAL", "FEASIBLE"))
         self.assertIn("plan_rows", data)
         self.assertIn("line_shifts", data)
+
+    def test_delete_workbook(self):
+        dummy_file = "dummy_for_delete_test.xlsx"
+        with open(dummy_file, "wb") as f:
+            f.write(b"dummy")
+        try:
+            res = self.client.delete(f"/api/workbooks/{dummy_file}")
+            self.assertEqual(200, res.status_code)
+            self.assertTrue(res.json()["ok"])
+            self.assertFalse(os.path.exists(dummy_file))
+        finally:
+            if os.path.exists(dummy_file):
+                os.unlink(dummy_file)
+
+    def test_clear_database(self):
+        res = self.client.post(f"/api/clear-database?db_path={self.db}")
+        self.assertEqual(200, res.status_code)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(0, data["total_rows"])
 
 
 if __name__ == "__main__":

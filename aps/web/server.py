@@ -427,7 +427,7 @@ def create_app() -> FastAPI:
 
         config = SolveConfig(
             min_utilization_pct=req.min_utilization_pct,
-            max_utilization_pct=req.max_utilization_pct,
+            max_utilization_pct=min(1.05, req.max_utilization_pct),
             sf_min_batch_qty=req.sf_min_batch_qty,
             max_changeovers_per_shift=req.max_changeovers_per_shift,
         )

@@ -115,8 +115,8 @@ class TestModelRules(unittest.TestCase):
             qty = solver.Value(ctx.x[(ctx.task_ids[0], "LINE_FG", s)])
             if qty > 0:
                 load_val = solver.Value(ctx.load_ms[("LINE_FG", s)])
-                expected_min_load = qty * 23529 + int(30.0 * 60 * 1000)
-                self.assertGreaterEqual(load_val, expected_min_load)
+                expected_load = qty * 23529
+                self.assertEqual(load_val, expected_load)
 
     def test_c11_shared_mold_cross_line_concurrency(self):
         # Two FG tasks: FG01 and FG02 both requiring Mold M1.

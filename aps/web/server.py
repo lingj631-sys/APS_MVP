@@ -448,10 +448,15 @@ def create_app() -> FastAPI:
             "binding_reports": [
                 {
                     "rule_id": b.rule_id,
+                    "name": b.name,
+                    "category": b.category,
+                    "description": b.description,
+                    "math_expr": b.math_expr,
                     "status": b.status,
                     "constraints_count": b.constraints_count,
                     "penalty_terms_count": b.penalty_terms_count,
                     "provenance": b.provenance,
+                    "impact_note": b.impact_note,
                 }
                 for b in binding_reports
             ],

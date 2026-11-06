@@ -166,7 +166,7 @@ def _write_solver_report(ws: Worksheet,
     row += 2
     ws.cell(row, 1, "三、规则生效状态报告").font = Font(bold=True, size=12)
     row += 1
-    headers = ["规则编号", "生效状态", "生成硬约束数", "惩罚项/目标项数", "代码源出处"]
+    headers = ["规则编号", "规则中文名称", "规则类别", "生效状态", "生成硬约束数", "惩罚/目标项数", "车间业务场景说明", "代码源出处"]
     for c, h in enumerate(headers, start=1):
         cell = ws.cell(row, c, h)
         cell.font = _HEADER_FONT
@@ -175,10 +175,13 @@ def _write_solver_report(ws: Worksheet,
 
     for rep in binding_reports:
         ws.cell(row, 1, rep.rule_id)
-        ws.cell(row, 2, rep.status)
-        ws.cell(row, 3, rep.constraints_count)
-        ws.cell(row, 4, rep.penalty_terms_count)
-        ws.cell(row, 5, rep.provenance)
+        ws.cell(row, 2, rep.name)
+        ws.cell(row, 3, rep.category)
+        ws.cell(row, 4, rep.status)
+        ws.cell(row, 5, rep.constraints_count)
+        ws.cell(row, 6, rep.penalty_terms_count)
+        ws.cell(row, 7, rep.description)
+        ws.cell(row, 8, rep.provenance)
         row += 1
 
     row += 1
@@ -191,11 +194,14 @@ def _write_solver_report(ws: Worksheet,
     else:
         ws.cell(row, 1, "• 经 CP-SAT 核心求解器验证，当前生产计划为全局可行合规解，无物理冲突。")
 
-    ws.column_dimensions["A"].width = 28
-    ws.column_dimensions["B"].width = 24
-    ws.column_dimensions["C"].width = 16
-    ws.column_dimensions["D"].width = 16
-    ws.column_dimensions["E"].width = 45
+    ws.column_dimensions["A"].width = 24
+    ws.column_dimensions["B"].width = 28
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 14
+    ws.column_dimensions["E"].width = 16
+    ws.column_dimensions["F"].width = 16
+    ws.column_dimensions["G"].width = 60
+    ws.column_dimensions["H"].width = 35
 
 
 def export_production_plan(

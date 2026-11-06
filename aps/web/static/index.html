@@ -71,18 +71,31 @@
       </div>
 
       <div class="flex items-center space-x-3 text-xs font-mono">
+        <!-- Active Data Source Switcher Chip in Header -->
+        <div class="flex items-center space-x-1.5 bg-surfaceMuted px-2.5 py-1 rounded border border-border">
+          <span class="text-textMuted">数据源:</span>
+          <select 
+            v-model="selectedWorkbookPath" 
+            @change="handleHeaderWorkbookChange" 
+            class="bg-transparent font-bold text-accent focus:outline-none cursor-pointer text-xs">
+            <option v-for="wb in workbookList" :key="wb.path" :value="wb.path">
+              {{ wb.filename }} ({{ wb.size_kb }}KB)
+            </option>
+          </select>
+        </div>
+
         <div class="flex items-center space-x-2 bg-surfaceMuted px-3 py-1.5 rounded border border-border">
-          <span class="text-textMuted">工厂站点:</span>
+          <span class="text-textMuted">站点:</span>
           <span class="text-textMain font-bold">{{ site }}</span>
         </div>
         <div class="flex items-center space-x-2 bg-surfaceMuted px-3 py-1.5 rounded border border-border">
-          <span class="text-textMuted">主数据行数:</span>
+          <span class="text-textMuted">主数据:</span>
           <span class="text-textMain font-bold">{{ status.total_rows }} 行</span>
         </div>
         <div class="flex items-center space-x-2 bg-surfaceMuted px-3 py-1.5 rounded border border-border">
           <span class="w-2 h-2 rounded-full" :class="status.status === 'ready' ? 'bg-success' : 'bg-danger'"></span>
           <span :class="status.status === 'ready' ? 'text-success font-semibold' : 'text-danger font-semibold'">
-            {{ status.status === 'ready' ? '系统就绪' : '数据库未初始化' }}
+            {{ status.status === 'ready' ? '就绪' : '未就绪' }}
           </span>
         </div>
       </div>
@@ -118,7 +131,10 @@
                 <span class="w-2 h-2 rounded-full bg-accent"></span>
                 <h2 class="text-sm font-bold text-textMain">排产求解参数配置</h2>
               </div>
-              <span class="text-xs text-textMuted font-mono">四层字典序多目标优化 · Bound Freezing</span>
+              <div class="flex items-center space-x-2 text-xs text-textMuted font-mono">
+                <span>当前数据源:</span>
+                <span class="px-2 py-0.5 rounded bg-surfaceMuted border border-border text-accent font-bold">{{ status.active_workbook || '未指定' }}</span>
+              </div>
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -187,11 +203,13 @@
             </div>
           </div>
 
-          <!-- Quick Actions & Download Card -->
+          <!-- Quick Actions & Data Switch Card -->
           <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between space-y-4 shadow-sm">
             <div>
-              <h3 class="text-xs font-semibold text-textMuted uppercase tracking-wider mb-2">排产总表导出</h3>
-              <p class="text-xs text-textMuted leading-relaxed">排产完成后自动编译生成包含生产明细、班次负荷、交付汇总和求解报告的 4 工作表 Excel 文件。</p>
+              <h3 class="text-xs font-semibold text-textMuted uppercase tracking-wider mb-2">排产总表与数据源</h3>
+              <p class="text-xs text-textMuted leading-relaxed">
+                当前挂载文件: <span class="font-bold font-mono text-textMain">{{ status.active_workbook || '无' }}</span>
+              </p>
             </div>
 
             <div class="space-y-2.5">
@@ -203,10 +221,10 @@
                 <span>下载排产总表 (.xlsx)</span>
               </button>
               <button 
-                @click="importDefault"
+                @click="activeTab = 'data'"
                 class="w-full bg-surface border border-border hover:bg-surfaceMuted text-textMuted hover:text-textMain font-medium py-2 rounded text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>重载默认 V2 数据源</span>
+                <span>更换数据源或上传 (Manage Data)</span>
               </button>
             </div>
           </div>
@@ -634,11 +652,65 @@
       <!-- ==================================================================== -->
       <!-- TAB 6: 数据源与仓储浏览器 (Data & Master Explorer)                   -->
       <!-- ==================================================================== -->
-      <section v-show="activeTab === 'data'" class="space-y-4">
+      <section v-show="activeTab === 'data'" class="space-y-6">
+
+        <!-- Top Section: Multi-Workbook Data Source Switcher Panel -->
+        <div class="bg-surface border border-border rounded-lg p-5 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-border pb-3">
+            <div class="flex items-center space-x-2">
+              <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"/></svg>
+              <h2 class="text-sm font-bold text-textMain">可用数据源工作簿管理 (Workbooks)</h2>
+            </div>
+            <span class="text-xs text-textMuted font-mono">在下方直接切换不同业务场景的数据源 (.xlsx)</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Workbook Cards -->
+            <div 
+              v-for="wb in workbookList" 
+              :key="wb.path"
+              :class="status.active_workbook === wb.path || status.active_workbook === wb.filename ? 'border-accent bg-accentLight/30 ring-1 ring-accent' : 'border-border bg-surface hover:border-slate-300'"
+              class="border rounded-lg p-4 flex flex-col justify-between space-y-3 transition-all">
+              
+              <div>
+                <div class="flex items-center justify-between">
+                  <div class="font-bold font-mono text-xs text-textMain truncate max-w-[180px]">{{ wb.filename }}</div>
+                  <span v-if="status.active_workbook === wb.path || status.active_workbook === wb.filename" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent text-white">当前使用中</span>
+                </div>
+                <div class="text-[11px] text-textMuted font-mono mt-1 space-y-0.5">
+                  <div>文件大小: {{ wb.size_kb }} KB</div>
+                  <div>修改时间: {{ wb.modified }}</div>
+                </div>
+              </div>
+
+              <div>
+                <button 
+                  @click="switchWorkbook(wb.path)"
+                  :disabled="status.active_workbook === wb.path || status.active_workbook === wb.filename"
+                  class="w-full py-1.5 px-3 rounded text-xs font-mono font-medium transition-colors flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  :class="status.active_workbook === wb.path || status.active_workbook === wb.filename ? 'bg-surfaceMuted text-textMuted' : 'bg-primary text-white hover:bg-slate-800'">
+                  <span>{{ (status.active_workbook === wb.path || status.active_workbook === wb.filename) ? '已激活' : '切换为此数据源' }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Upload New Workbook Card -->
+            <div 
+              class="border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center text-center space-y-2 hover:border-accent transition-colors cursor-pointer bg-slate-50/50"
+              @click="$refs.fileInput.click()">
+              <input type="file" ref="fileInput" @change="handleFileUpload" class="hidden" accept=".xlsx">
+              <svg class="w-6 h-6 text-textMuted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+              <div class="text-xs font-semibold text-textMain">上传其他自定义数据源 (.xlsx)</div>
+              <div class="text-[10px] text-textMuted">上传后将自动验证入库并激活</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Master-Detail Data Explorer Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           <!-- Left Column: Entity Directory List with Search -->
-          <div class="lg:col-span-1 bg-surface border border-border rounded-lg p-4 space-y-3 shadow-sm flex flex-col h-[calc(100vh-250px)]">
+          <div class="lg:col-span-1 bg-surface border border-border rounded-lg p-4 space-y-3 shadow-sm flex flex-col h-[calc(100vh-340px)]">
             <div class="flex items-center justify-between border-b border-border pb-2.5">
               <h2 class="text-sm font-bold text-textMain">SQLite 实体数据字典</h2>
               <span class="text-xs px-2 py-0.5 rounded bg-surfaceMuted border border-border text-textMuted font-mono">共 {{ entityList.length }} 实体</span>
@@ -670,20 +742,10 @@
                 </span>
               </button>
             </div>
-
-            <!-- Reload default button -->
-            <div class="pt-2 border-t border-border">
-              <button 
-                @click="importDefault"
-                class="w-full bg-surface border border-border hover:bg-surfaceMuted text-textMuted hover:text-textMain font-medium py-1.5 rounded text-xs transition-colors flex items-center justify-center space-x-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>重载默认数据源</span>
-              </button>
-            </div>
           </div>
 
           <!-- Right Column: Interactive Entity Live Data Records Table -->
-          <div class="lg:col-span-3 bg-surface border border-border rounded-lg p-5 space-y-4 shadow-sm flex flex-col h-[calc(100vh-250px)]">
+          <div class="lg:col-span-3 bg-surface border border-border rounded-lg p-5 space-y-4 shadow-sm flex flex-col h-[calc(100vh-340px)]">
             <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-3">
               <div>
                 <div class="flex items-center space-x-2">
@@ -742,7 +804,7 @@
     <!-- Clean Light Footer -->
     <footer class="border-t border-border bg-surface px-6 py-3 text-xs font-mono text-textMuted flex items-center justify-between">
       <div>APS MVP 2.0 · Python 3.12 · OR-Tools CP-SAT · openpyxl</div>
-      <div>测试体系: 422/422 PASS · 页面全动态渲染 · 零硬编码</div>
+      <div>测试体系: 424/424 PASS · 页面全动态渲染 · 零硬编码</div>
     </footer>
   </div>
 
@@ -754,7 +816,7 @@
         const activeTab = ref('solve');
         const site = ref('WL');
         const solving = ref(false);
-        const status = ref({ status: 'loading', total_rows: 0, entity_counts: {} });
+        const status = ref({ status: 'loading', total_rows: 0, entity_counts: {}, active_workbook: '' });
         const solveResult = ref(null);
 
         const form = ref({
@@ -780,6 +842,10 @@
         const selectedEntityName = ref('line');
         const selectedEntityData = ref(null);
         const entityRowSearch = ref('');
+
+        // Workbooks Switcher State
+        const workbookList = ref([]);
+        const selectedWorkbookPath = ref('');
 
         // Crisp SVG Icons (No Emojis)
         const tabs = [
@@ -821,18 +887,71 @@
         const fetchStatus = async () => {
           try {
             const res = await fetch(`/api/status?site=${site.value}`);
-            status.value = await res.json();
+            if (res.ok) {
+              status.value = await res.json();
+              selectedWorkbookPath.value = status.value.active_workbook;
+            }
           } catch (e) {
             console.error('Failed to fetch status:', e);
+          }
+        };
+
+        const fetchWorkbooks = async () => {
+          try {
+            const res = await fetch('/api/workbooks');
+            if (res.ok) {
+              const data = await res.json();
+              workbookList.value = data.workbooks || [];
+              if (data.active) {
+                selectedWorkbookPath.value = data.active;
+              }
+            }
+          } catch (e) {
+            console.error('Failed to fetch workbooks:', e);
+          }
+        };
+
+        const switchWorkbook = async (path) => {
+          try {
+            const res = await fetch('/api/switch-workbook', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                workbook_path: path,
+                site: site.value,
+              })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              alert(`数据源切换失败 (${res.status}): ${data.detail || '未知错误'}`);
+              return;
+            }
+            const partCount = data.counts?.part || 0;
+            alert(`已成功切换并载入数据源: ${path}\n入库零件: ${partCount} 个`);
+            await fetchStatus();
+            await fetchWorkbooks();
+            await fetchEntities();
+          } catch (e) {
+            alert('切换数据源异常: ' + e);
+          }
+        };
+
+        const handleHeaderWorkbookChange = () => {
+          if (selectedWorkbookPath.value) {
+            switchWorkbook(selectedWorkbookPath.value);
           }
         };
 
         const fetchEntities = async () => {
           try {
             const res = await fetch(`/api/entities?site=${site.value}`);
-            entityList.value = await res.json();
-            if (entityList.value.length > 0) {
-              selectEntity(entityList.value[0].name);
+            if (res.ok) {
+              entityList.value = await res.json();
+              if (entityList.value.length > 0 && !selectedEntityName.value) {
+                selectEntity(entityList.value[0].name);
+              } else if (selectedEntityName.value) {
+                fetchEntityData();
+              }
             }
           } catch (e) {
             console.error('Failed to fetch entities:', e);
@@ -848,7 +967,9 @@
           if (!selectedEntityName.value) return;
           try {
             const res = await fetch(`/api/entity-data?entity=${selectedEntityName.value}&site=${site.value}&search=${encodeURIComponent(entityRowSearch.value)}&limit=100`);
-            selectedEntityData.value = await res.json();
+            if (res.ok) {
+              selectedEntityData.value = await res.json();
+            }
           } catch (e) {
             console.error('Failed to fetch entity data:', e);
           }
@@ -868,7 +989,12 @@
                 calendar_mode: form.value.calendarMode,
               })
             });
-            solveResult.value = await res.json();
+            const data = await res.json();
+            if (!res.ok) {
+              alert(`求解异常 (${res.status}): ${data.detail || '未知错误'}`);
+              return;
+            }
+            solveResult.value = data;
             await fetchStatus();
             await fetchEntities();
           } catch (e) {
@@ -882,8 +1008,14 @@
           try {
             const res = await fetch('/api/import-default', { method: 'POST' });
             const data = await res.json();
-            alert(`数据源导入成功: ${data.counts.part || 0} 个零件已入库。`);
+            if (!res.ok) {
+              alert(`数据源导入失败 (${res.status}): ${data.detail || '未知错误'}`);
+              return;
+            }
+            const partCount = data.counts?.part || 0;
+            alert(`数据源导入成功: ${data.active_workbook || ''}\n包含 ${partCount} 个零件记录已入库。`);
             await fetchStatus();
+            await fetchWorkbooks();
             await fetchEntities();
           } catch (e) {
             alert('导入失败: ' + e);
@@ -892,6 +1024,34 @@
 
         const downloadPlan = () => {
           window.open(`/api/download-plan?site=${form.value.site}`, '_blank');
+        };
+
+        const handleFileUpload = async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const formData = new FormData();
+          formData.append('file', file);
+          try {
+            const res = await fetch(`/api/import-file?site=${form.value.site}`, {
+              method: 'POST',
+              body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              alert(`上传处理失败 (${res.status}): ${data.detail || '格式错误'}`);
+              return;
+            }
+            if (data.ok) {
+              alert(`工作簿 ${file.name} 导入成功并已激活！共写入 ${Object.keys(data.counts || {}).length} 张数据表。`);
+            } else {
+              alert(`校验未通过：存在 ${data.errors_count} 个 Error，数据库未改动。`);
+            }
+            await fetchStatus();
+            await fetchWorkbooks();
+            await fetchEntities();
+          } catch (e) {
+            alert('上传导入异常: ' + e);
+          }
         };
 
         // Gantt Computations
@@ -912,7 +1072,6 @@
           if (!onlyActiveLines.value) {
             return allLines;
           }
-          // Filter only lines that have >= 1 task in plan_rows
           const activeLineSet = new Set((solveResult.value.plan_rows || []).map(r => r.line_code));
           return allLines.filter(l => activeLineSet.has(l));
         });
@@ -959,6 +1118,7 @@
 
         onMounted(async () => {
           await fetchStatus();
+          await fetchWorkbooks();
           await fetchEntities();
         });
 
@@ -988,11 +1148,16 @@
           selectedEntityName,
           selectedEntityData,
           entityRowSearch,
+          workbookList,
+          selectedWorkbookPath,
+          switchWorkbook,
+          handleHeaderWorkbookChange,
           selectEntity,
           fetchEntityData,
           runSolve,
           importDefault,
           downloadPlan,
+          handleFileUpload,
         };
       }
     }).mount('#app');

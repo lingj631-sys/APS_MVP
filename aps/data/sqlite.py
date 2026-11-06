@@ -201,9 +201,12 @@ class SqliteRepository:
             raise KeyError(f"登记表无实体 {sorted(unknown)}")
         with self.transaction():
             for spec in _deletion_order():
-                if spec.name == "site" or "site_code" not in self._columns(spec):
+                if spec.name == "site":
                     continue
-                self.delete_where(spec.name, site_code=site_code)
+                if "site_code" in self._columns(spec):
+                    self.delete_where(spec.name, site_code=site_code)
+                elif spec.name in rows_by_entity:
+                    self.delete_where(spec.name)
             if self.get_by_pk("site", (site_code,)) is None:
                 self.insert_many("site", [{"site_code": site_code}])
             counts: dict[str, int] = {}

@@ -29,6 +29,54 @@ __all__ = ["create_app"]
 DEFAULT_DB = os.path.join("data", "aps.db")
 DEFAULT_SITE = "WL"
 
+ACTIVE_WORKBOOK = "normal.xlsx" if os.path.exists("normal.xlsx") else ("test.xlsx" if os.path.exists("test.xlsx") else "APS_DataSource_Template - WL -V2.xlsx")
+
+
+def _find_available_workbooks() -> list[dict[str, Any]]:
+    candidates: list[str] = []
+    for item in os.listdir("."):
+        if item.endswith(".xlsx") and not item.startswith("~$"):
+            candidates.append(item)
+    if os.path.exists("data"):
+        for item in os.listdir("data"):
+            if item.endswith(".xlsx") and not item.startswith("~$") and not item.startswith("Production_Plan"):
+                candidates.append(os.path.join("data", item))
+
+    workbooks: list[dict[str, Any]] = []
+    for p in sorted(set(candidates)):
+        try:
+            stat = os.stat(p)
+            workbooks.append({
+                "filename": os.path.basename(p),
+                "path": p.replace("\\", "/"),
+                "size_kb": round(stat.st_size / 1024.0, 1),
+                "modified": dt.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            })
+        except OSError:
+            pass
+    return workbooks
+
+
+def _resolve_default_workbook(preferred: str | None = None) -> str:
+    global ACTIVE_WORKBOOK
+    if preferred and os.path.exists(preferred):
+        return preferred
+    if ACTIVE_WORKBOOK and os.path.exists(ACTIVE_WORKBOOK):
+        return ACTIVE_WORKBOOK
+    for candidate in ("normal.xlsx", "test.xlsx", "APS_DataSource_Template - WL -V2.xlsx"):
+        if os.path.exists(candidate):
+            return candidate
+    available = _find_available_workbooks()
+    if available:
+        return available[0]["path"]
+    raise FileNotFoundError("未在工作区找到任何可用的 .xlsx 数据源工作簿")
+
+
+class SwitchWorkbookRequest(BaseModel):
+    workbook_path: str
+    site: str = DEFAULT_SITE
+    db_path: str = DEFAULT_DB
+
 
 class SolveRequest(BaseModel):
     site: str = DEFAULT_SITE
@@ -40,6 +88,8 @@ class SolveRequest(BaseModel):
 
 
 def create_app() -> FastAPI:
+    global ACTIVE_WORKBOOK
+
     app = FastAPI(
         title="APS 2.0 智能排产与决策中枢",
         version="2.0.0",
@@ -84,8 +134,39 @@ def create_app() -> FastAPI:
             "status": "ready" if exists else "no_database",
             "db_path": db_path,
             "site": site,
+            "active_workbook": ACTIVE_WORKBOOK,
             "total_rows": total_rows,
             "entity_counts": entity_counts,
+        }
+
+    @app.get("/api/workbooks")
+    def list_workbooks():
+        workbooks = _find_available_workbooks()
+        return {
+            "active": ACTIVE_WORKBOOK,
+            "workbooks": workbooks,
+        }
+
+    @app.post("/api/switch-workbook")
+    def switch_workbook(req: SwitchWorkbookRequest):
+        global ACTIVE_WORKBOOK
+        if not os.path.exists(req.workbook_path):
+            raise HTTPException(status_code=404, detail=f"文件不存在: {req.workbook_path}")
+
+        result = import_workbook(req.workbook_path, req.db_path, req.site)
+        if result.wrote:
+            ACTIVE_WORKBOOK = req.workbook_path.replace("\\", "/")
+
+        return {
+            "ok": result.ok,
+            "wrote": result.wrote,
+            "active_workbook": ACTIVE_WORKBOOK,
+            "site": result.site,
+            "counts": dict(result.counts),
+            "errors_count": len(result.report.errors),
+            "warnings_count": len(result.report.warnings),
+            "gaps_count": len(result.report.gaps),
+            "degraded_fields": list(result.degraded_fields),
         }
 
     @app.get("/api/entities")
@@ -154,50 +235,58 @@ def create_app() -> FastAPI:
         site: str = Query(DEFAULT_SITE),
         db_path: str = Query(DEFAULT_DB),
     ):
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        fd, temp_xlsx = tempfile.mkstemp(suffix=".xlsx")
-        os.close(fd)
+        global ACTIVE_WORKBOOK
+        upload_dir = os.path.join("data", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        dest_path = os.path.join(upload_dir, file.filename)
 
-        try:
-            with open(temp_xlsx, "wb") as f:
-                shutil.copyfileobj(file.file, f)
+        with open(dest_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-            result = import_workbook(temp_xlsx, db_path, site)
-            return {
-                "ok": result.ok,
-                "wrote": result.wrote,
-                "site": result.site,
-                "counts": dict(result.counts),
-                "errors_count": len(result.report.errors),
-                "warnings_count": len(result.report.warnings),
-                "gaps_count": len(result.report.gaps),
-                "degraded_fields": list(result.degraded_fields),
-                "errors": [
-                    {"entity": i.entity, "field": i.field, "sheet": i.sheet, "row": i.row, "message": i.message}
-                    for i in result.report.errors[:50]
-                ],
-                "gaps": [
-                    {"entity": i.entity, "field": i.field, "sheet": i.sheet, "row": i.row, "message": i.message}
-                    for i in result.report.gaps[:50]
-                ],
-            }
-        finally:
-            if os.path.exists(temp_xlsx):
-                os.unlink(temp_xlsx)
+        result = import_workbook(dest_path, db_path, site)
+        if result.wrote:
+            ACTIVE_WORKBOOK = dest_path.replace("\\", "/")
 
-    @app.post("/api/import-default")
-    def import_default(
-        workbook_path: str = "APS_DataSource_Template - WL -V2.xlsx",
-        site: str = DEFAULT_SITE,
-        db_path: str = DEFAULT_DB,
-    ):
-        if not os.path.exists(workbook_path):
-            raise HTTPException(status_code=404, detail=f"文件不存在: {workbook_path}")
-
-        result = import_workbook(workbook_path, db_path, site)
         return {
             "ok": result.ok,
             "wrote": result.wrote,
+            "active_workbook": ACTIVE_WORKBOOK,
+            "site": result.site,
+            "counts": dict(result.counts),
+            "errors_count": len(result.report.errors),
+            "warnings_count": len(result.report.warnings),
+            "gaps_count": len(result.report.gaps),
+            "degraded_fields": list(result.degraded_fields),
+            "errors": [
+                {"entity": i.entity, "field": i.field, "sheet": i.sheet, "row": i.row, "message": i.message}
+                for i in result.report.errors[:50]
+            ],
+            "gaps": [
+                {"entity": i.entity, "field": i.field, "sheet": i.sheet, "row": i.row, "message": i.message}
+                for i in result.report.gaps[:50]
+            ],
+        }
+
+    @app.post("/api/import-default")
+    def import_default(
+        workbook_path: str | None = None,
+        site: str = DEFAULT_SITE,
+        db_path: str = DEFAULT_DB,
+    ):
+        global ACTIVE_WORKBOOK
+        try:
+            resolved_path = _resolve_default_workbook(workbook_path)
+        except FileNotFoundError as err:
+            raise HTTPException(status_code=404, detail=str(err))
+
+        result = import_workbook(resolved_path, db_path, site)
+        if result.wrote:
+            ACTIVE_WORKBOOK = resolved_path.replace("\\", "/")
+
+        return {
+            "ok": result.ok,
+            "wrote": result.wrote,
+            "active_workbook": ACTIVE_WORKBOOK,
             "site": result.site,
             "counts": dict(result.counts),
             "errors_count": len(result.report.errors),

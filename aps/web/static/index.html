@@ -209,17 +209,17 @@
                   <svg class="w-4 h-4 text-accent transition-transform duration-200" :class="showAdvanced ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                   <span>高级制造物理与运筹规则微调</span>
                 </div>
-                <span class="text-[11px] text-textMuted font-mono">{{ showAdvanced ? '收起配置 ▲' : '展开微调 (最大105%利用率 / 半成品批量个数 / 换型次数) ▼' }}</span>
+                <span class="text-[11px] text-textMuted font-mono">{{ showAdvanced ? '收起配置 ▲' : '展开微调 (利用率上限 / 半成品批量个数 / 换型次数) ▼' }}</span>
               </div>
 
               <div v-show="showAdvanced" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 p-3.5 bg-slate-50/70 rounded-lg border border-border text-xs">
                 <div>
                   <label class="block font-medium text-textMuted mb-1">产线最大利用率上限</label>
                   <div class="flex items-center space-x-1.5">
-                    <input type="number" v-model.number="form.maxUtilizationPct" min="80" max="105" step="1" class="w-full bg-white border border-border rounded px-2.5 py-1 text-xs focus:border-accent font-mono font-bold">
+                    <input type="number" v-model.number="form.maxUtilizationPct" min="80" max="120" step="1" class="w-full bg-white border border-border rounded px-2.5 py-1 text-xs focus:border-accent font-mono font-bold">
                     <span class="text-textMuted font-mono">%</span>
                   </div>
-                  <span class="text-[10px] text-textMuted">最高支持 105% 负荷缓冲</span>
+                  <span class="text-[10px] text-textMuted">支持至多 115% 负荷缓冲</span>
                 </div>
 
                 <div>

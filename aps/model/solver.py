@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field as dc_field
 from typing import Any
 
@@ -56,13 +57,50 @@ def _translate_assumption(name: str) -> str:
     return f"排产物理约束冲突: {name}"
 
 
+def check_line_capacity_bottlenecks(ds: DataSet, max_util: float = 1.05) -> list[str]:
+    bottlenecks = []
+    prod_by_line = defaultdict(int)
+    setup_by_line = defaultdict(int)
+    for t in ds.tasks:
+        cert = ds.certified_lines(t.pn)
+        if len(cert) == 1:
+            l_code = cert[0]
+            route = ds.route(t.pn, l_code)
+            if route:
+                prod_by_line[l_code] += t.net_requirement * route.unit_ms
+                setup_by_line[l_code] += int(route.changeover_min * 60 * 1000)
+
+    for line in ds.lines:
+        l_code = line.line_code
+        base_cap_ms = ds.slot_count(l_code) * line.shift_hours * 3600 * 1000
+        cap_total_ms = base_cap_ms * max_util
+        needed_ms = prod_by_line[l_code] + setup_by_line[l_code]
+        if needed_ms > cap_total_ms:
+            needed_h = needed_ms / 3600000.0
+            cap_h = cap_total_ms / 3600000.0
+            base_cap_h = base_cap_ms / 3600000.0
+            pct = (needed_h / base_cap_h) * 100.0
+            gap_h = needed_h - cap_h
+            bottlenecks.append(
+                f"产线【{l_code}】在当前排产周期内总需求工时为 {needed_h:.1f} 小时（纯加工 {prod_by_line[l_code]/3600000.0:.1f}h + 换型 {setup_by_line[l_code]/3600000.0:.1f}h），"
+                f"超出当前设定的工时上限 {cap_h:.1f} 小时（负荷率高达 {pct:.1f}%，绝对缺口 {gap_h:.1f} 小时）。"
+                f"这是导致数学模型判定不可行 (INFEASIBLE) 的直接物理根因。建议：1) 在高级微调中将产线利用率上限提升至 {int(pct)+1}% 以上（允许合理加班）；2) 延长排产计划周期；或 3) 为超载料号增加备选认证机台。"
+            )
+    return bottlenecks
+
+
 def _diagnose_infeasibility(ctx: StructureContext, solver: cp_model.CpSolver) -> list[str]:
+    max_util = ctx.config.max_utilization_pct if hasattr(ctx, "config") else 1.05
+    bottlenecks = check_line_capacity_bottlenecks(ctx.dataset, max_util=max_util)
+
     conflict_indices = solver.SufficientAssumptionsForInfeasibility()
     if not conflict_indices:
+        if bottlenecks:
+            return bottlenecks
         return ["模型在求解当前排产窗口时发生不可行冲突（未返回具体最小假设集）"]
 
-    diagnostics: list[str] = []
-    seen = set()
+    diagnostics: list[str] = list(bottlenecks)
+    seen = set(bottlenecks)
     for idx in conflict_indices:
         name = ctx.assumption_names.get(idx, str(idx))
         msg = _translate_assumption(name)
@@ -83,7 +121,7 @@ def solve_schedule(ctx: StructureContext,
 
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 8
-    stage_time_limit = max(5.0, time_limit_seconds / 4.0)
+    p1_time_limit = max(10.0, time_limit_seconds * 0.50)
 
     val_p1 = 0
     val_p2 = 0
@@ -105,7 +143,7 @@ def solve_schedule(ctx: StructureContext,
     # -------------------------------------------------------------
     # Layer 1: P1 交付优先 (OTD Delivery / Late Shifts Minimization)
     # -------------------------------------------------------------
-    solver.parameters.max_time_in_seconds = stage_time_limit
+    solver.parameters.max_time_in_seconds = p1_time_limit
     late_terms = []
     for t_id, late_var in ctx.late_shifts.items():
         task = ctx.tasks_by_id[t_id]

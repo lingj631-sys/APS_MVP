@@ -264,16 +264,24 @@ class DataSet:
             if r.get("changeover_min") is not None
         }
 
+        total_mold_sets: dict[str, int] = defaultdict(int)
         try:
-            mold_rows = repo.list_by("mold", site_code=site)
+            for r in repo.list_by("tooling_mold", site_code=site):
+                m_id = r.get("mold_id")
+                if m_id:
+                    total_mold_sets[m_id] += int(r.get("available_sets") or 1)
         except Exception:
-            mold_rows = []
+            pass
 
-        mold_sets = {
-            r["mold_id"]: int(r.get("available_sets") or 1)
-            for r in mold_rows
-            if r.get("available_sets") is not None
-        }
+        if not total_mold_sets:
+            try:
+                for r in repo.list_by("mold", site_code=site):
+                    m_id = r.get("mold_id")
+                    if m_id and r.get("available_sets") is not None:
+                        total_mold_sets[m_id] = int(r["available_sets"])
+            except Exception:
+                pass
+        mold_sets = dict(total_mold_sets)
 
         return cls(
             horizon=horizon,

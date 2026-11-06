@@ -233,7 +233,7 @@ def build_core_constraints(ctx: StructureContext,
         for m_id, avail_sets in ds.mold_available_sets.items():
             if avail_sets <= 0:
                 continue
-            mold_candidates = []
+            tasks_by_line = defaultdict(list)
             for (t_id, l_code) in ctx.assign:
                 task = ctx.tasks_by_id[t_id]
                 route = ds.route(task.pn, l_code)
@@ -241,17 +241,21 @@ def build_core_constraints(ctx: StructureContext,
                 if task.mold_id:
                     task_molds.add(task.mold_id)
                 if m_id in task_molds:
-                    mold_candidates.append((t_id, l_code))
+                    tasks_by_line[l_code].append(t_id)
 
-            if len(mold_candidates) > avail_sets:
+            if len(tasks_by_line) > avail_sets:
                 for s in range(max_slots):
-                    active_in_slot = [
-                        ctx.active[(t_id, l_code, s)]
-                        for (t_id, l_code) in mold_candidates
-                        if (t_id, l_code, s) in ctx.active
-                    ]
-                    if len(active_in_slot) > avail_sets:
-                        _add(sum(active_in_slot) <= avail_sets, f"c11_mold.{m_id}.{s}")
+                    line_use_vars = []
+                    for l_code, t_list in tasks_by_line.items():
+                        if s < ds.slot_count(l_code):
+                            active_terms = [ctx.active[(t_id, l_code, s)] for t_id in t_list if (t_id, l_code, s) in ctx.active]
+                            if active_terms:
+                                u_var = model.NewBoolVar(f"use_m.{l_code}.{m_id}.{s}")
+                                for a_var in active_terms:
+                                    model.Add(u_var >= a_var)
+                                line_use_vars.append(u_var)
+                    if len(line_use_vars) > avail_sets:
+                        _add(sum(line_use_vars) <= avail_sets, f"c11_mold.{m_id}.{s}")
         rule_names.append("c11_shared_mold_concurrency")
 
     if use_assumptions and ctx.assumptions:

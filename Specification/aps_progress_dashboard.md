@@ -79,7 +79,7 @@
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| B1 MOQ/MPQ | ✅ 代码/数据 | `basis=shift/order`、`quantity_source=MPQ/MOQ`、`tail_exempt`、`moq_override`；尚未写入 active seed |
+| B1 MOQ/MPQ | ✅ 已生效 | 2026-11-07：成品产量改为「MOQ 起步 + MOQ 之上按 MPQ 整步」（`plan_production_quantity`），半成品用同一 MOQ 下限；`min_batch` 的 `quantity_source=MOQ` 保留为规则侧「单次开工下限」 |
 | B2 scrap | ✅ opt-in | `build_requirement_plan(apply_scrap=True)`，默认关闭 |
 | B3 软产能 | ✅ | soft 双边计罚，不再硬加 ceiling |
 | B4 库存策略 | 🟡/✅ 部分 | 数据层 + 投影 + API；FG/SF soft penalty；HC-14 低覆盖 L/R 豁免已接；HC-03 PM 部分降载未接 |

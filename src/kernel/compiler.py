@@ -250,11 +250,16 @@ def _compile_min_batch(ctx: CompileContext, rule: RuleInstance, params: Dict[str
                 * max(1, int(ctx.unit_pieces(task))) >= units
             )
         else:
-            # "Minimum production batch" belongs to the *start* of a run, not to
-            # every continuing shift; binding it to `active` forbids the partial
-            # tail shift that almost every real order ends with.
+            # min_lots == 1 is the "one MPQ per opened shift" form: keep it on every
+            # active shift so each shift still produces whole lots (the validator and
+            # the legacy path both rely on that).  A larger floor (MOQ in pieces) is a
+            # *run start* threshold — binding that to every continuing shift forbids
+            # the partial tail shift almost every real order ends with.
             for slot in range(lo, hi + 1):
-                ctx.model.Add(ctx.x(task, slot) >= min_lots * ctx.started(task, slot))
+                if min_lots <= 1:
+                    ctx.model.Add(ctx.x(task, slot) >= ctx.active(task, slot))
+                else:
+                    ctx.model.Add(ctx.x(task, slot) >= min_lots * ctx.started(task, slot))
     return warnings, True
 
 

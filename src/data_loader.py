@@ -674,6 +674,45 @@ def lot_millis(lot_size: float, ct_seconds: float, trp: float) -> int:
     return max(1, int(round(lot_size * ct_seconds / trp * TIME_SCALE)))
 
 
+def _normalise_moq(mpq: float, moq: float) -> int:
+    """MOQ rounded up to a whole MPQ multiple (never below one MPQ)."""
+    lot = max(1, int(round(float(mpq or 1))))
+    value = float(moq or 0.0)
+    if value <= 0:
+        return lot
+    return max(lot, int(math.ceil(value / lot - 1e-9)) * lot)
+
+
+def plan_moq_floor(mpq: float, moq: float) -> int:
+    """Smallest quantity a run may start with (MOQ aligned to MPQ)."""
+    return _normalise_moq(mpq, moq)
+
+
+def plan_production_quantity(net_need: float, mpq: float, moq: float) -> int:
+    """Quantity to produce for one order line, honouring MOQ then whole MPQ steps.
+
+    Business rule (confirmed 2026-11-07, matches the shop floor):
+
+    * demand below MOQ still has to start the line at MOQ — MPQ=10, MOQ=100,
+      demand 1 → 100 pieces (99 go to stock);
+    * above MOQ the quantity grows in whole MPQ steps — demand 188 → 100 + 9×10
+      = 190 pieces (2 go to stock);
+    * an MOQ that is not a multiple of MPQ is rounded up to the next MPQ multiple,
+      otherwise the batch count would not be an integer.
+
+    When MOQ equals MPQ (the current master data) this is identical to the old
+    ``ceil(net/mpq)*mpq`` rounding, so no existing plan changes.
+    """
+    lot = max(1, int(round(float(mpq or 1))))
+    need = float(net_need or 0.0)
+    if need <= 0:
+        return 0
+    floor_qty = _normalise_moq(lot, moq)
+    if need <= floor_qty:
+        return floor_qty
+    return floor_qty + int(math.ceil((need - floor_qty) / lot - 1e-9)) * lot
+
+
 def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bool = False) -> RequirementPlan:
     """Net customer demand against opening and safety stock, then explode BOM.
 
@@ -805,9 +844,9 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
             )
             continue
 
-        batches = int(math.ceil(net_need / param.mpq))
+        qty = plan_production_quantity(net_need, param.mpq, param.moq)
         lot_size = int(round(param.mpq))
-        qty = batches * lot_size
+        batches = max(1, qty // lot_size)
         fg_avail[order.part_no] += qty - order.demand_quantity
         fg_produced[order.part_no] = fg_produced.get(order.part_no, 0.0) + qty
 
@@ -861,8 +900,11 @@ def build_requirement_plan(snapshot: ProductionInputSnapshot, *, apply_scrap: bo
                 sf_avail[sf_pn] -= gross_need
                 continue
 
+            # Semi-finished output is piece-granular above the floor (a shift may
+            # run any integer count), but it still may not start below MOQ: with
+            # MOQ=100 / MPQ=10 a 5-piece BOM pull must produce a full 100.
             min_lot = int(round(sf_param.mpq))
-            sf_qty = max(min_lot, int(math.ceil(sf_net)))
+            sf_qty = max(plan_moq_floor(sf_param.mpq, sf_param.moq), int(math.ceil(sf_net)))
             sf_avail[sf_pn] += sf_qty - gross_need
             sf_produced[sf_pn] = sf_produced.get(sf_pn, 0.0) + sf_qty
 

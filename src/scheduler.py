@@ -1414,9 +1414,11 @@ class APSScheduler:
             self._compile_rules_for(
                 "labor_capacity", model, x, active, started, end_of, {}, {}, {}, force_hard=False
             )
-        kernel_material = use_kernel and self.enforce_material_balance and self._use_kernel("material_balance")
+        # The legacy switch only decides the fallback path; when a rule set is
+        # attached the compiled rule alone decides whether the constraint is on.
+        kernel_material = use_kernel and self._use_kernel("material_balance")
         cumulative = None
-        if self.enforce_material_balance or self.inventory_policies or self.enforce_d1_clock:
+        if self.enforce_material_balance or self.inventory_policies or self.enforce_d1_clock or kernel_material:
             cumulative = self._create_cumulative(model, x)
             if not kernel_material:
                 self._legacy_material_balance(model, cumulative)

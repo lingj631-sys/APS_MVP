@@ -42,6 +42,9 @@ class MaterialBalanceRow:
     plan_by_shift: Dict[str, float]
     stock_by_shift: Dict[str, float]
     coverage_by_shift: Dict[str, float]
+    # unfilled demand carried to later shifts; stock never goes negative, the
+    # shortfall shows up here instead (ERP "backorder")
+    backorder_by_shift: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -52,6 +55,42 @@ class ValidationMatrix:
     line_loads: List[LineLoadRow]
     fg_balance: List[MaterialBalanceRow]
     sf_balance: List[MaterialBalanceRow]
+
+
+def roll_stock_balance(
+    initial_stock: float,
+    shift_keys: List[str],
+    demand_by_shift: Dict[str, float],
+    plan_by_shift: Dict[str, float],
+) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, float]]:
+    """Roll the PSI balance forward shift by shift.
+
+    Stock never goes negative: whatever cannot be served becomes a backorder that
+    is carried into the next shift and filled before new demand.  Returns
+    ``(demand_row, plan_row, stock_row, backorder_row)``.
+    """
+    d_row: Dict[str, float] = {}
+    p_row: Dict[str, float] = {}
+    s_row: Dict[str, float] = {}
+    b_row: Dict[str, float] = {}
+
+    running_stock = float(initial_stock)
+    backlog = 0.0
+    for s_key in shift_keys:
+        demand = float(demand_by_shift.get(s_key, 0.0) or 0.0)
+        produced = float(plan_by_shift.get(s_key, 0.0) or 0.0)
+        available = running_stock + produced - backlog - demand
+        if available >= 0:
+            running_stock = available
+            backlog = 0.0
+        else:
+            running_stock = 0.0
+            backlog = -available
+        d_row[s_key] = round(demand, 0) if demand else 0
+        p_row[s_key] = round(produced, 0) if produced else 0
+        s_row[s_key] = round(running_stock, 0)
+        b_row[s_key] = round(backlog, 0)
+    return d_row, p_row, s_row, b_row
 
 
 def build_validation_matrix(
@@ -142,31 +181,17 @@ def build_validation_matrix(
             init_stock = snapshot.initial_stock.get(pn, 0.0)
             cur_demand_map = demand_dict.get(pn, {})
             cur_plan_map = plan_dict.get(pn, {})
-            
+
             total_dem = sum(cur_demand_map.values())
             # Average daily demand over 7 days or total days
             avg_daily = total_dem / 7.0 if total_dem > 0 else 0.0
 
-            d_row = {}
-            p_row = {}
-            s_row = {}
+            d_row, p_row, s_row, b_row = roll_stock_balance(
+                init_stock, shift_keys, cur_demand_map, cur_plan_map
+            )
             c_row = {}
-
-            running_stock = init_stock
             for s_key in shift_keys:
-                d = cur_demand_map.get(s_key, 0.0)
-                p_qty = cur_plan_map.get(s_key, 0.0)
-                running_stock = running_stock + p_qty - d
-                
-                d_row[s_key] = round(d, 0) if d else 0
-                p_row[s_key] = round(p_qty, 0) if p_qty else 0
-                s_row[s_key] = round(running_stock, 0)
-                
-                if avg_daily > 0:
-                    cov = round(running_stock / avg_daily, 1)
-                    c_row[s_key] = cov
-                else:
-                    c_row[s_key] = 999.0
+                c_row[s_key] = round(s_row[s_key] / avg_daily, 1) if avg_daily > 0 else 999.0
 
             rows.append(
                 MaterialBalanceRow(
@@ -184,6 +209,7 @@ def build_validation_matrix(
                     plan_by_shift=p_row,
                     stock_by_shift=s_row,
                     coverage_by_shift=c_row,
+                    backorder_by_shift=b_row,
                 )
             )
         return rows

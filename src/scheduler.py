@@ -1414,18 +1414,23 @@ class APSScheduler:
             self._compile_rules_for(
                 "labor_capacity", model, x, active, started, end_of, {}, {}, {}, force_hard=False
             )
-        # The legacy switch only decides the fallback path; when a rule set is
-        # attached the compiled rule alone decides whether the constraint is on.
-        kernel_material = use_kernel and self._use_kernel("material_balance")
+        # Inventory may never go negative — that is physics, not a policy switch.
+        # Whenever a rule set is attached the constraint is compiled unconditionally;
+        # the rule can only tune `buffer_shifts` / `include_stock` (and its scope).
+        # Disabling the rule does not switch the constraint off.
+        kernel_material = use_kernel and self.rule_set is not None
         cumulative = None
         if self.enforce_material_balance or self.inventory_policies or self.enforce_d1_clock or kernel_material:
             cumulative = self._create_cumulative(model, x)
-            if not kernel_material:
-                self._legacy_material_balance(model, cumulative)
         if kernel_material:
-            self._compile_rules_for(
-                "material_balance", model, x, active, started, end_of, {}, {}, {}, cumulative=cumulative
+            self._compile_invariant_rules(
+                "material_balance", model, x, active, started, end_of,
+                cumulative=cumulative,
+                default_params={"buffer_shifts": 0, "include_stock": True},
+                default_scope_stage=None,
             )
+        elif self.enforce_material_balance:
+            self._legacy_material_balance(model, cumulative)
         inventory_penalty = self._add_inventory_constraints(model, cumulative) if self.inventory_policies else None
         lead_time_penalty = self._add_lead_time_penalty(model, end_of) if self.enforce_lead_time else None
         slack_penalty = self._add_due_slack_penalty(model, end_of) if self.due_slack_shifts > 0 else None
@@ -1860,6 +1865,60 @@ class APSScheduler:
             and template_id in self.kernel_templates
             and bool(self._rules_for(template_id))
         )
+
+    def _compile_invariant_rules(
+        self,
+        template_id: str,
+        model,
+        x,
+        active,
+        started,
+        end_of,
+        cumulative=None,
+        default_params: Optional[Dict[str, Any]] = None,
+        default_scope_stage: Optional[str] = None,
+    ):
+        """Compile a template that is a physical invariant rather than a policy.
+
+        ``material_balance`` is the only user today: stock cannot be negative in
+        reality, so the constraint is compiled even when the rule is switched off.
+        The rule set still owns the *parameters* (buffer shifts, whether opening
+        stock counts) — it just cannot remove the constraint.
+        """
+        from dataclasses import replace
+
+        from src.kernel import Nature, RuleInstance, RuleSet, Scope, compile_rules
+
+        rules = [rule for rule in self.rule_set.rules if rule.template_id == template_id]
+        if rules:
+            rules = [replace(rule, enabled=True, nature=Nature.HARD) for rule in rules]
+        else:
+            rules = [
+                RuleInstance(
+                    rule_id=f"INVARIANT_{template_id}",
+                    template_id=template_id,
+                    scope=Scope(stage=default_scope_stage) if default_scope_stage else Scope(),
+                    nature=Nature.HARD,
+                    weight=1.0,
+                    group_id="G0_PHYSICAL",
+                    priority=0,
+                    params=dict(default_params or {}),
+                )
+            ]
+        derived = RuleSet(
+            rule_set_id=f"{self.rule_set.rule_set_id}#{template_id}#invariant",
+            site=self.rule_set.site,
+            version=self.rule_set.version,
+            groups=self.rule_set.groups,
+            rules=rules,
+        )
+        context = _SchedulerCompileContext(
+            self, model, x, active, started, end_of, {}, {}, {}, cumulative
+        )
+        compiled = compile_rules(context, derived)
+        for warning in compiled.warnings:
+            print(f"  [kernel] {warning}")
+        return compiled
 
     def _compile_rules_for(
         self,

@@ -350,7 +350,32 @@ def export_validation_matrix_excel(
             else:
                 c.font = Font(name="Segoe UI", size=9, color="1E293B")
 
-        # 4. Coverage days
+        # 4. Backorder (欠交): stock never goes negative, the shortfall lands here
+        curr_row += 1
+        ws.row_dimensions[curr_row].height = 19
+        ws.cell(curr_row, 1).value = ""
+        ws.cell(curr_row, 2).value = ""
+        ws.cell(curr_row, 3).value = "Backorder 欠交"
+        ws.cell(curr_row, 3).font = Font(name="Segoe UI", size=9, color="B45309")
+        ws.cell(curr_row, 3).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(curr_row, 3).border = BORDER_THIN
+        ws.cell(curr_row, 4).value = "缺料即欠交"
+        ws.cell(curr_row, 4).font = Font(name="Segoe UI", size=9, color="B45309")
+        ws.cell(curr_row, 4).alignment = Alignment(horizontal="right", vertical="center")
+        ws.cell(curr_row, 4).border = BORDER_THIN
+        for idx, col_meta in enumerate(shift_cols, start=5):
+            b_val = (mat.backorder_by_shift or {}).get(col_meta["key"], 0)
+            c = ws.cell(curr_row, idx)
+            c.value = int(b_val)
+            c.alignment = align_center
+            c.border = BORDER_THIN
+            if b_val > 0:
+                c.fill = PatternFill("solid", start_color="FEF3C7")
+                c.font = Font(name="Segoe UI", size=9, bold=True, color="B45309")
+            else:
+                c.font = Font(name="Segoe UI", size=9, color="94A3B8")
+
+        # 5. Coverage days
         curr_row += 1
         ws.row_dimensions[curr_row].height = 19
         ws.cell(curr_row, 1).value = ""

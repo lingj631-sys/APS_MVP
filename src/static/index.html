@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <link rel="icon" type="image/png" href="/static/valeo_logo.png">
@@ -853,6 +853,31 @@
                         !getCellCrosshairClass('mat-' + mat.part_no + '-stock', col.key) && (mat.stock[col.key] < 0 ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-700')
                       ]">
                     {{ mat.stock[col.key] }}
+                  </td>
+                </tr>
+
+                <!-- Row 3.5: Backorder (欠交) — stock never goes negative, shortfall shows here -->
+                <tr v-if="!showOnlyProductionPlanRows && mat.backorder">
+                  <td class="py-1 px-3 border-r border-slate-200 sync-col-1 z-10"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-backorder') ? 'bg-blue-100' : 'bg-white'"></td>
+                  <td class="py-1 px-3 border-r border-slate-200 sync-col-2 z-10"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-backorder') ? 'bg-blue-100' : 'bg-white'"></td>
+                  <td class="py-1.5 px-3 border-r border-slate-200 sync-col-3 z-10 text-amber-800 font-medium whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-backorder') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
+                    Backorder 欠交
+                  </td>
+                  <td class="py-1.5 px-3 border-r-2 border-slate-300 sync-col-4 z-10 text-amber-700 text-[10px] text-right whitespace-nowrap"
+                      :class="isCrosshairRow('mat-' + mat.part_no + '-backorder') ? 'bg-blue-100 text-blue-950 font-bold' : 'bg-white'">
+                    缺料即欠交
+                  </td>
+                  <td v-for="col in shiftColumns" :key="'bo-'+mat.part_no+'-'+col.key"
+                      @click="toggleCrosshair('mat-' + mat.part_no + '-backorder', col.key)"
+                      class="py-1.5 px-1 text-center border-r border-slate-200 font-mono text-[10px] sync-shift-col whitespace-nowrap transition-colors interactive-cell"
+                      :class="[
+                        getCellCrosshairClass('mat-' + mat.part_no + '-backorder', col.key),
+                        !getCellCrosshairClass('mat-' + mat.part_no + '-backorder', col.key) && (mat.backorder[col.key] > 0 ? 'bg-amber-100 text-amber-800 font-bold' : 'text-slate-400')
+                      ]">
+                    {{ mat.backorder[col.key] || 0 }}
                   </td>
                 </tr>
 

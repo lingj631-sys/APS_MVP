@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI Backend Server for APS MVP.
 
 Provides REST APIs for:
@@ -3691,7 +3691,7 @@ async def audit_manual_schedule(
             "site": row.site, "line": row.line, "part_no": row.part_no, "description": row.description,
             "initial_stock": row.initial_stock, "ct_seconds": row.ct_seconds, "trp": row.trp, "mpq": row.mpq,
             "total_demand": row.total_demand, "avg_daily_demand": round(row.avg_daily_demand, 1),
-            "demand": row.demand_by_shift, "plan": row.plan_by_shift, "stock": row.stock_by_shift, "coverage": row.coverage_by_shift,
+            "demand": row.demand_by_shift, "plan": row.plan_by_shift, "stock": row.stock_by_shift, "coverage": row.coverage_by_shift, "backorder": row.backorder_by_shift,
         }
         for row in matrix.fg_balance
     ]
@@ -3700,7 +3700,7 @@ async def audit_manual_schedule(
             "site": row.site, "line": row.line, "part_no": row.part_no, "description": row.description,
             "initial_stock": row.initial_stock, "ct_seconds": row.ct_seconds, "trp": row.trp, "mpq": row.mpq,
             "total_demand": row.total_demand, "avg_daily_demand": round(row.avg_daily_demand, 1),
-            "demand": row.demand_by_shift, "plan": row.plan_by_shift, "stock": row.stock_by_shift, "coverage": row.coverage_by_shift,
+            "demand": row.demand_by_shift, "plan": row.plan_by_shift, "stock": row.stock_by_shift, "coverage": row.coverage_by_shift, "backorder": row.backorder_by_shift,
         }
         for row in matrix.sf_balance
     ]
